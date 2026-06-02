@@ -1,0 +1,227 @@
+<?php
+require_once 'includes/db.php';
+require_once 'config.php';
+
+// Vérifier si une session n'est pas déjà démarrée
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+if (isset($_GET['message']) && $_GET['message'] == 'deconnected') {
+    $success = "Vous avez été déconnecté avec succès.";
+}
+
+// Si déjà connecté, rediriger vers le dashboard
+if (isset($_SESSION['user_id'])) {
+    header('Location: index.php');
+    exit;
+}
+
+$error = '';
+$success = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user = trim($_POST['user'] ?? '');
+    $password = $_POST['password'] ?? '';
+    
+    if (empty($user) || empty($password)) {
+        $error = "Veuillez remplir tous les champs";
+    } else {
+        $compte = getCompteByUser($user);
+        
+        if ($compte) {
+            if (password_verify($password, $compte['password'])) {
+                if (!$compte['actif']) {
+                    $error = " Votre compte est suspendu. Contactez l'administrateur.";
+                } else {
+                    $_SESSION['user_id'] = $compte['id_compte'];
+                    $_SESSION['user_name'] = $compte['prenom'] . ' ' . $compte['nom'];
+                    $_SESSION['user_entreprise'] = $compte['entreprise'];
+                    $_SESSION['user_email'] = $compte['user'];
+                    $_SESSION['user_credits'] = floatval($compte['credits_total']);
+                    
+                    header('Location: index.php');
+                    exit;
+                }
+            } else {
+                $error = " Mot de passe incorrect";
+            }
+        } else {
+            $error = " Utilisateur inconnu";
+        }
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - <?= APP_NAME ?></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #3b82f6 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="rgba(255,255,255,0.05)" fill-opacity="1" d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,122.7C672,117,768,139,864,154.7C960,171,1056,181,1152,165.3C1248,149,1344,107,1392,85.3L1440,64L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path></svg>') no-repeat bottom;
+            background-size: cover;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+        
+        .login-card {
+            backdrop-filter: blur(10px);
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .input-focus:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+        }
+        
+        .btn-gradient {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gradient:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #1e3a5f 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);
+        }
+        
+        .wave-bg {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100px;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="rgba(255,255,255,0.1)" fill-opacity="1" d="M0,256L48,240C96,224,192,192,288,192C384,192,480,224,576,229.3C672,235,768,213,864,202.7C960,192,1056,192,1152,208C1248,224,1344,256,1392,272L1440,288L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path></svg>') repeat-x;
+            background-size: cover;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 relative">
+    <div class="wave-bg"></div>
+    
+    <div class="max-w-md w-full relative z-10">
+        <!-- Logo / Titre -->
+        <div class="text-center mb-8 animate-bounce">
+            <div class="bg-white/10 backdrop-blur-sm inline-block p-5 rounded-2xl mb-5 shadow-lg">
+                <i class="fas fa-envelope-open-text text-white text-5xl"></i>
+            </div>
+            <h1 class="text-4xl font-bold text-white mb-2 tracking-tight"><?= APP_NAME ?></h1>
+            <p class="text-white/80 text-sm">Plateforme d'envoi multi-canal</p>
+        </div>
+        
+        <!-- Formulaire de connexion -->
+        <div class="login-card bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">Bienvenue</h2>
+            <p class="text-gray-500 text-center text-sm mb-6">Connectez-vous à votre compte</p>
+            
+            <!-- Message d'erreur -->
+            <?php if ($error): ?>
+                <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-lg shadow-sm animate-shake">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-circle mr-3 text-red-500"></i>
+                        <span class="text-sm"><?= $error ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
+            
+            <!-- Message de succès -->
+            <?php if ($success): ?>
+                <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded-lg shadow-sm">
+                    <div class="flex items-center">
+                        <i class="fas fa-check-circle mr-3 text-green-500"></i>
+                        <span class="text-sm"><?= $success ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
+            
+            <!-- Formulaire -->
+            <form method="POST" action="">
+                <div class="mb-5">
+                    <label class="block text-gray-700 text-sm font-semibold mb-2">
+                        <i class="fas fa-user mr-2 text-blue-500"></i>
+                        Nom d'utilisateur
+                    </label>
+                    <input type="text" name="user" required 
+                           value="<?= htmlspecialchars($_POST['user'] ?? '') ?>"
+                           class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 input-focus transition bg-gray-50"
+                           placeholder="Entrez votre nom d'utilisateur">
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-semibold mb-2">
+                        <i class="fas fa-lock mr-2 text-blue-500"></i>
+                        Mot de passe
+                    </label>
+                    <input type="password" name="password" required 
+                           class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 input-focus transition bg-gray-50"
+                           placeholder="Entrez votre mot de passe">
+                </div>
+                
+                <button type="submit" 
+                        class="btn-gradient w-full text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md">
+                    <i class="fas fa-sign-in-alt mr-2"></i>
+                    Se connecter
+                </button>
+            </form>
+            
+        </div>
+        
+        <!-- Footer -->
+        <div class="text-center mt-8 text-white/60 text-xs">
+            &copy; <?= date('Y') ?> <?= APP_NAME ?> - Tous droits réservés
+        </div>
+    </div>
+    
+    <style>
+        @keyframes animate-shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .animate-shake {
+            animation: animate-shake 0.5s ease-in-out;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .animate-bounce {
+            animation: bounce 2s ease-in-out infinite;
+        }
+    </style>
+</body>
+</html>
