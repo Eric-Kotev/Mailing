@@ -19,7 +19,7 @@ $allowedPages = [
     'dashboard',
     'contacts/index', 'contacts/ajouter', 'contacts/modifier', 'contacts/supprimer', 'contacts/import', 'contacts/unblacklist',
     'listes/index', 'listes/ajouter', 'listes/details', 'listes/supprimer',
-    'campagnes/index', 'campagnes/nouvelle', 'campagnes/details',
+    'campagnes/index', 'campagnes/choix','campagnes/config_whatsapp','campagnes/nouvelle','campagnes/envoyer_whatsapp',
     'canaux/index', 'canaux/ajouter', 'canaux/supprimer',
     'blacklist/index',
     'parametres/compte', 'parametres/credits',

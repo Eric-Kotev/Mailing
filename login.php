@@ -68,9 +68,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         body {
-            background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #3b82f6 100%);
-            position: relative;
-            overflow: hidden;
+           background: linear-gradient(
+        135deg,
+        #020617 0%,
+        #0f172a 30%,
+        #1e293b 70%,
+        #334155 100%
+    );
+    position: relative;
+    overflow: hidden;
         }
         
         body::before {
@@ -107,15 +113,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-color: #3b82f6;
         }
         
-        .btn-gradient {
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-            transition: all 0.3s ease;
+       .btn-gradient {
+        background: #2563eb;
+        transition: all .3s ease;
         }
-        
+
         .btn-gradient:hover {
-            background: linear-gradient(135deg, #1d4ed8 0%, #1e3a5f 100%);
+            background: #1d4ed8;
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);
+            box-shadow: 0 12px 24px rgba(37, 99, 235, .35);
         }
         
         .wave-bg {
@@ -131,22 +137,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 relative">
+        <div class="absolute inset-0 overflow-hidden">
+        <div class="absolute top-0 left-0 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-0 right-0 w-96 h-96 bg-slate-500/20 rounded-full blur-3xl"></div>
+    </div>
     <div class="wave-bg"></div>
     
     <div class="max-w-md w-full relative z-10">
         <!-- Logo / Titre -->
         <div class="text-center mb-8 animate-bounce">
-            <div class="bg-white/10 backdrop-blur-sm inline-block p-5 rounded-2xl mb-5 shadow-lg">
+            <div class="bg-blue-600 inline-flex items-center justify-center w-24 h-24 rounded-3xl mb-5 shadow-2xl">
                 <i class="fas fa-envelope-open-text text-white text-5xl"></i>
             </div>
             <h1 class="text-4xl font-bold text-white mb-2 tracking-tight"><?= APP_NAME ?></h1>
-            <p class="text-white/80 text-sm">Plateforme d'envoi multi-canal</p>
+            <p class="text-slate-300 text-sm">
+                Plateforme d'envoi multi-canal
+            </p>
         </div>
         
         <!-- Formulaire de connexion -->
-        <div class="login-card bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8">
-            <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">Bienvenue</h2>
-            <p class="text-gray-500 text-center text-sm mb-6">Connectez-vous à votre compte</p>
+        <div class="login-card bg-white rounded-3xl border border-slate-200 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.45)] p-8">
+            <h2 class="text-2xl font-bold text-slate-800 mb-2 text-center">Bienvenue</h2>
+            <p class="text-slate-500 text-center text-sm mb-6">Connectez-vous à votre compte</p>
             
             <!-- Message d'erreur -->
             <?php if ($error): ?>
@@ -177,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </label>
                     <input type="text" name="user" required 
                            value="<?= htmlspecialchars($_POST['user'] ?? '') ?>"
-                           class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 input-focus transition bg-gray-50"
+                           class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-blue-600 input-focus transition"
                            placeholder="Entrez votre nom d'utilisateur">
                 </div>
                 
@@ -187,8 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         Mot de passe
                     </label>
                     <input type="password" name="password" required 
-                           class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 input-focus transition bg-gray-50"
-                           placeholder="Entrez votre mot de passe">
+                           class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-blue-600 input-focus transition"  placeholder="Votre mot de passe">
                 </div>
                 
                 <button type="submit" 
@@ -201,7 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         
         <!-- Footer -->
-        <div class="text-center mt-8 text-white/60 text-xs">
+        <div class="text-center mt-8 text-slate-400 text-xs">
             &copy; <?= date('Y') ?> <?= APP_NAME ?> - Tous droits réservés
         </div>
     </div>
