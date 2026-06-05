@@ -46,79 +46,124 @@ foreach ($tousContacts as $contact) {
     }
 }
 
-// AJOUT MULTIPLE : ajouter plusieurs contacts à la liste
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_contacts'])) {
-    $selectedContacts = $_POST['selected_contacts'] ?? [];
+// AJOUT MULTIPLE (AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_contacts']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
     
-    if (!empty($selectedContacts)) {
-        $addedCount = 0;
-        
-        foreach ($selectedContacts as $id_contact) {
-            if (!in_array($id_contact, $idsDansListe)) {
-                try {
-                    $data = [
-                        'id_liste' => $id_liste,
-                        'id_contact' => $id_contact
-                    ];
-                    $db->insert('liste_contact', $data);
-                    $addedCount++;
-                } catch (Exception $e) {
-                    // Erreur silencieuse
-                }
+    $selectedContacts = $_POST['selected_contacts'] ?? [];
+    $addedCount = 0;
+    
+    foreach ($selectedContacts as $id_contact) {
+        if (!in_array($id_contact, $idsDansListe)) {
+            try {
+                $db->insert('liste_contact', [
+                    'id_liste' => $id_liste,
+                    'id_contact' => $id_contact
+                ]);
+                $addedCount++;
+            } catch (Exception $e) {
+                // Erreur silencieuse
             }
         }
-        
-        if ($addedCount > 0) {
-            $_SESSION['flash_message'] = "$addedCount contact(s) ajouté(s) à la liste";
-        } else {
-            $_SESSION['flash_error'] = "Aucun contact ajouté";
-        }
-        
-        ob_clean();
-        header("Location: index.php?page=listes/details&id=$id_liste");
-        exit;
-    } else {
-        $error = "Veuillez sélectionner au moins un contact";
     }
+    
+    if ($addedCount > 0) {
+        echo json_encode(['success' => true, 'message' => "$addedCount contact(s) ajouté(s) à la liste"]);
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Aucun contact ajouté']);
+    }
+    exit;
 }
 
-// RETIRER MULTIPLE : retirer plusieurs contacts de la liste
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retirer_contacts'])) {
-    $selectedRetireContacts = $_POST['selected_retire_contacts'] ?? [];
+// RETIRER MULTIPLE (AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retirer_contacts']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
     
-    if (!empty($selectedRetireContacts)) {
-        $removedCount = 0;
-        
-        foreach ($selectedRetireContacts as $id_contact) {
-            if (in_array($id_contact, $idsDansListe)) {
-                try {
-                    $db->deleteWithConditions('liste_contact', [
-                        'id_liste' => $id_liste,
-                        'id_contact' => $id_contact
-                    ]);
-                    $removedCount++;
-                } catch (Exception $e) {
-                    // Erreur silencieuse
-                }
+    $selectedRetireContacts = $_POST['selected_retire_contacts'] ?? [];
+    $removedCount = 0;
+    
+    foreach ($selectedRetireContacts as $id_contact) {
+        if (in_array($id_contact, $idsDansListe)) {
+            try {
+                $db->deleteWithConditions('liste_contact', [
+                    'id_liste' => $id_liste,
+                    'id_contact' => $id_contact
+                ]);
+                $removedCount++;
+            } catch (Exception $e) {
+                // Erreur silencieuse
             }
         }
-        
-        if ($removedCount > 0) {
-            $_SESSION['flash_message'] = "$removedCount contact(s) retiré(s) de la liste";
-        } else {
-            $_SESSION['flash_error'] = "Aucun contact retiré";
-        }
-        
-        ob_clean();
-        header("Location: index.php?page=listes/details&id=$id_liste");
-        exit;
-    } else {
-        $error = "Veuillez sélectionner au moins un contact à retirer";
     }
+    
+    if ($removedCount > 0) {
+        echo json_encode(['success' => true, 'message' => "$removedCount contact(s) retiré(s) de la liste"]);
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Aucun contact retiré']);
+    }
+    exit;
+}
+
+// RETIRER UN SEUL CONTACT (via GET)
+if (isset($_GET['retirer'])) {
+    $id_contact = $_GET['retirer'];
+    try {
+        $db->deleteWithConditions('liste_contact', [
+            'id_liste' => $id_liste,
+            'id_contact' => $id_contact
+        ]);
+        $_SESSION['flash_message'] = "Contact retiré de la liste";
+    } catch (Exception $e) {
+        $_SESSION['flash_error'] = "Erreur lors du retrait";
+    }
+    ob_clean();
+    header("Location: index.php?page=listes/details&id=$id_liste");
+    exit;
 }
 
 ob_end_clean();
+
+// Messages flash
+$flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
+$flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
+unset($_SESSION['flash_message']);
+unset($_SESSION['flash_error']);
 ?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liste : <?= htmlspecialchars($liste['nom_liste']) ?> - <?= APP_NAME ?></title>
+    <style>
+        .toast-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            animation: slideInRight 0.3s ease-out;
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-notification .toast-content {
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .toast-notification.success .toast-content { background: #10b981; }
+        .toast-notification.error .toast-content { background: #ef4444; }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
+        
+        .retire-checkbox { display: none; }
+    </style>
+</head>
+<body>
+
 <div class="space-y-6">
     <div class="flex justify-between items-center">
         <div class="flex items-center">
@@ -132,17 +177,11 @@ ob_end_clean();
         </div>
     </div>
 
-    <?php if (isset($_SESSION['flash_message'])): ?>
-        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded">
-            <?= $_SESSION['flash_message'] ?>
-            <?php unset($_SESSION['flash_message']); ?>
-        </div>
+    <?php if ($flashMessage): ?>
+        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= $flashMessage ?></div>
     <?php endif; ?>
-
-    <?php if (isset($error)): ?>
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded">
-            <?= $error ?>
-        </div>
+    <?php if ($flashError): ?>
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= $flashError ?></div>
     <?php endif; ?>
 
     <!-- AJOUT AVEC DROPDOWN À CHECKBOXES -->
@@ -158,11 +197,10 @@ ob_end_clean();
                 </a>
             </div>
         <?php else: ?>
-            <form method="POST" id="addContactsForm">
+            <form id="addContactsForm">
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Sélectionner les contacts à ajouter :</label>
                     
-                    <!-- DROPDOWN PERSONNALISÉ -->
                     <div class="relative" id="dropdownContainer">
                         <button type="button" id="dropdownButton" 
                                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-left bg-white flex justify-between items-center focus:outline-none focus:border-blue-500">
@@ -185,7 +223,7 @@ ob_end_clean();
                             <?php foreach ($contactsDisponibles as $contact): ?>
                                 <label class="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100">
                                     <input type="checkbox" name="selected_contacts[]" value="<?= $contact['id_contact'] ?>" 
-                                           class="contact-checkbox w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                           class="contact-checkbox w-4 h-4 text-blue-600 rounded"
                                            onchange="updateSelectedCount()">
                                     <div class="ml-3">
                                         <span class="text-sm font-medium text-gray-800">
@@ -203,7 +241,7 @@ ob_end_clean();
                     </div>
                 </div>
                 <div class="flex justify-end">
-                    <button type="submit" name="ajouter_contacts" 
+                    <button type="submit" id="addContactsBtn" 
                             class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
                         <i class="fas fa-plus-circle mr-2"></i>Ajouter les contacts sélectionnés
                     </button>
@@ -212,7 +250,7 @@ ob_end_clean();
         <?php endif; ?>
     </div>
 
-    <!-- Liste des contacts de la liste AVEC CHECKBOXES POUR RETIRER -->
+    <!-- Liste des contacts de la liste -->
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
             <h2 class="text-lg font-bold">Contacts dans cette liste</h2>
@@ -224,7 +262,7 @@ ob_end_clean();
             <?php endif; ?>
         </div>
         
-        <form method="POST" id="removeContactsForm">
+        <form id="removeContactsForm">
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead class="bg-gray-50">
@@ -264,11 +302,10 @@ ob_end_clean();
                                     <td class="px-6 py-4"><?= htmlspecialchars($contact['telephone'] ?? '-') ?></td>
                                     <td class="px-6 py-4"><?= htmlspecialchars($contact['ville'] ?? '-') ?></td>
                                     <td class="px-6 py-4">
-                                        <a href="?page=listes/details&id=<?= $id_liste ?>&retirer=<?= $contact['id_contact'] ?>" 
-                                           class="text-red-600 hover:text-red-800"
-                                           onclick="return confirm('Retirer ce contact de la liste ?')">
+                                        <button type="button" onclick="retirerUnContact('<?= $contact['id_contact'] ?>')" 
+                                                class="text-red-600 hover:text-red-800">
                                             <i class="fas fa-times"></i> Retirer
-                                        </a>
+                                        </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -279,9 +316,8 @@ ob_end_clean();
             
             <?php if (!empty($contacts)): ?>
                 <div class="p-4 border-t bg-gray-50 flex justify-end">
-                    <button type="submit" name="retirer_contacts" 
-                            class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
-                            onclick="return confirm('Retirer les contacts sélectionnés de la liste ?')">
+                    <button type="submit" id="retirerContactsBtn" 
+                            class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition">
                         <i class="fas fa-trash-alt mr-2"></i>Retirer les contacts sélectionnés
                     </button>
                 </div>
@@ -291,7 +327,23 @@ ob_end_clean();
 </div>
 
 <script>
-// ========== GESTION DU DROPDOWN POUR L'AJOUT ==========
+// ============================================
+// TOAST NOTIFICATION (sans icônes)
+// ============================================
+function showToast(message, type = 'success') {
+    const existingToasts = document.querySelectorAll('.toast-notification');
+    existingToasts.forEach(toast => toast.remove());
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    const colors = { success: '#10b981', error: '#ef4444', warning: '#f59e0b' };
+    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+// ============================================
+// DROPDOWN POUR L'AJOUT
+// ============================================
 const dropdownButton = document.getElementById('dropdownButton');
 const dropdownMenu = document.getElementById('dropdownMenu');
 
@@ -301,43 +353,151 @@ if (dropdownButton) {
     });
 }
 
-// Fermer le dropdown si on clique ailleurs
 document.addEventListener('click', function(event) {
     if (dropdownButton && dropdownMenu && !dropdownButton.contains(event.target) && !dropdownMenu.contains(event.target)) {
         dropdownMenu.classList.add('hidden');
     }
 });
 
-// Mettre à jour le texte du bouton
 function updateSelectedCount() {
     const checkboxes = document.querySelectorAll('.contact-checkbox:checked');
     const count = checkboxes.length;
     const selectedCountSpan = document.getElementById('selectedCount');
-    
     if (selectedCountSpan) {
-        if (count === 0) {
-            selectedCountSpan.textContent = 'Aucun contact sélectionné';
-        } else if (count === 1) {
-            selectedCountSpan.textContent = '1 contact sélectionné';
-        } else {
-            selectedCountSpan.textContent = count + ' contacts sélectionnés';
-        }
+        if (count === 0) selectedCountSpan.textContent = 'Aucun contact sélectionné';
+        else if (count === 1) selectedCountSpan.textContent = '1 contact sélectionné';
+        else selectedCountSpan.textContent = count + ' contacts sélectionnés';
     }
 }
 
 function selectAll() {
-    const checkboxes = document.querySelectorAll('.contact-checkbox');
-    checkboxes.forEach(cb => cb.checked = true);
+    document.querySelectorAll('.contact-checkbox').forEach(cb => cb.checked = true);
     updateSelectedCount();
 }
 
 function selectNone() {
-    const checkboxes = document.querySelectorAll('.contact-checkbox');
-    checkboxes.forEach(cb => cb.checked = false);
+    document.querySelectorAll('.contact-checkbox').forEach(cb => cb.checked = false);
     updateSelectedCount();
 }
 
-// ========== GESTION DES CHECKBOXES POUR LE RETRAIT ==========
+// ============================================
+// AJOUT DE CONTACTS (AJAX)
+// ============================================
+document.getElementById('addContactsForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const selectedContacts = Array.from(document.querySelectorAll('.contact-checkbox:checked')).map(cb => cb.value);
+    
+    if (selectedContacts.length === 0) {
+        showToast('Veuillez sélectionner au moins un contact', 'warning');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('ajouter_contacts', '1');
+    selectedContacts.forEach(id => formData.append('selected_contacts[]', id));
+    
+    const submitBtn = document.getElementById('addContactsBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Ajout en cours...';
+    submitBtn.disabled = true;
+    
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+// ============================================
+// RETRAIT DE CONTACTS (AJAX)
+// ============================================
+document.getElementById('removeContactsForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const selectedRetire = Array.from(document.querySelectorAll('.retire-checkbox:checked')).map(cb => cb.value);
+    
+    if (selectedRetire.length === 0) {
+        showToast('Veuillez sélectionner au moins un contact à retirer', 'warning');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('retirer_contacts', '1');
+    selectedRetire.forEach(id => formData.append('selected_retire_contacts[]', id));
+    
+    const submitBtn = document.getElementById('retirerContactsBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Retrait en cours...';
+    submitBtn.disabled = true;
+    
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+// ============================================
+// RETRAIT D'UN SEUL CONTACT
+// ============================================
+function retirerUnContact(contactId) {
+    const formData = new FormData();
+    formData.append('retirer_contacts', '1');
+    formData.append('selected_retire_contacts[]', contactId);
+    
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(result => {
+        if (result.success) {
+            showToast(result.message, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+        }
+    })
+    .catch(() => showToast('Erreur réseau', 'error'));
+}
+
+// ============================================
+// GESTION DES CHECKBOXES POUR LE RETRAIT
+// ============================================
 const toggleSelectRetire = document.getElementById('toggleSelectRetire');
 const selectAllRetire = document.getElementById('selectAllRetire');
 const retireCheckboxes = document.querySelectorAll('.retire-checkbox');
@@ -356,7 +516,6 @@ if (toggleSelectRetire) {
     });
 }
 
-// Cacher les checkboxes par défaut
 retireCheckboxes.forEach(cb => cb.style.display = 'none');
 
 if (selectAllRetire) {
@@ -369,15 +528,11 @@ if (selectAllRetire) {
     });
 }
 
-// Initialiser
+// Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     updateSelectedCount();
 });
 </script>
 
-<style>
-/* Style pour les checkboxes de retrait */
-.retire-checkbox {
-    display: none;
-}
-</style>
+</body>
+</html>

@@ -73,18 +73,19 @@ class Database {
     }
     
     public function select($table, $conditions = [], $select = '*') {
-        $query = "select=" . $select;
-        
-        foreach ($conditions as $col => $value) {
-            if ($col === 'user') {
-                $col = '"user"';
-            }
+    $query = "select=" . $select;
+    
+    foreach ($conditions as $col => $value) {
+        if ($col === 'user') {
+            $query .= '&"user"=eq.' . urlencode($value);
+        } else {
             $query .= "&" . $col . "=eq." . urlencode($value);
         }
-        
-        $endpoint = $table . '?' . $query;
-        return $this->request('GET', $endpoint);
     }
+    
+    $endpoint = $table . '?' . $query;
+    return $this->request('GET', $endpoint);
+}
     
     public function insert($table, $data) {
         return $this->request('POST', $table, $data);

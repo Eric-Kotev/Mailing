@@ -17,7 +17,203 @@ foreach ($blacklistItems as $bl) {
 
 $totalContacts = count($contacts);
 
-// Vérifier s'il y a des messages flash en session (après redirection)
+// ============================================
+// TRAITEMENT DE L'AJOUT DE CONTACT (AJAX)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
+    
+    $prenom = trim($_POST['prenom'] ?? '');
+    $nom = trim($_POST['nom'] ?? '');
+    
+    if (empty($prenom) || empty($nom)) {
+        echo json_encode(['success' => false, 'error' => 'Le prénom et le nom sont requis']);
+        exit;
+    }
+    
+    $data = [
+        'id_compte' => $idCompte,
+        'prenom' => $prenom,
+        'nom' => $nom,
+        'email' => !empty($_POST['email']) ? $_POST['email'] : null,
+        'telephone' => !empty($_POST['telephone']) ? $_POST['telephone'] : null,
+        'date_naissance' => !empty($_POST['date_naissance']) ? $_POST['date_naissance'] : null,
+        'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
+        'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
+        'ville' => !empty($_POST['ville']) ? $_POST['ville'] : null,
+        'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France',
+        'champs1' => !empty($_POST['champs1']) ? $_POST['champs1'] : null,
+        'champs2' => !empty($_POST['champs2']) ? $_POST['champs2'] : null,
+        'champs3' => !empty($_POST['champs3']) ? $_POST['champs3'] : null,
+        'champs4' => !empty($_POST['champs4']) ? $_POST['champs4'] : null,
+        'champs5' => !empty($_POST['champs5']) ? $_POST['champs5'] : null
+    ];
+    
+    try {
+        $db->insert('contact', $data);
+        echo json_encode(['success' => true, 'message' => 'Contact ajouté avec succès']);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================
+// TRAITEMENT DE LA MODIFICATION (AJAX)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_contact']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
+    
+    $id = $_POST['id_contact'] ?? null;
+    
+    if (!$id) {
+        echo json_encode(['success' => false, 'error' => 'ID contact manquant']);
+        exit;
+    }
+    
+    $data = [
+        'prenom' => trim($_POST['prenom'] ?? ''),
+        'nom' => trim($_POST['nom'] ?? ''),
+        'email' => !empty($_POST['email']) ? $_POST['email'] : null,
+        'telephone' => !empty($_POST['telephone']) ? $_POST['telephone'] : null,
+        'date_naissance' => !empty($_POST['date_naissance']) ? $_POST['date_naissance'] : null,
+        'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
+        'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
+        'ville' => !empty($_POST['ville']) ? $_POST['ville'] : null,
+        'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France',
+        'champs1' => !empty($_POST['champs1']) ? $_POST['champs1'] : null,
+        'champs2' => !empty($_POST['champs2']) ? $_POST['champs2'] : null,
+        'champs3' => !empty($_POST['champs3']) ? $_POST['champs3'] : null,
+        'champs4' => !empty($_POST['champs4']) ? $_POST['champs4'] : null,
+        'champs5' => !empty($_POST['champs5']) ? $_POST['champs5'] : null
+    ];
+    
+    try {
+        $db->update('contact', $data, ['id_contact' => $id]);
+        echo json_encode(['success' => true, 'message' => 'Contact modifié avec succès']);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================
+// TRAITEMENT DE L'IMPORT CSV (AJAX)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
+    
+    $file = $_FILES['fichier'];
+    
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        echo json_encode(['success' => false, 'error' => 'Erreur lors de l\'upload du fichier']);
+        exit;
+    }
+    
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($extension, ['csv', 'xls', 'xlsx'])) {
+        echo json_encode(['success' => false, 'error' => 'Format non supporté. Utilisez CSV, XLS ou XLSX']);
+        exit;
+    }
+    
+    $handle = fopen($file['tmp_name'], 'r');
+    if ($handle === false) {
+        echo json_encode(['success' => false, 'error' => 'Impossible d\'ouvrir le fichier']);
+        exit;
+    }
+    
+    $firstLine = fgets($handle);
+    rewind($handle);
+    $separator = (strpos($firstLine, ';') !== false) ? ';' : ',';
+    
+    $headers = fgetcsv($handle, 0, $separator);
+    if (!$headers) {
+        echo json_encode(['success' => false, 'error' => 'Format CSV invalide']);
+        exit;
+    }
+    
+    $headers = array_map('trim', $headers);
+    $headers = array_map('strtolower', $headers);
+    
+    $mapping = [
+        'prenom' => array_search('prenom', $headers),
+        'nom' => array_search('nom', $headers),
+        'email' => array_search('email', $headers),
+        'telephone' => array_search('telephone', $headers),
+        'ville' => array_search('ville', $headers),
+        'adresse' => array_search('adresse', $headers),
+        'code_postal' => array_search('code_postal', $headers),
+        'pays' => array_search('pays', $headers),
+        'date_naissance' => array_search('date_naissance', $headers)
+    ];
+    
+    $importedCount = 0;
+    $existingCount = 0;
+    
+    while (($row = fgetcsv($handle, 0, $separator)) !== false) {
+        $prenom = $mapping['prenom'] !== false ? trim($row[$mapping['prenom']] ?? '') : '';
+        $nom = $mapping['nom'] !== false ? trim($row[$mapping['nom']] ?? '') : '';
+        $email = $mapping['email'] !== false ? trim($row[$mapping['email']] ?? '') : null;
+        $telephone = $mapping['telephone'] !== false ? trim($row[$mapping['telephone']] ?? '') : null;
+        
+        if (empty($prenom) || empty($nom)) {
+            continue;
+        }
+        
+        $contactExists = false;
+        
+        if (!empty($email)) {
+            $existing = $db->select('contact', ['id_compte' => $idCompte, 'email' => $email]);
+            if (!empty($existing)) $contactExists = true;
+        }
+        
+        if (!$contactExists && !empty($telephone)) {
+            $existing = $db->select('contact', ['id_compte' => $idCompte, 'nom' => $nom, 'prenom' => $prenom, 'telephone' => $telephone]);
+            if (!empty($existing)) $contactExists = true;
+        }
+        
+        if ($contactExists) {
+            $existingCount++;
+            continue;
+        }
+        
+        $data = [
+            'id_compte' => $idCompte,
+            'prenom' => $prenom,
+            'nom' => $nom,
+            'email' => $email,
+            'telephone' => $telephone,
+            'ville' => $mapping['ville'] !== false ? trim($row[$mapping['ville']] ?? '') : null,
+            'adresse' => $mapping['adresse'] !== false ? trim($row[$mapping['adresse']] ?? '') : null,
+            'code_postal' => $mapping['code_postal'] !== false ? trim($row[$mapping['code_postal']] ?? '') : null,
+            'pays' => $mapping['pays'] !== false ? trim($row[$mapping['pays']] ?? 'France') : 'France',
+            'date_naissance' => $mapping['date_naissance'] !== false ? trim($row[$mapping['date_naissance']] ?? '') : null
+        ];
+        
+        try {
+            $db->insert('contact', $data);
+            $importedCount++;
+        } catch (Exception $e) {
+            // Silencieux
+        }
+    }
+    fclose($handle);
+    
+    if ($importedCount > 0) {
+        $message = "$importedCount contact(s) importé(s) avec succès.";
+        if ($existingCount > 0) $message .= " $existingCount contact(s) existant(s) ignoré(s).";
+        echo json_encode(['success' => true, 'message' => $message]);
+    } else {
+        if ($existingCount > 0) {
+            echo json_encode(['success' => false, 'error' => "Aucun nouveau contact importé. $existingCount contact(s) existant(s) ignoré(s)."]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Aucun contact importé. Vérifiez le format de votre fichier.']);
+        }
+    }
+    exit;
+}
+
+// Messages flash
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
 unset($_SESSION['flash_message']);
@@ -30,7 +226,6 @@ unset($_SESSION['flash_error']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mes contacts - <?= APP_NAME ?></title>
     <style>
-        /* Toast notification */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -39,85 +234,68 @@ unset($_SESSION['flash_error']);
             animation: slideInRight 0.3s ease-out;
         }
         @keyframes slideInRight {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
         .toast-notification .toast-content {
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            display: flex;
-            align-items: center;
-            gap: 10px;
             font-size: 14px;
             font-weight: 500;
         }
+        .toast-notification.success .toast-content { background: #10b981; }
+        .toast-notification.error .toast-content { background: #ef4444; }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
+        .toast-notification.info .toast-content { background: #3b82f6; }
+        
         .modal-show {
             opacity: 1 !important;
             transform: scale(1) !important;
         }
-        .modal-content-unblacklist {
+        .contact-row.hidden-row { display: none; }
+        .modal-add-contact, .modal-import-csv, .modal-edit-contact {
             transition: all 0.3s ease;
             transform: scale(0.95);
             opacity: 0;
         }
-        .modal-content-unblacklist.modal-show {
+        .modal-add-contact.modal-show, .modal-import-csv.modal-show, .modal-edit-contact.modal-show {
             opacity: 1 !important;
             transform: scale(1) !important;
-        }
-        .contact-row.hidden-row {
-            display: none;
         }
     </style>
 </head>
 <body>
 
 <div class="space-y-6">
-    <!-- En-tête -->
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-2xl font-bold text-gray-800">Mes contacts</h1>
             <p class="text-gray-500">Gérez votre base de contacts</p>
         </div>
         <div class="space-x-2">
-            <a href="index.php?page=contacts/ajouter" 
-               class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+            <button type="button" onclick="openAddContactModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
                 <i class="fas fa-plus mr-2"></i>Ajouter un contact
-            </a>
-            <a href="index.php?page=contacts/import" 
-               class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
+            </button>
+            <button type="button" onclick="openImportModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
                 <i class="fas fa-upload mr-2"></i>Importer CSV
-            </a>
+            </button>
         </div>
     </div>
 
-    <!-- Statistiques + Recherche -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white rounded-lg shadow p-4">
             <div class="flex justify-between items-center">
-                <div>
-                    <span class="text-gray-500">Total des contacts</span>
-                    <span class="text-2xl font-bold text-gray-800 ml-2" id="totalCount"><?= $totalContacts ?></span>
-                </div>
-                <div class="text-gray-400">
-                    <i class="fas fa-users text-2xl"></i>
-                </div>
+                <div><span class="text-gray-500">Total des contacts</span><span class="text-2xl font-bold text-gray-800 ml-2" id="totalCount"><?= $totalContacts ?></span></div>
+                <div class="text-gray-400"><i class="fas fa-users text-2xl"></i></div>
             </div>
         </div>
         
         <div class="bg-white rounded-lg shadow p-4 md:col-span-2">
             <div class="relative">
                 <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="searchInput" 
-                       placeholder="Rechercher par nom, email, téléphone ou ville..."
-                       class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
+                <input type="text" id="searchInput" placeholder="Rechercher par nom, email, téléphone ou ville..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
             </div>
             <div class="flex justify-between items-center mt-2">
                 <div class="flex space-x-2 flex-wrap gap-2">
@@ -133,7 +311,6 @@ unset($_SESSION['flash_error']);
         </div>
     </div>
 
-    <!-- Liste des contacts -->
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full">
@@ -154,7 +331,7 @@ unset($_SESSION['flash_error']);
                             <td colspan="7" class="px-6 py-8 text-center text-gray-500">
                                 <i class="fas fa-address-book text-4xl mb-2 block"></i>
                                 Aucun contact pour le moment.
-                                <a href="index.php?page=contacts/ajouter" class="text-blue-600 block mt-2">Ajouter votre premier contact →</a>
+                                <button type="button" onclick="openAddContactModal()" class="text-blue-600 block mt-2">Ajouter votre premier contact →</button>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -172,34 +349,25 @@ unset($_SESSION['flash_error']);
                                 data-has-phone="<?= !empty($contact['telephone']) ? 'true' : 'false' ?>"
                                 data-blacklisted="<?= $isBlacklisted ? 'true' : 'false' ?>"
                                 data-contact-id="<?= $contact['id_contact'] ?>">
-                                <td class="px-6 py-4">
-                                    <div class="font-medium text-gray-800"><?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?></div>
-                                 </td>
+                                <td class="px-6 py-4"><div class="font-medium text-gray-800"><?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?></div></td>
                                 <td class="px-6 py-4"><?= htmlspecialchars($contact['email'] ?? '-') ?></td>
                                 <td class="px-6 py-4"><?= htmlspecialchars($contact['telephone'] ?? '-') ?></td>
                                 <td class="px-6 py-4"><?= htmlspecialchars($contact['ville'] ?? '-') ?></td>
                                 <td class="px-6 py-4"><?= date('d/m/Y', strtotime($contact['date_inscription'])) ?></td>
                                 <td class="px-6 py-4">
                                     <?php if ($isBlacklisted): ?>
-                                        <button onclick="openUnblacklistModal('<?= $contact['id_contact'] ?>', '<?= addslashes($contact['prenom'] . ' ' . $contact['nom']) ?>', '<?= addslashes($motif) ?>')" 
-                                                class="px-2 py-1 rounded text-xs bg-red-100 text-red-700 hover:bg-red-200 transition cursor-pointer flex items-center gap-1" title="Cliquer pour débloquer">
+                                        <button onclick="openUnblacklistModal('<?= $contact['id_contact'] ?>')" class="px-2 py-1 rounded text-xs bg-red-100 text-red-700 hover:bg-red-200 transition cursor-pointer flex items-center gap-1">
                                             <i class="fas fa-ban mr-1"></i> Blacklisté
-                                            <i class="fas fa-chevron-down text-xs"></i>
                                         </button>
                                     <?php else: ?>
-                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700">
-                                            <i class="fas fa-check-circle mr-1"></i> Normal
-                                        </span>
+                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"><i class="fas fa-check-circle mr-1"></i> Normal</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-6 py-4 space-x-2">
-                                    <a href="index.php?page=contacts/modifier&id=<?= $contact['id_contact'] ?>" 
-                                       class="text-blue-600 hover:text-blue-800 transition" title="Modifier">
+                                    <button type="button" onclick="openEditContactModal('<?= $contact['id_contact'] ?>')" class="text-blue-600 hover:text-blue-800 transition" title="Modifier">
                                         <i class="fas fa-edit"></i>
-                                    </a>
-                                    <button type="button" 
-                                            onclick="showDeleteModal('<?= $contact['id_contact'] ?>', '<?= addslashes($contact['prenom'] . ' ' . $contact['nom']) ?>')"
-                                            class="text-red-600 hover:text-red-800 transition" title="Supprimer">
+                                    </button>
+                                    <button type="button" onclick="showDeleteModal('<?= $contact['id_contact'] ?>')" class="text-red-600 hover:text-red-800 transition" title="Supprimer">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </td>
@@ -212,64 +380,130 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
-<!-- MODALE POUR DÉBLACKLISTER -->
-<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-content-unblacklist">
-        <div class="p-6 text-center">
-            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
-                <i class="fas fa-unlock-alt text-green-600 text-3xl"></i>
+<!-- ============================================ -->
+<!-- MODAL D'AJOUT DE CONTACT -->
+<!-- ============================================ -->
+<div id="addContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-add-contact">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center"><div class="bg-blue-100 p-2 rounded-full mr-3"><i class="fas fa-user-plus text-blue-600 text-xl"></i></div><h3 class="text-xl font-bold text-gray-800">Ajouter un contact</h3></div>
+                <button type="button" onclick="closeAddContactModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
             </div>
-            <h3 class="text-xl font-bold text-gray-800 mb-2">Débloquer le contact</h3>
-            <p class="text-gray-500 mb-2">
-                Êtes-vous sûr de vouloir retirer le contact <br>
-                <strong id="unblacklistContactName" class="text-gray-700"></strong> de la blacklist ?
-            </p>
-            <div class="bg-yellow-50 p-3 rounded-lg mb-6 text-left">
-                <p class="text-xs text-yellow-700">
-                    <i class="fas fa-info-circle mr-1"></i> Motif du blocage :
-                </p>
-                <p id="unblacklistMotif" class="text-sm text-gray-600 italic">-</p>
-            </div>
-            <form method="POST" action="?page=contacts/unblacklist" id="unblacklistForm">
-                <input type="hidden" name="id_contact" id="unblacklistContactId">
-                <div class="flex space-x-3">
-                    <button type="button" onclick="closeUnblacklistModal()" 
-                            class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">
-                        <i class="fas fa-check mr-2"></i>Débloquer
-                    </button>
+            <form id="addContactForm" method="POST">
+                <input type="hidden" name="action_add_contact" value="1">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="email" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label><input type="tel" name="telephone" id="telephone" placeholder="33612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label><input type="date" name="date_naissance" id="date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Pays</label><input type="text" name="pays" id="pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                </div>
+                <div class="mt-4"><label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label><textarea name="adresse" id="adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea></div>
+                <div class="mt-6 flex justify-end space-x-2">
+                    <button type="button" onclick="closeAddContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- MODALE DE CONFIRMATION SUPPRESSION -->
-<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all duration-300 scale-95 opacity-0" id="modalContent">
+<!-- ============================================ -->
+<!-- MODAL DE MODIFICATION DE CONTACT -->
+<!-- ============================================ -->
+<div id="editContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-edit-contact">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center"><div class="bg-yellow-100 p-2 rounded-full mr-3"><i class="fas fa-edit text-yellow-600 text-xl"></i></div><h3 class="text-xl font-bold text-gray-800">Modifier le contact</h3></div>
+                <button type="button" onclick="closeEditContactModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <form id="editContactForm" method="POST">
+                <input type="hidden" name="action_edit_contact" value="1">
+                <input type="hidden" name="id_contact" id="edit_id_contact">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="edit_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="edit_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="edit_email" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label><input type="tel" name="telephone" id="edit_telephone" placeholder="33612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label><input type="date" name="date_naissance" id="edit_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="edit_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="edit_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Pays</label><input type="text" name="pays" id="edit_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                </div>
+                <div class="mt-4"><label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label><textarea name="adresse" id="edit_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea></div>
+                <div class="mt-6 pt-4 border-t border-gray-200">
+                    <h3 class="text-md font-semibold text-gray-700 mb-3">Champs personnalisés</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 1</label><input type="text" name="champs1" id="edit_champs1" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 2</label><input type="text" name="champs2" id="edit_champs2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 3</label><input type="text" name="champs3" id="edit_champs3" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 4</label><input type="text" name="champs4" id="edit_champs4" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 5</label><input type="text" name="champs5" id="edit_champs5" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end space-x-2">
+                    <button type="button" onclick="closeEditContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL D'IMPORT CSV -->
+<div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-import-csv">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center"><div class="bg-green-100 p-2 rounded-full mr-3"><i class="fas fa-file-import text-green-600 text-xl"></i></div><h3 class="text-xl font-bold text-gray-800">Importer des contacts</h3></div>
+                <button type="button" onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="bg-blue-50 p-4 rounded mb-4">
+                <h4 class="font-medium text-blue-800 mb-2">Format du fichier</h4>
+                <ul class="text-sm text-blue-700 space-y-1">
+                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom</strong></li>
+                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : email, telephone, ville, adresse, code_postal, pays, date_naissance</li>
+                    <li><i class="fas fa-check-circle mr-2"></i> Séparateur : point-virgule (;) ou virgule (,)</li>
+                    <li><i class="fas fa-info-circle mr-2"></i> Les contacts déjà existants sont ignorés</li>
+                </ul>
+            </div>
+            <form id="importForm" method="POST" enctype="multipart/form-data">
+                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV/Excel</label><input type="file" name="fichier" id="importFile" accept=".csv,.xls,.xlsx" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500"><p class="text-xs text-gray-500 mt-1">Formats acceptés : CSV, XLS, XLSX (Taille max : 10MB)</p></div>
+                <div class="mt-6 flex justify-end space-x-2">
+                    <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                    <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Importer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODALE POUR DÉBLACKLISTER -->
+<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div class="p-6 text-center">
-            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>
-            </div>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4"><i class="fas fa-unlock-alt text-green-600 text-3xl"></i></div>
+            <h3 class="text-xl font-bold text-gray-800 mb-2">Débloquer le contact</h3>
+            <p class="text-gray-500 mb-6">Êtes-vous sûr de vouloir retirer ce contact de la blacklist ?</p>
+            <form method="POST" action="?page=contacts/unblacklist"><input type="hidden" name="id_contact" id="unblacklistContactId"><div class="flex space-x-3"><button type="button" onclick="closeUnblacklistModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button><button type="submit" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Débloquer</button></div></form>
+        </div>
+    </div>
+</div>
+
+<!-- MODALE DE CONFIRMATION SUPPRESSION -->
+<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6 text-center">
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i></div>
             <h3 class="text-xl font-bold text-gray-800 mb-2">Confirmer la suppression</h3>
-            <p class="text-gray-500 mb-6">
-                Êtes-vous sûr de vouloir supprimer le contact <br>
-                <span id="contactName" class="font-semibold text-gray-700"></span> ?
-            </p>
+            <p class="text-gray-500 mb-6">Êtes-vous sûr de vouloir supprimer ce contact ?</p>
             <p class="text-sm text-gray-400 mb-6">Cette action est irréversible.</p>
-            <div class="flex space-x-3">
-                <button type="button" onclick="closeModal()" 
-                        class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                    Annuler
-                </button>
-                <a href="#" id="confirmDeleteBtn" 
-                   class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">
-                    Supprimer
-                </a>
-            </div>
+            <div class="flex space-x-3"><button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button><a href="#" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">Supprimer</a></div>
         </div>
     </div>
 </div>
@@ -281,39 +515,207 @@ unset($_SESSION['flash_error']);
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
-    
     const toast = document.createElement('div');
-    toast.className = 'toast-notification';
-    
-    let icon = '✅';
-    let bgColor = '#10b981';
-    
-    const types = {
-        success: { icon: '✅', color: '#10b981' },
-        error: { icon: '❌', color: '#ef4444' },
-        info: { icon: 'ℹ️', color: '#3b82f6' },
-        warning: { icon: '⚠️', color: '#f59e0b' }
-    };
-    
-    if (types[type]) {
-        icon = types[type].icon;
-        bgColor = types[type].color;
-    }
-    
-    toast.innerHTML = `<div class="toast-content" style="background: ${bgColor};"><span>${icon}</span><span>${message}</span></div>`;
+    toast.className = `toast-notification ${type}`;
+    const colors = { success: '#10b981', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
+    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
     document.body.appendChild(toast);
-    
     setTimeout(() => toast.remove(), 3000);
 }
 
-// Afficher les messages flash sous forme de toasts
-<?php if ($flashMessage): ?>
-    showToast('<?= addslashes($flashMessage) ?>', 'success');
-<?php endif; ?>
+// Messages flash
+<?php if ($flashMessage): ?> showToast('<?= addslashes($flashMessage) ?>', 'success'); <?php endif; ?>
+<?php if ($flashError): ?> showToast('<?= addslashes($flashError) ?>', 'error'); <?php endif; ?>
 
-<?php if ($flashError): ?>
-    showToast('<?= addslashes($flashError) ?>', 'error');
-<?php endif; ?>
+// ============================================
+// MODAL D'AJOUT
+// ============================================
+function openAddContactModal() {
+    const modal = document.getElementById('addContactModal');
+    const modalContent = modal.querySelector('.modal-add-contact');
+    document.getElementById('addContactForm').reset();
+    modal.style.display = 'flex';
+    setTimeout(() => modalContent.classList.add('modal-show'), 10);
+}
+function closeAddContactModal() {
+    const modal = document.getElementById('addContactModal');
+    const modalContent = modal.querySelector('.modal-add-contact');
+    modalContent.classList.remove('modal-show');
+    setTimeout(() => modal.style.display = 'none', 200);
+}
+
+// ============================================
+// MODAL DE MODIFICATION
+// ============================================
+async function openEditContactModal(contactId) {
+    const modal = document.getElementById('editContactModal');
+    const modalContent = modal.querySelector('.modal-edit-contact');
+    
+    try {
+        const response = await fetch(`index.php?page=contacts/get_contact&id=${contactId}`);
+        const contact = await response.json();
+        
+        if (contact.error) {
+            showToast(contact.error, 'error');
+            return;
+        }
+        
+        document.getElementById('edit_id_contact').value = contact.id_contact;
+        document.getElementById('edit_prenom').value = contact.prenom || '';
+        document.getElementById('edit_nom').value = contact.nom || '';
+        document.getElementById('edit_email').value = contact.email || '';
+        document.getElementById('edit_telephone').value = contact.telephone || '';
+        document.getElementById('edit_date_naissance').value = contact.date_naissance || '';
+        document.getElementById('edit_ville').value = contact.ville || '';
+        document.getElementById('edit_code_postal').value = contact.code_postal || '';
+        document.getElementById('edit_pays').value = contact.pays || 'France';
+        document.getElementById('edit_adresse').value = contact.adresse || '';
+        document.getElementById('edit_champs1').value = contact.champs1 || '';
+        document.getElementById('edit_champs2').value = contact.champs2 || '';
+        document.getElementById('edit_champs3').value = contact.champs3 || '';
+        document.getElementById('edit_champs4').value = contact.champs4 || '';
+        document.getElementById('edit_champs5').value = contact.champs5 || '';
+        
+        modal.style.display = 'flex';
+        setTimeout(() => modalContent.classList.add('modal-show'), 10);
+    } catch (error) {
+        showToast('Erreur lors du chargement du contact', 'error');
+    }
+}
+
+function closeEditContactModal() {
+    const modal = document.getElementById('editContactModal');
+    const modalContent = modal.querySelector('.modal-edit-contact');
+    modalContent.classList.remove('modal-show');
+    setTimeout(() => modal.style.display = 'none', 200);
+}
+
+// ============================================
+// MODAL D'IMPORT
+// ============================================
+function openImportModal() {
+    const modal = document.getElementById('importModal');
+    const modalContent = modal.querySelector('.modal-import-csv');
+    document.getElementById('importForm').reset();
+    modal.style.display = 'flex';
+    setTimeout(() => modalContent.classList.add('modal-show'), 10);
+}
+function closeImportModal() {
+    const modal = document.getElementById('importModal');
+    const modalContent = modal.querySelector('.modal-import-csv');
+    modalContent.classList.remove('modal-show');
+    setTimeout(() => modal.style.display = 'none', 200);
+}
+
+// ============================================
+// MODALE BLACKLIST
+// ============================================
+function openUnblacklistModal(contactId) {
+    document.getElementById('unblacklistContactId').value = contactId;
+    document.getElementById('unblacklistModal').style.display = 'flex';
+}
+function closeUnblacklistModal() {
+    document.getElementById('unblacklistModal').style.display = 'none';
+}
+
+// ============================================
+// MODALE SUPPRESSION
+// ============================================
+function showDeleteModal(contactId) {
+    const modal = document.getElementById('deleteModal');
+    document.getElementById('confirmDeleteBtn').href = 'index.php?page=contacts/supprimer&id=' + contactId;
+    modal.style.display = 'flex';
+}
+function closeModal() {
+    document.getElementById('deleteModal').style.display = 'none';
+}
+
+// ============================================
+// SOUMISSION DES FORMULAIRES AJAX
+// ============================================
+
+// Ajout contact
+document.getElementById('addContactForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Envoi...';
+    submitBtn.disabled = true;
+    try {
+        const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeAddContactModal();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+// Modification contact
+document.getElementById('editContactForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Envoi...';
+    submitBtn.disabled = true;
+    try {
+        const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeEditContactModal();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+// Import CSV
+document.getElementById('importForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('importFile');
+    if (!fileInput.files.length) { showToast('Veuillez sélectionner un fichier', 'warning'); return; }
+    const formData = new FormData(this);
+    const submitBtn = document.getElementById('importSubmitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Import en cours...';
+    submitBtn.disabled = true;
+    try {
+        const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeImportModal();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
 
 // ============================================
 // FILTRES ET RECHERCHE
@@ -325,9 +727,8 @@ const filteredCountSpan = document.getElementById('filteredCount');
 let currentFilter = 'all';
 
 function filterContacts() {
-    const searchTerm = searchInput.value.toLowerCase().trim();
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
     let visibleCount = 0;
-    
     contactsRows.forEach(row => {
         const name = row.getAttribute('data-name') || '';
         const email = row.getAttribute('data-email') || '';
@@ -338,56 +739,35 @@ function filterContacts() {
         const isBlacklisted = row.getAttribute('data-blacklisted') === 'true';
         
         let filterMatch = true;
-        if (currentFilter === 'email') {
-            filterMatch = hasEmail;
-        } else if (currentFilter === 'phone') {
-            filterMatch = hasPhone;
-        } else if (currentFilter === 'blacklisted') {
-            filterMatch = isBlacklisted;
-        }
+        if (currentFilter === 'email') filterMatch = hasEmail;
+        else if (currentFilter === 'phone') filterMatch = hasPhone;
+        else if (currentFilter === 'blacklisted') filterMatch = isBlacklisted;
         
         let searchMatch = true;
         if (searchTerm !== '') {
-            searchMatch = name.includes(searchTerm) || 
-                          email.includes(searchTerm) || 
-                          phone.includes(searchTerm) || 
-                          city.includes(searchTerm);
+            searchMatch = name.includes(searchTerm) || email.includes(searchTerm) || phone.includes(searchTerm) || city.includes(searchTerm);
         }
         
-        if (filterMatch && searchMatch) {
-            row.classList.remove('hidden-row');
-            visibleCount++;
-        } else {
-            row.classList.add('hidden-row');
-        }
+        if (filterMatch && searchMatch) { row.classList.remove('hidden-row'); visibleCount++; }
+        else { row.classList.add('hidden-row'); }
     });
-    
-    if (filteredCountSpan) {
-        filteredCountSpan.textContent = `${visibleCount} contact(s) affiché(s)`;
-    }
+    if (filteredCountSpan) filteredCountSpan.textContent = `${visibleCount} contact(s) affiché(s)`;
     
     let noResultRow = document.getElementById('noResultRow');
     if (visibleCount === 0 && contactsRows.length > 0) {
         if (!noResultRow) {
             const tbody = document.getElementById('contactsTableBody');
-            noResultRow = document.createElement('tr');
-            noResultRow.id = 'noResultRow';
-            noResultRow.innerHTML = '<td colspan="7" class="px-6 py-8 text-center text-gray-500">' +
-                '<i class="fas fa-search text-4xl mb-2 block"></i>' +
-                'Aucun contact ne correspond à votre recherche.' +
-                '</td>';
-            tbody.appendChild(noResultRow);
+            if (tbody) {
+                noResultRow = document.createElement('tr');
+                noResultRow.id = 'noResultRow';
+                noResultRow.innerHTML = '<td colspan="7" class="px-6 py-8 text-center text-gray-500"><i class="fas fa-search text-4xl mb-2 block"></i>Aucun contact ne correspond à votre recherche.</td>';
+                tbody.appendChild(noResultRow);
+            }
         }
-        noResultRow.style.display = '';
-    } else if (noResultRow) {
-        noResultRow.style.display = 'none';
-    }
+        if (noResultRow) noResultRow.style.display = '';
+    } else if (noResultRow) { noResultRow.style.display = 'none'; }
 }
-
-if (searchInput) {
-    searchInput.addEventListener('input', filterContacts);
-}
-
+if (searchInput) searchInput.addEventListener('input', filterContacts);
 filterBtns.forEach(btn => {
     btn.addEventListener('click', function() {
         filterBtns.forEach(b => {
@@ -396,74 +776,24 @@ filterBtns.forEach(btn => {
         });
         this.classList.remove('bg-gray-200', 'text-gray-700');
         this.classList.add('bg-blue-600', 'text-white');
-        
         currentFilter = this.getAttribute('data-filter');
         filterContacts();
     });
 });
 
-// ============================================
-// MODALE POUR DÉBLACKLISTER
-// ============================================
-function openUnblacklistModal(contactId, contactName, motif) {
-    const modal = document.getElementById('unblacklistModal');
-    const modalContent = modal.querySelector('.modal-content-unblacklist');
-    document.getElementById('unblacklistContactId').value = contactId;
-    document.getElementById('unblacklistContactName').innerHTML = contactName;
-    document.getElementById('unblacklistMotif').innerHTML = motif || 'Aucun motif spécifié';
-    
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
-}
-
-function closeUnblacklistModal() {
-    const modal = document.getElementById('unblacklistModal');
-    const modalContent = modal.querySelector('.modal-content-unblacklist');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }, 200);
-}
-
-// ============================================
-// MODALE SUPPRESSION
-// ============================================
-function showDeleteModal(contactId, contactName) {
-    const modal = document.getElementById('deleteModal');
-    const modalContent = document.getElementById('modalContent');
-    document.getElementById('contactName').textContent = contactName;
-    document.getElementById('confirmDeleteBtn').href = 'index.php?page=contacts/supprimer&id=' + contactId;
-    
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
-}
-
-function closeModal() {
-    const modal = document.getElementById('deleteModal');
-    const modalContent = document.getElementById('modalContent');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }, 200);
-}
-
 // Fermeture des modales
-document.getElementById('deleteModal')?.addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-});
-
-document.getElementById('unblacklistModal')?.addEventListener('click', function(e) {
-    if (e.target === this) closeUnblacklistModal();
-});
-
+document.getElementById('addContactModal')?.addEventListener('click', function(e) { if (e.target === this) closeAddContactModal(); });
+document.getElementById('editContactModal')?.addEventListener('click', function(e) { if (e.target === this) closeEditContactModal(); });
+document.getElementById('importModal')?.addEventListener('click', function(e) { if (e.target === this) closeImportModal(); });
+document.getElementById('unblacklistModal')?.addEventListener('click', function(e) { if (e.target === this) closeUnblacklistModal(); });
+document.getElementById('deleteModal')?.addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-        closeModal();
+        closeAddContactModal();
+        closeEditContactModal();
+        closeImportModal();
         closeUnblacklistModal();
+        closeModal();
     }
 });
 </script>

@@ -9,45 +9,68 @@ global $db;
 $idCompte = $_SESSION['user_id'];
 
 // ============================================
-// TRAITEMENT DE L'IMPORT CSV
+// TRAITEMENT DE L'AJOUT DE LISTE (AJAX)
 // ============================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_liste']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
+    
+    $nom_liste = trim($_POST['nom_liste'] ?? '');
+    
+    if (empty($nom_liste)) {
+        echo json_encode(['success' => false, 'error' => 'Veuillez saisir un nom de liste']);
+        exit;
+    }
+    
+    try {
+        $data = [
+            'id_compte' => $idCompte,
+            'nom_liste' => $nom_liste
+        ];
+        $db->insert('liste', $data);
+        echo json_encode(['success' => true, 'message' => 'Liste créée avec succès']);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================
+// TRAITEMENT DE L'IMPORT CSV (AJAX)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
+    
     $id_liste = isset($_POST['id_liste']) ? $_POST['id_liste'] : null;
     $separator = isset($_POST['separator']) ? $_POST['separator'] : ';';
     
     if (!$id_liste) {
-        $_SESSION['flash_error'] = "Veuillez sélectionner une liste.";
-        header('Location: index.php?page=listes/index');
-        exit();
+        echo json_encode(['success' => false, 'error' => 'Veuillez sélectionner une liste']);
+        exit;
     }
     
     $listeExists = $db->select('liste', ['id_liste' => $id_liste, 'id_compte' => $idCompte]);
     if (empty($listeExists)) {
-        $_SESSION['flash_error'] = "Liste invalide.";
-        header('Location: index.php?page=listes/index');
-        exit();
+        echo json_encode(['success' => false, 'error' => 'Liste invalide']);
+        exit;
     }
     
     $file = $_FILES['csv_file'];
     
     if ($file['error'] !== UPLOAD_ERR_OK) {
-        $_SESSION['flash_error'] = "Erreur lors du téléchargement du fichier.";
-        header('Location: index.php?page=listes/index');
-        exit();
+        echo json_encode(['success' => false, 'error' => 'Erreur lors du téléchargement du fichier']);
+        exit;
     }
     
     $handle = fopen($file['tmp_name'], 'r');
     if ($handle === false) {
-        $_SESSION['flash_error'] = "Impossible d'ouvrir le fichier.";
-        header('Location: index.php?page=listes/index');
-        exit();
+        echo json_encode(['success' => false, 'error' => 'Impossible d\'ouvrir le fichier']);
+        exit;
     }
     
     $headers = fgetcsv($handle, 1000, $separator);
     if (!$headers) {
-        $_SESSION['flash_error'] = "Format CSV invalide.";
-        header('Location: index.php?page=listes/index');
-        exit();
+        echo json_encode(['success' => false, 'error' => 'Format CSV invalide']);
+        exit;
     }
     
     $headers = array_map('trim', $headers);
@@ -105,11 +128,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 if ($contactId) {
                     $createdCount++;
                 } else {
-                    $errors[] = "Ligne $rowNumber: impossible de créer le contact " . ($row['email'] ?: $row['nom']);
+                    $errors[] = "Ligne $rowNumber: impossible de créer le contact";
                     continue;
                 }
             } catch (Exception $e) {
-                $errors[] = "Ligne $rowNumber: erreur création - " . $e->getMessage();
+                $errors[] = "Ligne $rowNumber: erreur création";
                 continue;
             }
         }
@@ -132,10 +155,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         $existingCount++;
                     }
                 } catch (Exception $e) {
-                    $errors[] = "Ligne $rowNumber: erreur ajout liste - " . $e->getMessage();
+                    $errors[] = "Ligne $rowNumber: erreur ajout liste";
                 }
             } else {
-                $errors[] = "Ligne $rowNumber: contact déjà dans la liste (" . ($row['email'] ?: $row['nom']) . ")";
+                $errors[] = "Ligne $rowNumber: contact déjà dans la liste";
             }
         }
     }
@@ -143,28 +166,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     fclose($handle);
     
     if ($importCount > 0) {
-        $message = "$importCount contact(s) importé(s) dans la liste !";
+        $message = "$importCount contact(s) importé(s) dans la liste";
         if ($createdCount > 0) {
-            $message .= " ($createdCount nouveau(x) contact(s) créé(s))";
+            $message .= " ($createdCount nouveau(x) créé(s))";
         }
         if ($existingCount > 0) {
-            $message .= " ($existingCount contact(s) existant(s) ajouté(s))";
+            $message .= " ($existingCount existant(s) ajouté(s))";
         }
-        $_SESSION['flash_message'] = $message;
+        echo json_encode(['success' => true, 'message' => $message, 'imported' => $importCount]);
     } else {
-        $_SESSION['flash_error'] = "Aucun contact importé.";
-    }
-    
-    if (!empty($errors)) {
-        $errorMsg = count($errors) . " erreur(s): " . implode(', ', array_slice($errors, 0, 3));
-        if (count($errors) > 3) {
-            $errorMsg .= "...";
+        if ($createdCount == 0 && $existingCount == 0) {
+            echo json_encode(['success' => false, 'error' => 'Aucun contact importé. Vérifiez le format de votre fichier.']);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Erreur lors de l\'importation']);
         }
-        $_SESSION['flash_error'] = ($_SESSION['flash_error'] ? $_SESSION['flash_error'] . " / " : "") . $errorMsg;
     }
-    
-    header('Location: index.php?page=listes/index');
-    exit();
+    exit;
 }
 
 // ============================================
@@ -177,12 +194,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_rename'])) {
     if (!empty($id_liste) && !empty($nouveau_nom)) {
         try {
             $db->update('liste', ['nom_liste' => $nouveau_nom], ['id_liste' => $id_liste, 'id_compte' => $idCompte]);
-            $_SESSION['flash_message'] = "Liste renommée avec succès !";
+            $_SESSION['flash_message'] = "Liste renommée avec succès";
         } catch (Exception $e) {
-            $_SESSION['flash_error'] = "Erreur lors du renommage: " . $e->getMessage();
+            $_SESSION['flash_error'] = "Erreur lors du renommage";
         }
     } else {
-        $_SESSION['flash_error'] = "Le nom ne peut pas être vide.";
+        $_SESSION['flash_error'] = "Le nom ne peut pas être vide";
     }
     header('Location: index.php?page=listes/index');
     exit();
@@ -197,12 +214,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_clear'])) {
     if (!empty($id_liste)) {
         try {
             $db->deleteWithConditions('liste_contact', ['id_liste' => $id_liste]);
-            $_SESSION['flash_message'] = "La liste a été vidée avec succès !";
+            $_SESSION['flash_message'] = "La liste a été vidée avec succès";
         } catch (Exception $e) {
-            $_SESSION['flash_error'] = "Erreur lors du vidage: " . $e->getMessage();
+            $_SESSION['flash_error'] = "Erreur lors du vidage";
         }
     } else {
-        $_SESSION['flash_error'] = "ID de liste invalide.";
+        $_SESSION['flash_error'] = "ID de liste invalide";
     }
     header('Location: index.php?page=listes/index');
     exit();
@@ -218,12 +235,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete'])) {
         try {
             $db->deleteWithConditions('liste_contact', ['id_liste' => $id_liste]);
             $db->delete('liste', $id_liste, 'id_liste');
-            $_SESSION['flash_message'] = "La liste a été supprimée avec succès !";
+            $_SESSION['flash_message'] = "La liste a été supprimée avec succès";
         } catch (Exception $e) {
-            $_SESSION['flash_error'] = "Erreur lors de la suppression: " . $e->getMessage();
+            $_SESSION['flash_error'] = "Erreur lors de la suppression";
         }
     } else {
-        $_SESSION['flash_error'] = "ID de liste invalide.";
+        $_SESSION['flash_error'] = "ID de liste invalide";
     }
     header('Location: index.php?page=listes/index');
     exit();
@@ -240,8 +257,13 @@ foreach ($listes as $key => $listeItem) {
 }
 
 $totalListes = count($listes);
-?>
 
+// Messages flash
+$flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
+$flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
+unset($_SESSION['flash_message']);
+unset($_SESSION['flash_error']);
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -249,7 +271,6 @@ $totalListes = count($listes);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mes listes - <?= APP_NAME ?></title>
     <style>
-        /* Toast notification */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -257,96 +278,81 @@ $totalListes = count($listes);
             z-index: 9999;
             animation: slideInRight 0.3s ease-out;
         }
-
         @keyframes slideInRight {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
-
         .toast-notification .toast-content {
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            display: flex;
-            align-items: center;
-            gap: 10px;
             font-size: 14px;
             font-weight: 500;
+        }
+        .toast-notification.success .toast-content { background: #10b981; }
+        .toast-notification.error .toast-content { background: #ef4444; }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
+        .toast-notification.info .toast-content { background: #3b82f6; }
+        
+        .modal-show {
+            opacity: 1 !important;
+            transform: scale(1) !important;
+        }
+        .liste-row.hidden-row { display: none; }
+        .modal-add-liste {
+            transition: all 0.3s ease;
+            transform: scale(0.95);
+            opacity: 0;
+        }
+        .modal-add-liste.modal-show {
+            opacity: 1 !important;
+            transform: scale(1) !important;
         }
     </style>
 </head>
 <body>
 
 <div class="space-y-6">
-    <!-- En-tête -->
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-2xl font-bold text-gray-800">Mes listes</h1>
             <p class="text-gray-500">Organisez vos contacts par groupes</p>
         </div>
-        <a href="index.php?page=listes/ajouter" 
-           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+        <button type="button" onclick="openAddListeModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
             <i class="fas fa-plus mr-2"></i>Nouvelle liste
-        </a>
+        </button>
     </div>
 
-    <!-- Messages flash -->
-    <?php if (isset($_SESSION['flash_message'])): ?>
-        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded">
-            <i class="fas fa-check-circle mr-2"></i> <?= $_SESSION['flash_message'] ?>
-        </div>
-        <?php unset($_SESSION['flash_message']); ?>
+    <?php if ($flashMessage): ?>
+        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= $flashMessage ?></div>
+    <?php endif; ?>
+    <?php if ($flashError): ?>
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= $flashError ?></div>
     <?php endif; ?>
 
-    <?php if (isset($_SESSION['flash_error'])): ?>
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded">
-            <i class="fas fa-exclamation-circle mr-2"></i> <?= $_SESSION['flash_error'] ?>
-        </div>
-        <?php unset($_SESSION['flash_error']); ?>
-    <?php endif; ?>
-
-    <!-- Statistiques + Recherche -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white rounded-lg shadow p-4">
             <div class="flex justify-between items-center">
-                <div>
-                    <span class="text-gray-500">Total des listes</span>
-                    <span class="text-2xl font-bold text-gray-800 ml-2" id="totalListesCount"><?= $totalListes ?></span>
-                </div>
-                <div class="text-gray-400">
-                    <i class="fas fa-list text-2xl"></i>
-                </div>
+                <div><span class="text-gray-500">Total des listes</span><span class="text-2xl font-bold text-gray-800 ml-2" id="totalListesCount"><?= $totalListes ?></span></div>
+                <div class="text-gray-400"><i class="fas fa-list text-2xl"></i></div>
             </div>
         </div>
         
         <div class="bg-white rounded-lg shadow p-4 md:col-span-2">
             <div class="relative">
                 <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="searchInput" 
-                       placeholder="Rechercher par nom de liste..."
-                       class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
+                <input type="text" id="searchInput" placeholder="Rechercher par nom de liste..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
             </div>
-            <div class="mt-2 text-right">
-                <span id="filteredCount" class="text-xs text-gray-500"></span>
-            </div>
+            <div class="mt-2 text-right"><span id="filteredCount" class="text-xs text-gray-500"></span></div>
         </div>
     </div>
 
-    <!-- Liste compacte des listes -->
     <?php if (empty($listes)): ?>
         <div class="bg-white rounded-lg shadow p-12 text-center">
             <i class="fas fa-list text-5xl text-gray-300 mb-4"></i>
             <p class="text-gray-500">Aucune liste pour le moment.</p>
-            <a href="index.php?page=listes/ajouter" class="text-blue-600 mt-2 inline-block">
-                Créer votre première liste →
-            </a>
+            <button onclick="openAddListeModal()" class="text-blue-600 mt-2 inline-block">Créer votre première liste →</button>
         </div>
     <?php else: ?>
         <div class="bg-white rounded-lg shadow overflow-hidden">
@@ -354,96 +360,28 @@ $totalListes = count($listes);
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom de la liste</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacts</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date de création</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom de la liste</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacts</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="listesTableBody" class="bg-white divide-y divide-gray-200">
+                    <tbody id="listesTableBody">
                         <?php foreach ($listes as $liste): ?>
-                            <tr class="liste-row hover:bg-gray-50 transition" 
-                                data-name="<?= strtolower(htmlspecialchars($liste['nom_liste'])) ?>"
-                                data-id="<?= $liste['id_liste'] ?>">
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="flex items-center">
-                                        <div class="flex-shrink-0 h-10 w-10">
-                                            <div class="bg-blue-100 rounded-full p-2">
-                                                <i class="fas fa-list text-blue-600 text-sm"></i>
-                                            </div>
-                                        </div>
-                                        <div class="ml-4">
-                                            <div class="text-sm font-medium text-gray-900 liste-name">
-                                                <?= htmlspecialchars($liste['nom_liste']) ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="text-sm text-gray-900">
-                                        <i class="fas fa-users mr-1 text-gray-400"></i> 
-                                        <span class="contacts-count"><?= $liste['nb_contacts'] ?></span> contact(s)
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="text-sm text-gray-500">
-                                        <?= date('d/m/Y', strtotime($liste['date_creation'])) ?>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <div class="flex justify-end space-x-2">
-                                        <button type="button" 
-                                                onclick="openRenameModal(this)" 
-                                                data-id="<?= $liste['id_liste'] ?>"
-                                                data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>"
-                                                class="text-yellow-600 hover:text-yellow-900 p-1 rounded hover:bg-yellow-50 transition"
-                                                title="Renommer la liste">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                        
-                                        <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" 
-                                           class="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50 transition"
-                                           title="Ajouter un contact">
-                                            <i class="fas fa-user-plus"></i>
-                                        </a>
-
-                                        <button type="button" 
-                                                onclick="openImportModal(this)" 
-                                                data-id="<?= $liste['id_liste'] ?>"
-                                                data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>"
-                                                class="text-purple-600 hover:text-purple-900 p-1 rounded hover:bg-purple-50 transition"
-                                                title="Importer des contacts">
-                                            <i class="fas fa-file-import"></i>
-                                        </button>
-                                        
-                                        <button type="button" 
-                                                onclick="openClearModal(this)" 
-                                                data-id="<?= $liste['id_liste'] ?>"
-                                                data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>"
-                                                data-count="<?= $liste['nb_contacts'] ?>"
-                                                class="text-orange-600 hover:text-orange-900 p-1 rounded hover:bg-orange-50 transition"
-                                                title="Vider la liste">
-                                            <i class="fas fa-trash-alt"></i>
-                                        </button>
-                                        
-                                        <button type="button" 
-                                                onclick="openDeleteModal(this)" 
-                                                data-id="<?= $liste['id_liste'] ?>"
-                                                data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>"
-                                                class="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50 transition"
-                                                title="Supprimer la liste">
-                                            <i class="fas fa-times-circle"></i>
-                                        </button>
-                                    </div>
+                            <tr class="liste-row hover:bg-gray-50 transition" data-name="<?= strtolower(htmlspecialchars($liste['nom_liste'])) ?>" data-id="<?= $liste['id_liste'] ?>">
+                                <td class="px-6 py-4"><div class="flex items-center"><div class="bg-blue-100 rounded-full p-2 mr-3"><i class="fas fa-list text-blue-600 text-sm"></i></div><?= htmlspecialchars($liste['nom_liste']) ?></div></td>
+                                <td class="px-6 py-4"><?= $liste['nb_contacts'] ?> contact(s)</td>
+                                <td class="px-6 py-4"><?= date('d/m/Y', strtotime($liste['date_creation'])) ?></td>
+                                <td class="px-6 py-4 text-right space-x-2">
+                                    <button type="button" onclick="openRenameModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-yellow-600 hover:text-yellow-800" title="Renommer"><i class="fas fa-edit"></i></button>
+                                    <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" class="text-green-600 hover:text-green-800" title="Voir"><i class="fas fa-eye"></i></a>
+                                    <button type="button" onclick="openImportModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-purple-600 hover:text-purple-800" title="Importer"><i class="fas fa-file-import"></i></button>
+                                    <button type="button" onclick="openClearModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" data-count="<?= $liste['nb_contacts'] ?>" class="text-orange-600 hover:text-orange-800" title="Vider"><i class="fas fa-trash-alt"></i></button>
+                                    <button type="button" onclick="openDeleteModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-red-600 hover:text-red-800" title="Supprimer"><i class="fas fa-times-circle"></i></button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
-                        <tr id="noResultRow" style="display: none;">
-                            <td colspan="4" class="px-6 py-8 text-center text-gray-500">
-                                <i class="fas fa-search text-4xl mb-2 block"></i>
-                                Aucune liste ne correspond à votre recherche.
-                            </td>
-                        </tr>
+                        <tr id="noResultRow" style="display: none;"><td colspan="4" class="px-6 py-8 text-center text-gray-500"><i class="fas fa-search text-4xl mb-2 block"></i>Aucune liste ne correspond à votre recherche.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -452,163 +390,96 @@ $totalListes = count($listes);
 </div>
 
 <!-- ============================================ -->
-<!-- MODALS -->
+<!-- MODAL D'AJOUT DE LISTE -->
 <!-- ============================================ -->
-
-<!-- Modal pour renommer la liste -->
-<div id="renameModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <div class="mt-3">
-            <h3 class="text-lg font-medium text-gray-900 mb-4">Renommer la liste</h3>
-            <form method="POST">
-                <input type="hidden" name="action_rename" value="1">
-                <input type="hidden" name="id_liste" id="renameListId">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Nouveau nom</label>
-                    <input type="text" name="nom_liste" id="renameListName" required 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div class="flex justify-end space-x-2">
-                    <button type="button" onclick="closeRenameModal()" 
-                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">
-                        Renommer
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal pour vider la liste -->
-<div id="clearModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <div class="mt-3">
-            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 mb-4">
-                <i class="fas fa-exclamation-triangle text-orange-600"></i>
-            </div>
-            <h3 class="text-lg font-medium text-gray-900 text-center mb-2">Vider la liste</h3>
-            <p class="text-sm text-gray-500 text-center mb-4">
-                Êtes-vous sûr de vouloir vider la liste <strong id="clearListName"></strong> ?<br>
-                <span id="clearListCount" class="text-orange-600 font-semibold"></span> contact(s) seront retirés de cette liste.
-            </p>
-            <form method="POST">
-                <input type="hidden" name="action_clear" value="1">
-                <input type="hidden" name="id_liste" id="clearListId">
-                <div class="flex justify-center space-x-2">
-                    <button type="button" onclick="closeClearModal()" 
-                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition">
-                        Vider la liste
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal pour supprimer la liste -->
-<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <div class="mt-3">
-            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-                <i class="fas fa-exclamation-triangle text-red-600"></i>
-            </div>
-            <h3 class="text-lg font-medium text-gray-900 text-center mb-2">Supprimer la liste</h3>
-            <p class="text-sm text-gray-500 text-center mb-4">
-                Êtes-vous sûr de vouloir supprimer la liste <strong id="deleteListName"></strong> ?<br>
-                <span class="text-red-600 font-semibold">Les contacts ne seront pas supprimés</span>, seule la liste sera supprimée.
-            </p>
-            <form method="POST">
-                <input type="hidden" name="action_delete" value="1">
-                <input type="hidden" name="id_liste" id="deleteListId">
-                <div class="flex justify-center space-x-2">
-                    <button type="button" onclick="closeDeleteModal()" 
-                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition">
-                        Supprimer la liste
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal pour importer des contacts -->
-<div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-    <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
-        <div class="mt-3">
+<div id="addListeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-add-liste">
+        <div class="p-6">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-medium text-gray-900">Importer des contacts</h3>
-                <button onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600">
+                <div class="flex items-center">
+                    <div class="bg-blue-100 p-2 rounded-full mr-3">
+                        <i class="fas fa-list text-blue-600 text-xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800">Créer une nouvelle liste</h3>
+                </div>
+                <button type="button" onclick="closeAddListeModal()" class="text-gray-400 hover:text-gray-600">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
             
-            <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="id_liste" id="importListId">
-                
+            <form id="addListeForm" method="POST">
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Liste cible : <span class="text-purple-600 font-semibold" id="importListName"></span>
-                    </label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nom de la liste *</label>
+                    <input type="text" name="nom_liste" id="nom_liste" required 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                           placeholder="Ex: Newsletter, Clients VIP, Prospects...">
+                    <p class="text-xs text-gray-500 mt-1">Choisissez un nom explicite pour votre liste</p>
                 </div>
                 
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV</label>
-                    <input type="file" name="csv_file" accept=".csv" required 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500">
-                    <p class="text-xs text-gray-500 mt-1">Formats acceptés : .csv (Max 10 Mo)</p>
-                </div>
-                
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Séparateur CSV</label>
-                    <select name="separator" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-purple-500 focus:border-purple-500">
-                        <option value=";">Point-virgule (;) - Recommandé</option>
-                        <option value=",">Virgule (,)</option>
-                        <option value="\t">Tabulation</option>
-                    </select>
-                </div>
-                
-                <div class="bg-purple-50 p-4 rounded-md mb-4">
-                    <h4 class="font-medium text-purple-800 mb-2">📌 Comment ça fonctionne ?</h4>
-                    <ul class="text-sm text-purple-700 space-y-1">
-                        <li><i class="fas fa-check-circle mr-2"></i> Les contacts sont automatiquement créés s'ils n'existent pas</li>
-                        <li><i class="fas fa-check-circle mr-2"></i> Si un contact existe déjà, il est simplement ajouté à la liste</li>
-                        <li><i class="fas fa-check-circle mr-2"></i> Évite les doublons dans la même liste</li>
-                    </ul>
-                </div>
-                
-                <div class="bg-blue-50 p-4 rounded-md mb-4">
-                    <h4 class="font-medium text-blue-800 mb-2">Format attendu du CSV :</h4>
-                    <p class="text-sm text-blue-700 mb-2">La première ligne doit contenir les en-têtes suivants :</p>
-                    <code class="text-xs bg-white p-2 block rounded">
-                        nom;prenom;email;telephone;adresse;ville;code_postal;pays
-                    </code>
-                    <p class="text-xs text-blue-600 mt-2">
-                        <i class="fas fa-info-circle"></i> Seul l'email ou le nom est obligatoire.
-                    </p>
-                </div>
-                
-                <div class="flex justify-end space-x-2">
-                    <button type="button" onclick="closeImportModal()" 
-                            class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition">
+                <div class="mt-6 flex justify-end space-x-2">
+                    <button type="button" onclick="closeAddListeModal()" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
                         Annuler
                     </button>
                     <button type="submit" 
-                            class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition">
-                        <i class="fas fa-upload mr-2"></i>Importer dans la liste
+                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                        Créer la liste
                     </button>
                 </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL RENOMMER -->
+<div id="renameModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6">
+            <h3 class="text-lg font-bold mb-4">Renommer la liste</h3>
+            <form method="POST">
+                <input type="hidden" name="action_rename" value="1">
+                <input type="hidden" name="id_liste" id="renameListId">
+                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Nouveau nom</label><input type="text" name="nom_liste" id="renameListName" required class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                <div class="flex justify-end space-x-2"><button type="button" onclick="closeRenameModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Renommer</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL VIDER -->
+<div id="clearModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6 text-center">
+            <h3 class="text-xl font-bold mb-2">Vider la liste</h3>
+            <p class="text-gray-500 mb-4">Êtes-vous sûr de vouloir vider la liste <strong id="clearListName"></strong> ?</p>
+            <form method="POST"><input type="hidden" name="action_clear" value="1"><input type="hidden" name="id_liste" id="clearListId"><div class="flex justify-center space-x-2"><button type="button" onclick="closeClearModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" class="px-4 py-2 bg-orange-600 text-white rounded-lg">Vider</button></div></form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL SUPPRIMER -->
+<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6 text-center">
+            <h3 class="text-xl font-bold mb-2">Supprimer la liste</h3>
+            <p class="text-gray-500 mb-4">Êtes-vous sûr de vouloir supprimer la liste <strong id="deleteListName"></strong> ?<br>Les contacts ne seront pas supprimés.</p>
+            <form method="POST"><input type="hidden" name="action_delete" value="1"><input type="hidden" name="id_liste" id="deleteListId"><div class="flex justify-center space-x-2"><button type="button" onclick="closeDeleteModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg">Supprimer</button></div></form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL IMPORT CSV -->
+<div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold">Importer des contacts</h3><button onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button></div>
+            <div class="bg-blue-50 p-3 rounded mb-4 text-sm"><strong>Format attendu :</strong> nom, prenom, email, telephone (séparateur ; ou ,)</div>
+            <form id="importForm" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="id_liste" id="importListId">
+                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Liste cible</label><span id="importListName" class="font-semibold"></span></div>
+                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Fichier CSV</label><input type="file" name="csv_file" accept=".csv" required class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Séparateur</label><select name="separator" class="w-full border border-gray-300 rounded-lg px-3 py-2"><option value=";">Point-virgule (;)</option><option value=",">Virgule (,)</option></select></div>
+                <div class="flex justify-end space-x-2"><button type="button" onclick="closeImportModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">Importer</button></div>
             </form>
         </div>
     </div>
@@ -616,49 +487,81 @@ $totalListes = count($listes);
 
 <script>
 // ============================================
-// TOAST NOTIFICATION
+// TOAST NOTIFICATION (sans icônes)
 // ============================================
-function showToast(message, type = 'warning') {
-    // Supprimer les toasts existants
+function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
-    
-    // Créer le toast
     const toast = document.createElement('div');
-    toast.className = 'toast-notification';
-    
-    let icon = '⚠️';
-    let bgColor = '#f59e0b';
-    
-    const types = {
-        success: { icon: '✅', color: '#10b981' },
-        error: { icon: '❌', color: '#ef4444' },
-        info: { icon: 'ℹ️', color: '#3b82f6' },
-        warning: { icon: '⚠️', color: '#f59e0b' }
-    };
-    
-    if (types[type]) {
-        icon = types[type].icon;
-        bgColor = types[type].color;
-    }
-    
-    toast.innerHTML = `
-        <div class="toast-content" style="background: ${bgColor};">
-            <span>${icon}</span>
-            <span>${message}</span>
-        </div>
-    `;
-    
+    toast.className = `toast-notification ${type}`;
+    const colors = { success: '#10b981', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
+    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
     document.body.appendChild(toast);
-    
-    // Supprimer après 3 secondes
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+// Messages flash
+<?php if ($flashMessage): ?> showToast('<?= addslashes($flashMessage) ?>', 'success'); <?php endif; ?>
+<?php if ($flashError): ?> showToast('<?= addslashes($flashError) ?>', 'error'); <?php endif; ?>
+
+// ============================================
+// MODAL D'AJOUT DE LISTE
+// ============================================
+function openAddListeModal() {
+    const modal = document.getElementById('addListeModal');
+    const modalContent = modal.querySelector('.modal-add-liste');
+    document.getElementById('addListeForm').reset();
+    modal.style.display = 'flex';
+    setTimeout(() => modalContent.classList.add('modal-show'), 10);
+}
+
+function closeAddListeModal() {
+    const modal = document.getElementById('addListeModal');
+    const modalContent = modal.querySelector('.modal-add-liste');
+    modalContent.classList.remove('modal-show');
+    setTimeout(() => modal.style.display = 'none', 200);
 }
 
 // ============================================
-// FILTRE DE RECHERCHE
+// AJOUT DE LISTE AJAX
+// ============================================
+document.getElementById('addListeForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    formData.append('action_add_liste', '1');
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Création...';
+    submitBtn.disabled = true;
+    
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeAddListeModal();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+// ============================================
+// RECHERCHE
 // ============================================
 const searchInput = document.getElementById('searchInput');
 const listeRows = document.querySelectorAll('.liste-row');
@@ -669,10 +572,8 @@ const totalListesCount = parseInt(document.getElementById('totalListesCount')?.t
 function filterListes() {
     const searchTerm = searchInput.value.toLowerCase().trim();
     let visibleCount = 0;
-    
     listeRows.forEach(row => {
         const name = row.getAttribute('data-name') || '';
-        
         if (searchTerm === '' || name.includes(searchTerm)) {
             row.style.display = '';
             visibleCount++;
@@ -680,137 +581,83 @@ function filterListes() {
             row.style.display = 'none';
         }
     });
-    
-    if (visibleCount === 0 && listeRows.length > 0) {
-        noResultRow.style.display = '';
-    } else {
-        noResultRow.style.display = 'none';
-    }
-    
-    if (filteredCountSpan) {
-        filteredCountSpan.textContent = `${visibleCount} liste(s) affichée(s) sur ${totalListesCount}`;
-    }
+    if (visibleCount === 0 && listeRows.length > 0) noResultRow.style.display = '';
+    else noResultRow.style.display = 'none';
+    if (filteredCountSpan) filteredCountSpan.textContent = `${visibleCount} liste(s) affichée(s) sur ${totalListesCount}`;
 }
-
-if (searchInput) {
-    searchInput.addEventListener('input', filterListes);
-}
+if (searchInput) searchInput.addEventListener('input', filterListes);
 
 // ============================================
-// FONCTIONS DES MODALS
+// MODALS EXISTANTS
 // ============================================
 function openRenameModal(button) {
-    var id = button.getAttribute('data-id');
-    var name = button.getAttribute('data-name');
-    
-    if (id && id !== '') {
-        document.getElementById('renameListId').value = id;
-        document.getElementById('renameListName').value = name;
-        document.getElementById('renameModal').classList.remove('hidden');
-    } else {
-        showToast('Erreur: ID de liste invalide', 'error');
-    }
+    document.getElementById('renameListId').value = button.getAttribute('data-id');
+    document.getElementById('renameListName').value = button.getAttribute('data-name');
+    document.getElementById('renameModal').style.display = 'flex';
 }
-
-function closeRenameModal() {
-    document.getElementById('renameModal').classList.add('hidden');
-}
+function closeRenameModal() { document.getElementById('renameModal').style.display = 'none'; }
 
 function openClearModal(button) {
-    var id = button.getAttribute('data-id');
-    var name = button.getAttribute('data-name');
-    var count = button.getAttribute('data-count');
-    
-    // Toast élégant au lieu de alert()
-    if (parseInt(count) === 0) {
+    if (parseInt(button.getAttribute('data-count')) === 0) {
         showToast('Cette liste est déjà vide.', 'warning');
         return;
     }
-    
-    if (id && id !== '') {
-        document.getElementById('clearListId').value = id;
-        document.getElementById('clearListName').textContent = name;
-        document.getElementById('clearListCount').textContent = count;
-        document.getElementById('clearModal').classList.remove('hidden');
-    } else {
-        showToast('Erreur: ID de liste invalide', 'error');
-    }
+    document.getElementById('clearListId').value = button.getAttribute('data-id');
+    document.getElementById('clearListName').innerHTML = button.getAttribute('data-name');
+    document.getElementById('clearModal').style.display = 'flex';
 }
-
-function closeClearModal() {
-    document.getElementById('clearModal').classList.add('hidden');
-}
+function closeClearModal() { document.getElementById('clearModal').style.display = 'none'; }
 
 function openDeleteModal(button) {
-    var id = button.getAttribute('data-id');
-    var name = button.getAttribute('data-name');
-    
-    if (id && id !== '') {
-        document.getElementById('deleteListId').value = id;
-        document.getElementById('deleteListName').textContent = name;
-        document.getElementById('deleteModal').classList.remove('hidden');
-    } else {
-        showToast('Erreur: ID de liste invalide', 'error');
-    }
+    document.getElementById('deleteListId').value = button.getAttribute('data-id');
+    document.getElementById('deleteListName').innerHTML = button.getAttribute('data-name');
+    document.getElementById('deleteModal').style.display = 'flex';
 }
-
-function closeDeleteModal() {
-    document.getElementById('deleteModal').classList.add('hidden');
-}
+function closeDeleteModal() { document.getElementById('deleteModal').style.display = 'none'; }
 
 function openImportModal(button) {
-    var id = button.getAttribute('data-id');
-    var name = button.getAttribute('data-name');
-    
-    if (id && id !== '') {
-        document.getElementById('importListId').value = id;
-        document.getElementById('importListName').textContent = name;
-        document.getElementById('importModal').classList.remove('hidden');
-    } else {
-        showToast('Erreur: ID de liste invalide', 'error');
+    document.getElementById('importListId').value = button.getAttribute('data-id');
+    document.getElementById('importListName').innerHTML = button.getAttribute('data-name');
+    document.getElementById('importModal').style.display = 'flex';
+}
+function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
+
+// ============================================
+// IMPORT CSV AJAX
+// ============================================
+document.getElementById('importForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const submitBtn = document.getElementById('importSubmitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Import en cours...';
+    submitBtn.disabled = true;
+    try {
+        const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeImportModal();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
     }
-}
+});
 
-function closeImportModal() {
-    document.getElementById('importModal').classList.add('hidden');
-}
-
-function downloadExample() {
-    const headers = ['nom', 'prenom', 'email', 'telephone', 'adresse', 'ville', 'code_postal', 'pays'];
-    const exampleData = [
-        ['Dupont', 'Jean', 'jean.dupont@email.com', '0612345678', '1 rue de Paris', 'Paris', '75001', 'France'],
-        ['Martin', 'Sophie', 'sophie.martin@email.com', '0698765432', '2 avenue de Lyon', 'Lyon', '69000', 'France'],
-        ['Bernard', 'Lucas', 'lucas.bernard@email.com', '0678945612', '3 boulevard Marseille', 'Marseille', '13001', 'France']
-    ];
-    
-    let csvContent = headers.join(';') + '\n';
-    exampleData.forEach(row => {
-        csvContent += row.join(';') + '\n';
-    });
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.setAttribute('download', 'exemple_contacts.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-}
-
-// Fermer les modals en cliquant en dehors
-window.onclick = function(event) {
-    const renameModal = document.getElementById('renameModal');
-    const clearModal = document.getElementById('clearModal');
-    const deleteModal = document.getElementById('deleteModal');
-    const importModal = document.getElementById('importModal');
-
-    if (event.target === renameModal) closeRenameModal();
-    if (event.target === clearModal) closeClearModal();
-    if (event.target === deleteModal) closeDeleteModal();
-    if (event.target === importModal) closeImportModal();
-}
+// Fermeture des modales
+document.getElementById('addListeModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeAddListeModal(); });
+document.getElementById('renameModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeRenameModal(); });
+document.getElementById('clearModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeClearModal(); });
+document.getElementById('deleteModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeDeleteModal(); });
+document.getElementById('importModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeImportModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddListeModal(); closeRenameModal(); closeClearModal(); closeDeleteModal(); closeImportModal(); } });
 </script>
 
 </body>
