@@ -465,7 +465,7 @@ function deleteSession(sessionId, sessionName) {
     showConfirmModal(sessionName, async () => {
         showToast('Suppression en cours...', 'info');
         try {
-            const response = await fetch('/mailing/delete_session.php', {
+            const response = await fetch('/delete_session.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `session_id=${encodeURIComponent(sessionId)}`
@@ -516,7 +516,7 @@ function openNewSessionModal() {
 
 async function selectSession(sessionName, sessionId) {
     try {
-        const response = await fetch('/mailing/activate_session.php', {
+        const response = await fetch('/activate_session.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `session_id=${encodeURIComponent(sessionId)}&nom_session=${encodeURIComponent(sessionName)}`
@@ -605,7 +605,7 @@ function closeDeviceModal() {
 async function selectExistingAppareil(deviceId, deviceName, apiUsername, apiPassword, appareilId) {
     try {
         showToast('Activation de l\'appareil...', 'info');
-        const response = await fetch('/mailing/activate_sms_appareil.php', {
+        const response = await fetch('/activate_sms_appareil.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `appareil_id=${encodeURIComponent(appareilId)}&device_id=${encodeURIComponent(deviceId)}&device_name=${encodeURIComponent(deviceName)}&api_username=${encodeURIComponent(apiUsername)}&api_password=${encodeURIComponent(apiPassword)}`
@@ -693,7 +693,7 @@ async function saveAndSelectDevice(deviceId, deviceName) {
         params.append('device_name', deviceName);
         params.append('api_username', currentApiUsername);
         params.append('api_password', currentApiPassword);
-        const response = await fetch('/mailing/save_sms_appareil.php', {
+        const response = await fetch('/save_sms_appareil.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: params
@@ -719,7 +719,7 @@ function deleteSmsAppareil(appareilId, appareilName) {
         showConfirmModal(appareilName, async () => {
             showToast('Suppression en cours...', 'info');
             try {
-                const response = await fetch('/mailing/delete_sms_appareil.php', {
+                const response = await fetch('/delete_sms_appareil.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `appareil_id=${encodeURIComponent(appareilId)}`
@@ -811,7 +811,7 @@ async function createAndStartSession() {
         if (!startResponse.ok || startResult.ok === false) {
             throw new Error(startResult.error || 'Démarrage échoué');
         }
-        const saveResponse = await fetch('/mailing/save_session.php', {
+        const saveResponse = await fetch('/save_session.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `nom_session=${encodeURIComponent(sessionName)}&compte_id=<?= $_SESSION['user_id'] ?>`

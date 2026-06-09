@@ -234,7 +234,7 @@ function showDetails(id) {
     modal.classList.add('flex');
     modalContent.innerHTML = '<div class="text-center py-8">Chargement...</div>';
     
-    fetch(`/mailing/get_campagne_details.php?id=${id}`)
+    fetch(`/get_campagne_details.php?id=${id}`)
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -283,7 +283,7 @@ function escapeHtml(text) {
 function exportToCSV() {
     const type = currentType;
     const search = document.getElementById('searchInput').value;
-    let url = `/mailing/export_campagnes.php?type=${type}`;
+    let url = `/export_campagnes.php?type=${type}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
     window.location.href = url;
 }
