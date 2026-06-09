@@ -28,30 +28,33 @@ if (empty($nom_session)) {
     exit;
 }
 
-// Mise à jour directe avec curl
-$url = SUPABASE_URL . '/rest/v1/compte?id_compte=eq.' . $idCompte;
-$headers = [
-    'apikey: ' . SUPABASE_KEY,
-    'Authorization: Bearer ' . SUPABASE_KEY,
-    'Content-Type: application/json'
-];
-$data = json_encode(['waha_session' => $nom_session]);
-
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, $url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PATCH');
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-if ($httpCode === 200 || $httpCode === 204) {
-    echo json_encode(['success' => true, 'session' => $nom_session]);
-} else {
-    echo json_encode(['success' => false, 'error' => 'Erreur HTTP ' . $httpCode]);
+try {
+    // Vérifier si la session existe déjà pour ce compte
+    $existing = $db->select('whatsapp_sessions', [
+        'id_compte' => $idCompte,
+        'nom_session' => $nom_session
+    ]);
+    
+    if (!empty($existing)) {
+        // Session existe déjà, on l'active (et désactive les autres)
+        $db->update('whatsapp_sessions', ['est_active' => false], ['id_compte' => $idCompte]);
+        $db->update('whatsapp_sessions', ['est_active' => true], ['id_session' => $existing[0]['id_session']]);
+        echo json_encode(['success' => true, 'session' => $nom_session, 'existing' => true]);
+    } else {
+        // Désactiver toutes les autres sessions
+        $db->update('whatsapp_sessions', ['est_active' => false], ['id_compte' => $idCompte]);
+        
+        // Créer une nouvelle session
+        $data = [
+            'id_compte' => $idCompte,
+            'nom_session' => $nom_session,
+            'est_active' => true,
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+        $db->insert('whatsapp_sessions', $data);
+        echo json_encode(['success' => true, 'session' => $nom_session, 'existing' => false]);
+    }
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 ?>

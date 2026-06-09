@@ -7,16 +7,16 @@ $idCompte = $_SESSION['user_id'];
 $totalContacts = count($db->select('contact', ['id_compte' => $idCompte]));
 $totalListes = count($db->select('liste', ['id_compte' => $idCompte]));
 
-// Dernières campagnes
-$campagnes = $db->select('campagne', ['id_compte' => $idCompte], '*', 'date_creation=order.desc');
+// Récupérer les dernières campagnes
+$campagnes = $db->select('campagne', ['id_compte' => $idCompte], '*', 'created_at DESC');
 $dernieresCampagnes = array_slice($campagnes, 0, 5);
 
 // Derniers contacts ajoutés
-$contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'date_inscription=order.desc');
+$contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'created_at DESC');
 $derniersContacts = array_slice($contacts, 0, 5);
 
 // Crédits disponibles
-$credits = $_SESSION['user_credits'];
+$credits = $_SESSION['user_credits'] ?? 0;
 ?>
 <div class="space-y-6">
     <!-- En-tête -->
@@ -76,43 +76,80 @@ $credits = $_SESSION['user_credits'];
             <table class="w-full">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Message</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Dest.</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
                     <?php if (empty($dernieresCampagnes)): ?>
                         <tr>
-                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                            <td colspan="5" class="px-4 py-8 text-center text-gray-500">
                                 Aucune campagne pour le moment. 
-                                <a href="index.php?page=campagnes/nouvelle" class="text-blue-600">Créer une campagne →</a>
+                                <a href="index.php?page=campagnes/choix" class="text-blue-600">Créer une campagne →</a>
                             </td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($dernieresCampagnes as $campagne): ?>
                             <?php
                             $statutColors = [
-                                'PROGRAMMEE' => 'bg-yellow-100 text-yellow-800',
-                                'EN_COURS' => 'bg-blue-100 text-blue-800',
-                                'ENVOYEE' => 'bg-green-100 text-green-800',
-                                'ANNULEE' => 'bg-red-100 text-red-800',
-                                'ECHEC' => 'bg-red-100 text-red-800'
+                                'envoye' => 'bg-green-100 text-green-800',
+                                'en_cours' => 'bg-blue-100 text-blue-800',
+                                'echoue' => 'bg-red-100 text-red-800'
                             ];
                             $color = $statutColors[$campagne['statut']] ?? 'bg-gray-100 text-gray-800';
+                            
+                            $statutText = [
+                                'envoye' => 'Envoyé',
+                                'en_cours' => 'En cours',
+                                'echoue' => 'Échoué'
+                            ];
+                            $statut = $statutText[$campagne['statut']] ?? $campagne['statut'];
                             ?>
                             <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4"><?= htmlspecialchars($campagne['nom_campagne']) ?></td>
-                                <td class="px-6 py-4"><?= $campagne['id_type_message'] == 1 ? 'SMS' : ($campagne['id_type_message'] == 2 ? 'Email' : 'WhatsApp') ?></td>
-                                <td class="px-6 py-4"><span class="px-2 py-1 rounded text-xs <?= $color ?>"><?= $campagne['statut'] ?></span></td>
-                                <td class="px-6 py-4"><?= date('d/m/Y H:i', strtotime($campagne['date_creation'])) ?></td>
+                                <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                                    <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <?php if ($campagne['type_campagne'] == 'whatsapp'): ?>
+                                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs whitespace-nowrap">
+                                            <i class="fab fa-whatsapp mr-1"></i> WhatsApp
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs whitespace-nowrap">
+                                            <i class="fas fa-comment-dots mr-1"></i> SMS
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="text-sm text-gray-800 max-w-md truncate">
+                                        <?= htmlspecialchars(mb_substr($campagne['message'], 0, 50)) ?>
+                                        <?= strlen($campagne['message']) > 50 ? '...' : '' ?>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-600 text-center whitespace-nowrap">
+                                    <?= $campagne['nb_destinataires'] ?>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="px-2 py-1 rounded-full text-xs <?= $color ?> whitespace-nowrap">
+                                        <?= $statut ?>
+                                    </span>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </tbody>
             </table>
         </div>
+        <?php if (!empty($dernieresCampagnes) && count($campagnes) > 5): ?>
+            <div class="p-4 border-t text-center">
+                <a href="index.php?page=campagnes/historique" class="text-blue-600 text-sm hover:underline">
+                    Voir toutes les campagnes →
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
 
     <!-- Derniers contacts -->
@@ -124,16 +161,16 @@ $credits = $_SESSION['user_credits'];
             <table class="w-full">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
                     <?php if (empty($derniersContacts)): ?>
                         <tr>
-                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                            <td colspan="4" class="px-4 py-8 text-center text-gray-500">
                                 Aucun contact. 
                                 <a href="index.php?page=contacts/ajouter" class="text-blue-600">Ajouter un contact →</a>
                             </td>
@@ -141,10 +178,18 @@ $credits = $_SESSION['user_credits'];
                     <?php else: ?>
                         <?php foreach ($derniersContacts as $contact): ?>
                             <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4"><?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?></td>
-                                <td class="px-6 py-4"><?= htmlspecialchars($contact['email'] ?? '-') ?></td>
-                                <td class="px-6 py-4"><?= htmlspecialchars($contact['telephone'] ?? '-') ?></td>
-                                <td class="px-6 py-4"><?= date('d/m/Y', strtotime($contact['date_inscription'])) ?></td>
+                                <td class="px-4 py-3 text-sm text-gray-800">
+                                    <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-600">
+                                    <?= htmlspecialchars($contact['email'] ?? '-') ?>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-600">
+                                    <?= htmlspecialchars($contact['telephone'] ?? '-') ?>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                                    <?= date('d/m/Y', strtotime($contact['created_at'] ?? $contact['date_inscription'] ?? 'now')) ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>

@@ -189,4 +189,34 @@ function getTypesMessage() {
         return [];
     }
 }
+
+// Récupérer la session WhatsApp active de l'utilisateur
+function getWhatsAppSession($idCompte) {
+    global $db;
+    $result = $db->select('whatsapp_sessions', [
+        'id_compte' => $idCompte,
+        'est_active' => true
+    ]);
+    return $result ? $result[0]['nom_session'] : null;
+}
+
+// Récupérer toutes les sessions WhatsApp d'un utilisateur
+function getAllWhatsAppSessions($idCompte) {
+    global $db;
+    return $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
+}
+
+// Activer une session (désactiver les autres)
+function setActiveWhatsAppSession($idCompte, $sessionName) {
+    global $db;
+    
+    // Désactiver toutes les sessions
+    $db->update('whatsapp_sessions', ['est_active' => false], ['id_compte' => $idCompte]);
+    
+    // Activer la session choisie
+    $db->update('whatsapp_sessions', ['est_active' => true], [
+        'id_compte' => $idCompte,
+        'nom_session' => $sessionName
+    ]);
+}
 ?>

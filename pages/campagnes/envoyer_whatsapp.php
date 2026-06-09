@@ -3,20 +3,48 @@ global $db;
 
 $idCompte = $_SESSION['user_id'];
 
-// Récupérer la session WhatsApp de l'utilisateur
-$compte = $db->select('compte', ['id_compte' => $idCompte], 'waha_session');
-$whatsappSession = $compte ? $compte[0]['waha_session'] : null;
+// Récupérer la session WhatsApp active depuis la nouvelle table whatsapp_sessions
+$sessions = $db->select('whatsapp_sessions', [
+    'id_compte' => $idCompte,
+    'est_active' => true
+]);
+
+$whatsappSession = null;
+if (!empty($sessions)) {
+    $whatsappSession = $sessions[0]['nom_session'];
+} else {
+    // Si aucune session active, prendre la première session disponible
+    $sessions = $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
+    if (!empty($sessions)) {
+        $whatsappSession = $sessions[0]['nom_session'];
+        // Activer cette session par défaut
+        $db->update('whatsapp_sessions', ['est_active' => true], ['id_session' => $sessions[0]['id_session']]);
+    }
+}
 
 if (!$whatsappSession) {
     header('Location: index.php?page=campagnes/choix');
     exit;
 }
 
-// Récupérer les contacts de l'utilisateur
-$contacts = $db->select('contact', ['id_compte' => $idCompte]);
+// Récupérer les IDs des contacts blacklistés (sans condition id_compte)
+$blacklist = $db->select('blacklist');
+$blacklistIds = [];
+foreach ($blacklist as $b) {
+    if (!empty($b['id_contact'])) {
+        $blacklistIds[] = $b['id_contact'];
+    }
+}
 
-if (!is_array($contacts)) {
-    $contacts = [];
+// Récupérer tous les contacts du compte
+$tousContacts = $db->select('contact', ['id_compte' => $idCompte]);
+
+// Filtrer
+$contacts = [];
+foreach ($tousContacts as $contact) {
+    if (!in_array($contact['id_contact'], $blacklistIds)) {
+        $contacts[] = $contact;
+    }
 }
 
 $error = '';
@@ -41,6 +69,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $apiUrl = 'http://72.62.26.166:8081/api/controller.php';
         $endpoint = '/messages/send-text';
         $data = [];
+        
+        // Récupérer le nom du contact pour l'historique
+        $contactNom = '';
+        foreach ($contacts as $contact) {
+            $telephone = $contact['telephone'] ?? '';
+            if (!empty($telephone)) {
+                $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
+                if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
+                    $telephoneClean = '33' . substr($telephoneClean, 1);
+                }
+                $whatsappNumberTest = $telephoneClean . '@c.us';
+                if ($whatsappNumberTest === $chatId) {
+                    $contactNom = $contact['prenom'] . ' ' . $contact['nom'];
+                    break;
+                }
+            }
+        }
         
         // Priorité à l'audio enregistré
         if ($hasAudio) {
@@ -157,6 +202,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         
+        // ============================================
+        // PRÉPARER LES DONNÉES POUR L'HISTORIQUE
+        // ============================================
+        $destinatairesNoms = [];
+        if (!empty($contactNom)) {
+            $destinatairesNoms[] = $contactNom . ' (' . $chatId . ')';
+        } else {
+            $destinatairesNoms[] = $chatId;
+        }
+        $destinatairesJson = json_encode($destinatairesNoms);
+        
+        $titre = "WhatsApp - " . date('d/m/Y H:i');
+        if (!empty($message)) {
+            $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
+        }
+        
         if ($httpCode === 200 || $httpCode === 201) {
             $success = "Message envoyé avec succès !";
             if ($hasAudio) {
@@ -164,8 +225,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($hasFile) {
                 $success .= " (fichier joint inclus)";
             }
+            
+            // ENREGISTREMENT SUCCÈS
+            $campagneData = [
+                'id_compte' => $idCompte,
+                'type_campagne' => 'whatsapp',
+                'titre' => $titre,
+                'message' => $message,
+                'destinataires' => $destinatairesJson,
+                'nb_destinataires' => 1,
+                'nb_envoyes' => 1,
+                'nb_succes' => 1,
+                'nb_erreurs' => 0,
+                'appareil_utilise' => $whatsappSession,
+                'statut' => 'envoye',
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            
         } else {
-            $error = "Erreur d'envoi: " . $response;
+            $error = "Echec: Votre message n'a pas été correctement envoyé";
+            
+            // ENREGISTREMENT ÉCHEC
+            $campagneData = [
+                'id_compte' => $idCompte,
+                'type_campagne' => 'whatsapp',
+                'titre' => $titre,
+                'message' => $message,
+                'destinataires' => $destinatairesJson,
+                'nb_destinataires' => 1,
+                'nb_envoyes' => 1,
+                'nb_succes' => 0,
+                'nb_erreurs' => 1,
+                'appareil_utilise' => $whatsappSession,
+                'statut' => 'echoue',
+                'erreur' => substr($response, 0, 500),
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+        }
+        
+        // Enregistrer dans la base
+        try {
+            $db->insert('campagne', $campagneData);
+        } catch (Exception $e) {
+            error_log("Erreur insertion historique WhatsApp: " . $e->getMessage());
         }
     }
 }
@@ -232,6 +334,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             0% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.05); opacity: 0.7; }
             100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Styles pour le drag & drop */
+        #fileUploadArea {
+            transition: all 0.2s ease;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -381,9 +489,7 @@ $(document).ready(function() {
     });
 });
 
-// ============================================
 // ENREGISTREMENT AUDIO
-// ============================================
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingTimer = null;
@@ -418,23 +524,91 @@ recordAudioBtn.addEventListener('click', () => {
     resetFileUpload();
 });
 
-// Gestion de l'upload de fichier
-fichierInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        const file = e.target.files[0];
-        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-        let typeLabel = '';
-        if (file.type.startsWith('image/')) typeLabel = 'Image';
-        else if (file.type.startsWith('video/')) typeLabel = 'Vidéo';
-        else if (file.type.startsWith('audio/')) typeLabel = 'Audio';
-        else typeLabel = 'Document';
-        fileInfoDiv.innerHTML = `<i class="fas fa-paperclip mr-1"></i> ${typeLabel}: ${file.name} (${sizeMB} Mo)`;
-        fileInfoDiv.classList.remove('hidden');
-        removeFileBtn.classList.remove('hidden');
-        messageRequired.innerHTML = '<span class="text-green-600">(optionnel)</span>';
+// GESTION DE L'UPLOAD DE FICHIER
+
+// Fonction pour gérer le fichier
+function handleFile(file) {
+    const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+    
+    // Vérifier la taille (max 10 Mo)
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('Le fichier est trop volumineux. Maximum 10 Mo.', 'error');
+        resetFileUpload();
+        return;
+    }
+    
+    let typeLabel = '';
+    if (file.type.startsWith('image/')) typeLabel = 'Image';
+    else if (file.type.startsWith('video/')) typeLabel = 'Vidéo';
+    else if (file.type.startsWith('audio/')) typeLabel = 'Audio';
+    else typeLabel = 'Document';
+    
+    fileInfoDiv.innerHTML = `<i class="fas fa-paperclip mr-1"></i> ${typeLabel}: ${file.name} (${sizeMB} Mo)`;
+    fileInfoDiv.classList.remove('hidden');
+    removeFileBtn.classList.remove('hidden');
+    messageRequired.innerHTML = '<span class="text-green-600">(optionnel)</span>';
+}
+
+// Gestion du clic sur la zone pour ouvrir l'explorateur
+fileUploadArea.addEventListener('click', (e) => {
+    // Éviter de déclencher si on clique sur le bouton supprimer
+    if (e.target !== removeFileBtn && !removeFileBtn.contains(e.target)) {
+        fichierInput.click();
     }
 });
 
+// Gestion du changement de fichier via l'input
+fichierInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+    }
+});
+
+// DRAG & DROP
+// Empêcher les comportements par défaut
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    fileUploadArea.addEventListener(eventName, preventDefaults, false);
+    document.body.addEventListener(eventName, preventDefaults, false);
+});
+
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// Mettre en évidence la zone
+['dragenter', 'dragover'].forEach(eventName => {
+    fileUploadArea.addEventListener(eventName, highlight, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+    fileUploadArea.addEventListener(eventName, unhighlight, false);
+});
+
+function highlight(e) {
+    fileUploadArea.classList.add('border-green-500', 'bg-green-50');
+    fileUploadArea.classList.remove('border-gray-300');
+}
+
+function unhighlight(e) {
+    fileUploadArea.classList.remove('border-green-500', 'bg-green-50');
+    fileUploadArea.classList.add('border-gray-300');
+}
+
+// Gestion du drop
+fileUploadArea.addEventListener('drop', handleDrop, false);
+
+function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    
+    if (files.length > 0) {
+        fichierInput.files = files;
+        handleFile(files[0]);
+    }
+}
+
+// Bouton supprimer
 removeFileBtn.addEventListener('click', () => {
     fichierInput.value = '';
     fileInfoDiv.classList.add('hidden');
@@ -487,7 +661,7 @@ async function startRecording() {
         }, 1000);
         
     } catch (err) {
-        alert('Impossible d\'accéder au microphone: ' + err.message);
+        showToast('Impossible d\'accéder au microphone: ' + err.message, 'error');
     }
 }
 
@@ -543,9 +717,7 @@ removeAudioBtn.addEventListener('click', () => {
     }
 });
 
-// ============================================
 // COMPTEUR DE CARACTÈRES
-// ============================================
 const messageTextarea = document.getElementById('message');
 if (messageTextarea) {
     messageTextarea.addEventListener('input', function() {
@@ -554,9 +726,7 @@ if (messageTextarea) {
     });
 }
 
-// ============================================
 // VALIDATION AVANT SOUMISSION
-// ============================================
 document.getElementById('whatsappForm').addEventListener('submit', function(e) {
     const hasFile = fichierInput.files.length > 0;
     const hasAudio = audioDataInput.value !== '';
@@ -564,13 +734,11 @@ document.getElementById('whatsappForm').addEventListener('submit', function(e) {
     
     if (!hasMessage && !hasFile && !hasAudio) {
         e.preventDefault();
-        alert('Veuillez saisir un message ou ajouter un fichier/audio');
+        showToast('Veuillez saisir un message ou ajouter un fichier/audio', 'error');
     }
 });
 
-// ============================================
 // TOAST NOTIFICATION
-// ============================================
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());

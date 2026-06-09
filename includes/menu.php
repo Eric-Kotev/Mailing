@@ -38,11 +38,11 @@ $isAdmin = isAdminForMenu();
             </div>
         </div>
 
-        <h2 class="text-lg font-bold text-center mt-4">
+        <h2 id="logoText" class="text-lg font-bold text-center mt-4 transition-opacity duration-200">
             <?= APP_NAME ?>
         </h2>
 
-        <p class="text-xs text-slate-400 text-center mt-1">
+        <p id="sousTitre" class="text-xs text-slate-400 text-center mt-1 transition-opacity duration-200">
             Plateforme Multi-canal
         </p>
     </div>
@@ -56,35 +56,35 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-tachometer-alt w-5 mr-3 text-blue-400"></i>
-            <span>Tableau de bord</span>
+            <span class="menu-text">Tableau de bord</span>
         </a>
 
         <!-- Campagnes -->
         <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
-            Campagnes
+            <span class="menu-title">Campagnes</span>
         </div>
 
-        <a href="index.php?page=campagnes/index"
+        <a href="index.php?page=campagnes/historique"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-           <?= $currentPage == 'campagnes/index'
+           <?= $currentPage == 'campagnes/index' || $currentPage == 'campagnes/historique'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-history w-5 mr-3 text-cyan-400"></i>
-            <span>Historique</span>
+            <span class="menu-text">Historique</span>
         </a>
 
         <a href="index.php?page=campagnes/choix"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-           <?= $currentPage == 'campagnes/nouvelle'
+           <?= $currentPage == 'campagnes/nouvelle' || $currentPage == 'campagnes/choix'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-plus-circle w-5 mr-3 text-green-400"></i>
-            <span>Nouvelle campagne</span>
+            <span class="menu-text">Nouvelle campagne</span>
         </a>
 
         <!-- Contacts -->
         <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
-            Contacts
+            <span class="menu-title">Contacts</span>
         </div>
 
         <a href="index.php?page=contacts/index"
@@ -93,7 +93,7 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-address-book w-5 mr-3 text-orange-400"></i>
-            <span>Mes contacts</span>
+            <span class="menu-text">Mes contacts</span>
         </a>
 
         <a href="index.php?page=listes/index"
@@ -102,7 +102,7 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-list w-5 mr-3 text-purple-400"></i>
-            <span>Mes listes</span>
+            <span class="menu-text">Mes listes</span>
         </a>
 
         <a href="index.php?page=blacklist/index"
@@ -111,12 +111,12 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-ban w-5 mr-3 text-red-400"></i>
-            <span>Blacklist</span>
+            <span class="menu-text">Blacklist</span>
         </a>
 
         <!-- Configuration -->
         <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
-            Configuration
+            <span class="menu-title">Configuration</span>
         </div>
 
         <a href="index.php?page=canaux/index"
@@ -125,7 +125,7 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-plug w-5 mr-3 text-yellow-400"></i>
-            <span>Canaux d'envoi</span>
+            <span class="menu-text">Canaux d'envoi</span>
         </a>
 
         <a href="index.php?page=parametres/credits"
@@ -134,7 +134,7 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-coins w-5 mr-3 text-amber-400"></i>
-            <span>Commander crédits</span>
+            <span class="menu-text">Commander crédits</span>
         </a>
 
         <a href="index.php?page=parametres/compte"
@@ -143,13 +143,13 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-cog w-5 mr-3 text-slate-400"></i>
-            <span>Paramétrage</span>
+            <span class="menu-text">Paramétrage</span>
         </a>
 
         <!-- Administration -->
         <?php if ($isAdmin): ?>
             <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
-                Administration
+                <span class="menu-title">Administration</span>
             </div>
 
             <a href="index.php?page=admin/users"
@@ -158,7 +158,7 @@ $isAdmin = isAdminForMenu();
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
                 <i class="fas fa-users-cog w-5 mr-3 text-indigo-400"></i>
-                <span>Gestion des utilisateurs</span>
+                <span class="menu-text">Gestion des utilisateurs</span>
             </a>
         <?php endif; ?>
 
@@ -169,7 +169,7 @@ $isAdmin = isAdminForMenu();
         <div class="text-center">
             <div class="text-xs text-slate-400">
                 <i class="fas fa-shield-alt mr-1"></i>
-                Version 1.0
+                <span class="menu-text">Version 1.0</span>
             </div>
         </div>
     </div>
@@ -178,26 +178,30 @@ $isAdmin = isAdminForMenu();
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('sidebarToggle');
 
     if (toggleBtn) {
-
         toggleBtn.addEventListener('click', function () {
-
+            // Basculer la largeur du sidebar
             sidebar.classList.toggle('w-64');
             sidebar.classList.toggle('w-20');
-
-            const spans = sidebar.querySelectorAll('span');
-
+            
+            // Cacher/montrer tous les textes (menus et titres)
+            const allTexts = sidebar.querySelectorAll('.menu-text, .menu-title, #logoText, #sousTitre');
+            
             if (sidebar.classList.contains('w-20')) {
-                spans.forEach(span => span.classList.add('hidden'));
+                allTexts.forEach(text => text.classList.add('hidden'));
+                // Réduire les padding dans le header
+                sidebar.querySelector('.p-6').classList.add('p-3');
+                sidebar.querySelector('.p-6').classList.remove('p-6');
             } else {
-                spans.forEach(span => span.classList.remove('hidden'));
+                allTexts.forEach(text => text.classList.remove('hidden'));
+                // Restaurer les padding
+                sidebar.querySelector('.p-3').classList.add('p-6');
+                sidebar.querySelector('.p-3').classList.remove('p-3');
             }
         });
-
     }
 });
 </script>
@@ -218,5 +222,61 @@ document.addEventListener('DOMContentLoaded', function () {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #64748b;
+}
+
+/* Transition fluide pour le texte */
+.menu-text, .menu-title, #logoText, #sousTitre {
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+/* Style du sidebar en mode réduit */
+#sidebar.w-20 .menu-title {
+    display: none;
+}
+
+#sidebar.w-20 a span {
+    display: none;
+}
+
+#sidebar.w-20 .p-6 {
+    padding: 0.75rem !important;
+}
+
+#sidebar.w-20 .w-14 {
+    width: 2.5rem;
+    height: 2.5rem;
+}
+
+#sidebar.w-20 .w-14 i {
+    font-size: 0.875rem;
+}
+
+#sidebar.w-20 .mx-3 {
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+}
+
+#sidebar.w-20 .px-4 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    justify-content: center;
+}
+
+#sidebar.w-20 .mr-3 {
+    margin-right: 0;
+}
+
+#sidebar.w-20 i {
+    margin-right: 0 !important;
+}
+
+#sidebar.w-20 .px-5 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    text-align: center;
+}
+
+#sidebar.w-20 .py-3 {
+    justify-content: center;
 }
 </style>
