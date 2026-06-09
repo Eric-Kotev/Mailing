@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Veuillez saisir un message";
     } else {
         // Appel API SMS
-        $apiUrl = 'http://192.168.88.116:8085/api.php/sendBulk';
+        $apiUrl = 'http://72.62.26.166:8085/api.php/sendBulk';
         $data = [
             'text' => $message,
             'recipients' => $recipients,
