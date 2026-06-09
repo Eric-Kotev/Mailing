@@ -363,7 +363,7 @@ $hasSmsAppareils = !empty($smsAppareils);
 <script>
 const API_BASE_URL = 'http://72.62.26.166:8081/api/controller.php';
 const API_KEY = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
-const SMS_API_URL = 'http://192.168.88.116:8085';
+const SMS_API_URL = 'http://72.62.26.166:8085';
 
 let currentSession = '';
 let statusInterval = null;
