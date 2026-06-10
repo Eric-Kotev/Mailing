@@ -2,8 +2,9 @@
 header('Content-Type: application/json');
 error_reporting(0);
 
-require_once __DIR__ . '/includes/db.php';
-require_once __DIR__ . '/includes/auth.php';
+// Correction des chemins - remonter de 2 niveaux depuis pages/campagnes/
+require_once __DIR__ . '/../../includes/db.php';
+require_once __DIR__ . '/../../includes/auth.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -14,7 +15,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-$id_campagne = $_GET['id'] ?? '';
+$id_campagne = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if (empty($id_campagne)) {
     echo json_encode(['success' => false, 'error' => 'ID campagne requis']);
     exit;
@@ -23,6 +24,8 @@ if (empty($id_campagne)) {
 $idCompte = $_SESSION['user_id'];
 
 try {
+    global $db;
+    
     // Récupérer la campagne
     $campagne = $db->select('campagne', [
         'id_campagne' => $id_campagne,

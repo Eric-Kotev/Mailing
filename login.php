@@ -134,6 +134,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background-size: cover;
             pointer-events: none;
         }
+        
+        /* Style pour le conteneur du mot de passe */
+        .password-container {
+            position: relative;
+        }
+        
+        .password-container input {
+            padding-right: 45px;
+        }
+        
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #9ca3af;
+            transition: color 0.2s ease;
+            z-index: 10;
+            background: transparent;
+            border: none;
+            font-size: 1.1rem;
+        }
+        
+        .toggle-password:hover {
+            color: #3b82f6;
+        }
+        
+        .toggle-password:focus {
+            outline: none;
+        }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 relative">
@@ -181,7 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
             
             <!-- Formulaire -->
-            <form method="POST" action="">
+            <form method="POST" action="" id="loginForm">
                 <div class="mb-5">
                     <label class="block text-gray-700 text-sm font-semibold mb-2">
                         <i class="fas fa-user mr-2 text-blue-500"></i>
@@ -198,8 +229,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <i class="fas fa-lock mr-2 text-blue-500"></i>
                         Mot de passe
                     </label>
-                    <input type="password" name="password" required 
-                           class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-blue-600 input-focus transition"  placeholder="Votre mot de passe">
+                    <div class="password-container">
+                        <input type="password" name="password" id="password" required 
+                               class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-blue-600 input-focus transition"  
+                               placeholder="Votre mot de passe">
+                        <button type="button" id="togglePassword" class="toggle-password">
+                            <i class="far fa-eye"></i>
+                        </button>
+                    </div>
                 </div>
                 
                 <button type="submit" 
@@ -216,6 +253,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             &copy; <?= date('Y') ?> <?= APP_NAME ?> - Tous droits réservés
         </div>
     </div>
+    
+    <script>
+        // Fonction pour afficher/masquer le mot de passe
+        const togglePassword = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('password');
+        
+        if (togglePassword && passwordInput) {
+            togglePassword.addEventListener('click', function() {
+                // Basculer le type d'input
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                
+                // Changer l'icône
+                const icon = this.querySelector('i');
+                if (icon) {
+                    if (type === 'password') {
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    } else {
+                        icon.classList.remove('fa-eye');
+                        icon.classList.add('fa-eye-slash');
+                    }
+                }
+            });
+        }
+    </script>
     
     <style>
         @keyframes animate-shake {

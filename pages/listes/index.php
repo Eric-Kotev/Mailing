@@ -258,6 +258,15 @@ foreach ($listes as $key => $listeItem) {
 
 $totalListes = count($listes);
 
+// Récupérer les contacts blacklistés pour affichage
+$blacklist = $db->select('blacklist');
+$blacklistIds = [];
+foreach ($blacklist as $b) {
+    if (!empty($b['id_contact'])) {
+        $blacklistIds[] = $b['id_contact'];
+    }
+}
+
 // Messages flash
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
@@ -374,8 +383,9 @@ unset($_SESSION['flash_error']);
                                 <td class="px-6 py-4"><?= date('d/m/Y', strtotime($liste['date_creation'])) ?></td>
                                 <td class="px-6 py-4 text-right space-x-2">
                                     <button type="button" onclick="openRenameModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-yellow-600 hover:text-yellow-800" title="Renommer"><i class="fas fa-edit"></i></button>
-                                    <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" class="text-green-600 hover:text-green-800" title="Voir"><i class="fas fa-eye"></i></a>
+                                    <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" class="text-green-600 hover:text-green-800" title="Voir ou ajouter un contact"><i class="fas fa-eye"></i></a>
                                     <button type="button" onclick="openImportModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-purple-600 hover:text-purple-800" title="Importer"><i class="fas fa-file-import"></i></button>
+                                    <button type="button" onclick="openBlacklistModal()" class="text-red-600 hover:text-red-800" title="Gérer la blacklist"><i class="fas fa-ban"></i></button>
                                     <button type="button" onclick="openClearModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" data-count="<?= $liste['nb_contacts'] ?>" class="text-orange-600 hover:text-orange-800" title="Vider"><i class="fas fa-trash-alt"></i></button>
                                     <button type="button" onclick="openDeleteModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-red-600 hover:text-red-800" title="Supprimer"><i class="fas fa-times-circle"></i></button>
                                 </td>
@@ -485,9 +495,57 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
+<!-- ============================================ -->
+<!-- MODAL BLACKLIST (Gestion des contacts bloqués) -->
+<!-- ============================================ -->
+<div id="blacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center">
+                    <div class="bg-red-100 p-2 rounded-full mr-3">
+                        <i class="fas fa-ban text-red-600 text-xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800">Gestion de la blacklist</h3>
+                </div>
+                <button onclick="closeBlacklistModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <p class="text-gray-500 mb-4">Les contacts bloqués ne recevront aucun message.</p>
+            
+            <div class="mb-4 relative">
+                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                <input type="text" id="blacklistSearchInput" placeholder="Rechercher un contact bloqué..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-red-500">
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prénom</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date de blocage</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blacklistTableBody">
+                        <!-- Les contacts blacklistés seront chargés ici -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 text-right">
+                <button onclick="closeBlacklistModal()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // ============================================
-// TOAST NOTIFICATION (sans icônes)
+// TOAST NOTIFICATION
 // ============================================
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
@@ -503,6 +561,121 @@ function showToast(message, type = 'success') {
 // Messages flash
 <?php if ($flashMessage): ?> showToast('<?= addslashes($flashMessage) ?>', 'success'); <?php endif; ?>
 <?php if ($flashError): ?> showToast('<?= addslashes($flashError) ?>', 'error'); <?php endif; ?>
+
+// ============================================
+// MODAL BLACKLIST
+// ============================================
+const blacklistIds = <?= json_encode($blacklistIds) ?>;
+
+async function openBlacklistModal() {
+    const modal = document.getElementById('blacklistModal');
+    modal.style.display = 'flex';
+    await loadBlacklistContacts();
+}
+
+function closeBlacklistModal() {
+    document.getElementById('blacklistModal').style.display = 'none';
+}
+
+async function loadBlacklistContacts() {
+    try {
+        const response = await fetch('index.php?page=contacts/blacklist&action=get_blacklist');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            displayBlacklistContacts(result.data);
+        } else {
+            document.getElementById('blacklistTableBody').innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">Aucun contact bloqué</td></tr>';
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        document.getElementById('blacklistTableBody').innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-red-500">Erreur lors du chargement</td></tr>';
+    }
+}
+
+function displayBlacklistContacts(contacts) {
+    const tbody = document.getElementById('blacklistTableBody');
+    const searchTerm = document.getElementById('blacklistSearchInput').value.toLowerCase();
+    
+    const filteredContacts = contacts.filter(contact => {
+        return contact.nom?.toLowerCase().includes(searchTerm) ||
+               contact.prenom?.toLowerCase().includes(searchTerm) ||
+               contact.email?.toLowerCase().includes(searchTerm) ||
+               contact.telephone?.toLowerCase().includes(searchTerm);
+    });
+    
+    if (filteredContacts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">Aucun contact bloqué trouvé</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = filteredContacts.map(contact => `
+        <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4">${escapeHtml(contact.nom || '')}</td>
+            <td class="px-6 py-4">${escapeHtml(contact.prenom || '')}</td>
+            <td class="px-6 py-4">${escapeHtml(contact.email || '-')}</td>
+            <td class="px-6 py-4">${escapeHtml(contact.telephone || '-')}</td>
+            <td class="px-6 py-4">${formatDate(contact.date_blocage)}</td>
+            <td class="px-6 py-4 text-right">
+                <button onclick="unblockContact(${contact.id_contact}, '${escapeHtml(contact.prenom)} ${escapeHtml(contact.nom)}')" 
+                        class="text-green-600 hover:text-green-800" title="Débloquer">
+                    <i class="fas fa-check-circle"></i> Débloquer
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR');
+}
+
+async function unblockContact(contactId, contactName) {
+    if (!confirm(`Êtes-vous sûr de vouloir débloquer ${contactName} ?`)) return;
+    
+    try {
+        const response = await fetch('index.php?page=contacts/blacklist&action=unblock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ id_contact: contactId })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(`${contactName} a été débloqué avec succès`, 'success');
+            loadBlacklistContacts();
+        } else {
+            showToast(result.error || 'Erreur lors du déblocage', 'error');
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+    }
+}
+
+document.getElementById('blacklistSearchInput')?.addEventListener('input', function() {
+    const tbody = document.getElementById('blacklistTableBody');
+    if (tbody && tbody.innerHTML) {
+        const rows = tbody.querySelectorAll('tr');
+        const searchTerm = this.value.toLowerCase();
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(searchTerm) ? '' : 'none';
+        });
+    }
+});
 
 // ============================================
 // MODAL D'AJOUT DE LISTE
@@ -657,7 +830,8 @@ document.getElementById('renameModal')?.addEventListener('click', e => { if (e.t
 document.getElementById('clearModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeClearModal(); });
 document.getElementById('deleteModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeDeleteModal(); });
 document.getElementById('importModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeImportModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddListeModal(); closeRenameModal(); closeClearModal(); closeDeleteModal(); closeImportModal(); } });
+document.getElementById('blacklistModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeBlacklistModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddListeModal(); closeRenameModal(); closeClearModal(); closeDeleteModal(); closeImportModal(); closeBlacklistModal(); } });
 </script>
 
 </body>

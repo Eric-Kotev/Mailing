@@ -211,6 +211,37 @@ unset($_SESSION['flash_error']);
             opacity: 1 !important;
             transform: scale(1) !important;
         }
+        
+        /* Style pour le conteneur du mot de passe */
+        .password-container {
+            position: relative;
+        }
+        
+        .password-container input {
+            padding-right: 45px;
+        }
+        
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #9ca3af;
+            transition: color 0.2s ease;
+            z-index: 10;
+            background: transparent;
+            border: none;
+            font-size: 1.1rem;
+        }
+        
+        .toggle-password:hover {
+            color: #3b82f6;
+        }
+        
+        .toggle-password:focus {
+            outline: none;
+        }
     </style>
 </head>
 <body>
@@ -288,14 +319,14 @@ unset($_SESSION['flash_error']);
                                 <?php else: ?>
                                     <span class="px-2 py-1 rounded text-xs bg-gray-100 text-gray-400">Vous-même</span>
                                 <?php endif; ?>
-                            </td>
+                             </td>
                             <td class="px-6 py-4"><?= date('d/m/Y', strtotime($user['date_creation'])) ?></td>
                             <td class="px-6 py-4 space-x-2">
                                 <button type="button" onclick="openEditUserModal('<?= $user['id_compte'] ?>')" 
                                         class="text-blue-600 hover:text-blue-800" title="Modifier">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                            </td>
+                             </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -352,8 +383,13 @@ unset($_SESSION['flash_error']);
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Mot de passe *</label>
-                        <input type="password" name="password" id="add_password" required 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        <div class="password-container">
+                            <input type="password" name="password" id="add_password" required 
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <button type="button" class="toggle-password" onclick="togglePassword('add_password', this)">
+                                <i class="far fa-eye"></i>
+                            </button>
+                        </div>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
@@ -436,9 +472,14 @@ unset($_SESSION['flash_error']);
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
-                        <input type="password" name="new_password" id="edit_new_password" 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                               placeholder="Laissez vide pour ne pas changer">
+                        <div class="password-container">
+                            <input type="password" name="new_password" id="edit_new_password" 
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   placeholder="Laissez vide pour ne pas changer">
+                            <button type="button" class="toggle-password" onclick="togglePassword('edit_new_password', this)">
+                                <i class="far fa-eye"></i>
+                            </button>
+                        </div>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
@@ -580,6 +621,24 @@ unset($_SESSION['flash_error']);
 
 <script>
 // ============================================
+// TOGGLE PASSWORD (Afficher/Masquer)
+// ============================================
+function togglePassword(inputId, buttonElement) {
+    const passwordInput = document.getElementById(inputId);
+    const icon = buttonElement.querySelector('i');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        passwordInput.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
+
+// ============================================
 // TOAST NOTIFICATION
 // ============================================
 function showToast(message, type = 'success') {
@@ -600,6 +659,15 @@ function openAddUserModal() {
     const modal = document.getElementById('addUserModal');
     const modalContent = modal.querySelector('.modal-add-user');
     document.getElementById('addUserForm').reset();
+    // Réinitialiser le type du champ mot de passe
+    const pwdInput = document.getElementById('add_password');
+    if (pwdInput) pwdInput.type = 'password';
+    // Réinitialiser l'icône
+    const toggleBtn = document.querySelector('#addUserModal .toggle-password i');
+    if (toggleBtn) {
+        toggleBtn.classList.remove('fa-eye-slash');
+        toggleBtn.classList.add('fa-eye');
+    }
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
@@ -635,6 +703,16 @@ async function openEditUserModal(userId) {
         document.getElementById('edit_credits').value = user.credits_total || 0;
         document.getElementById('edit_role').value = user.role || 'user';
         document.getElementById('edit_new_password').value = '';
+        
+        // Réinitialiser le type du champ mot de passe
+        const pwdInput = document.getElementById('edit_new_password');
+        if (pwdInput) pwdInput.type = 'password';
+        // Réinitialiser l'icône
+        const toggleBtn = document.querySelector('#editUserModal .toggle-password i');
+        if (toggleBtn) {
+            toggleBtn.classList.remove('fa-eye-slash');
+            toggleBtn.classList.add('fa-eye');
+        }
         
         modal.style.display = 'flex';
         setTimeout(() => modalContent.classList.add('modal-show'), 10);
@@ -725,7 +803,7 @@ document.getElementById('editUserForm')?.addEventListener('submit', async functi
 });
 
 // ============================================
-// MODALES STATUT, RÔLE, CRÉDITS (inchangées)
+// MODALES STATUT, RÔLE, CRÉDITS
 // ============================================
 function openStatusModal(userId, userName, currentStatus) {
     const isActive = currentStatus === '1' || currentStatus === true;

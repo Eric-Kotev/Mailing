@@ -341,9 +341,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transition: all 0.2s ease;
             cursor: pointer;
         }
+        
+        /* Animation de chargement du bouton */
+        .btn-loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+            position: relative;
+            pointer-events: none;
+        }
+        
+        .btn-loading i {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Overlay de chargement global */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .loading-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .loading-spinner {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        
+        .loading-spinner i {
+            font-size: 48px;
+            color: #22c55e;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        
+        .loading-spinner p {
+            margin: 0;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .progress-bar-container {
+            width: 300px;
+            margin-top: 15px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: #22c55e;
+            width: 0%;
+            transition: width 0.3s ease;
+            animation: loading 2s infinite;
+        }
+        
+        @keyframes loading {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
     </style>
 </head>
 <body>
+
+<!-- Overlay de chargement global -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner">
+        <i class="fab fa-whatsapp"></i>
+        <p>Envoi du message en cours...</p>
+        <div class="progress-bar-container">
+            <div class="progress-bar">
+                <div class="progress-bar-fill"></div>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Veuillez patienter, ne fermez pas cette page</p>
+    </div>
+</div>
 
 <div class="max-w-3xl mx-auto py-8 px-4">
     <div class="flex items-center mb-6">
@@ -465,7 +566,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 
                 <div class="flex justify-end mt-6">
-                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition">
+                    <button type="submit" id="submitBtn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition">
                         <i class="fab fa-whatsapp mr-2"></i>Envoyer
                     </button>
                 </div>
@@ -488,6 +589,43 @@ $(document).ready(function() {
         language: 'fr'
     });
 });
+
+// Éléments du DOM
+const submitBtn = document.getElementById('submitBtn');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const whatsappForm = document.getElementById('whatsappForm');
+
+// Fonction pour activer/désactiver le mode chargement
+function setLoading(loading) {
+    if (loading) {
+        // Désactiver le bouton et changer son apparence
+        submitBtn.classList.add('btn-loading');
+        submitBtn.disabled = true;
+        
+        // Sauvegarder le contenu original
+        const originalContent = submitBtn.innerHTML;
+        submitBtn.setAttribute('data-original-content', originalContent);
+        
+        // Modifier le bouton
+        submitBtn.innerHTML = '<i class="fab fa-whatsapp fa-spin mr-2"></i>Envoi en cours...';
+        
+        // Afficher l'overlay
+        loadingOverlay.classList.add('active');
+    } else {
+        // Réactiver le bouton
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.disabled = false;
+        
+        // Restaurer le contenu original
+        const originalContent = submitBtn.getAttribute('data-original-content');
+        if (originalContent) {
+            submitBtn.innerHTML = originalContent;
+        }
+        
+        // Cacher l'overlay
+        loadingOverlay.classList.remove('active');
+    }
+}
 
 // ENREGISTREMENT AUDIO
 let mediaRecorder = null;
@@ -726,16 +864,30 @@ if (messageTextarea) {
     });
 }
 
-// VALIDATION AVANT SOUMISSION
-document.getElementById('whatsappForm').addEventListener('submit', function(e) {
+// VALIDATION AVANT SOUMISSION AVEC INDICATEUR DE CHARGEMENT
+whatsappForm.addEventListener('submit', function(e) {
+    // Récupérer la valeur correcte du select2
+    const chatId = $('#contact_search').val();
     const hasFile = fichierInput.files.length > 0;
     const hasAudio = audioDataInput.value !== '';
     const hasMessage = messageTextarea.value.trim() !== '';
     
+    if (!chatId || chatId === '') {
+        e.preventDefault();
+        showToast('Veuillez sélectionner un destinataire', 'error');
+        return false;
+    }
+    
     if (!hasMessage && !hasFile && !hasAudio) {
         e.preventDefault();
         showToast('Veuillez saisir un message ou ajouter un fichier/audio', 'error');
+        return false;
     }
+    
+    // Si tout est valide, on active le mode chargement
+    setLoading(true);
+    
+    // Le formulaire va se soumettre normalement ici
 });
 
 // TOAST NOTIFICATION
@@ -747,6 +899,12 @@ function showToast(message, type = 'success') {
     toast.innerHTML = `<div class="toast-content">${message}</div>`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+}
+
+// Si la page se recharge avec un succès ou une erreur, on cache le loading
+if (performance.navigation.type === 1) {
+    // Page rechargée (après soumission)
+    setLoading(false);
 }
 </script>
 

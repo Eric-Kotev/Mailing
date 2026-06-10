@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } else {
-        // Envoi multiple
+        // Envoi à une liste
         $liste_id = $_POST['liste_id'] ?? '';
         if (!empty($liste_id)) {
             // Récupérer les ID des contacts dans la liste via liste_contact
@@ -95,26 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Vérifier si le contact n'est pas blacklisté
                 if (!in_array($lc['id_contact'], $blacklistIds)) {
                     $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
-                    if (!empty($contact)) {
-                        $telephone = $contact[0]['telephone'];
-                        $telephone = preg_replace('/[^0-9]/', '', $telephone);
-                        if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
-                            $telephone = '261' . substr($telephone, 1);
-                        }
-                        if (substr($telephone, 0, 3) != '261') {
-                            $telephone = '261' . $telephone;
-                        }
-                        $recipients[] = '+' . $telephone;
-                        $destinatairesNoms[] = $contact[0]['prenom'] . ' ' . $contact[0]['nom'] . ' (' . $telephone . ')';
-                    }
-                }
-            }
-        } else {
-            // Sélection manuelle de plusieurs contacts
-            $destinataires = $_POST['destinataires'] ?? [];
-            foreach ($destinataires as $contact_id) {
-                if (!in_array($contact_id, $blacklistIds)) {
-                    $contact = $db->select('contact', ['id_contact' => $contact_id]);
                     if (!empty($contact)) {
                         $telephone = $contact[0]['telephone'];
                         $telephone = preg_replace('/[^0-9]/', '', $telephone);
@@ -227,8 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Envoyer SMS - <?= APP_NAME ?></title>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
-        .select2-container--default .select2-selection--single,
-        .select2-container--default .select2-selection--multiple {
+        .select2-container--default .select2-selection--single {
             border: 1px solid #d1d5db;
             border-radius: 0.5rem;
             min-height: 42px;
@@ -239,28 +218,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         .select2-container--default .select2-selection--single .select2-selection__arrow {
             height: 40px;
-        }
-        .select2-container--default .select2-selection--multiple .select2-selection__rendered {
-            padding: 4px 8px;
-        }
-        .select2-container--default .select2-selection--multiple .select2-search__field {
-            margin-top: 6px;
-            padding: 0 8px;
-        }
-        .select2-container--default .select2-selection--multiple .select2-selection__choice {
-            background-color: #3b82f6;
-            border: none;
-            color: white;
-            border-radius: 20px;
-            padding: 4px 12px;
-            margin: 2px 4px;
-        }
-        .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
-            color: white;
-            margin-right: 6px;
-        }
-        .select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
-            color: #fef08a;
         }
         .select2-dropdown {
             border-radius: 0.5rem;
@@ -304,9 +261,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .type-envoi-option:hover {
             transform: translateY(-2px);
         }
+        
+        /* Animation de chargement du bouton */
+        .btn-loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+            position: relative;
+            pointer-events: none;
+        }
+        
+        .btn-loading i {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Overlay de chargement global */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .loading-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .loading-spinner {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        
+        .loading-spinner i {
+            font-size: 48px;
+            color: #3b82f6;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        
+        .loading-spinner p {
+            margin: 0;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .progress-bar-container {
+            width: 300px;
+            margin-top: 15px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: #3b82f6;
+            width: 0%;
+            transition: width 0.3s ease;
+            animation: loading 2s infinite;
+        }
+        
+        @keyframes loading {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
     </style>
 </head>
 <body>
+
+<!-- Overlay de chargement global -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner">
+        <i class="fas fa-circle-notch"></i>
+        <p>Envoi des SMS en cours...</p>
+        <div class="progress-bar-container">
+            <div class="progress-bar">
+                <div class="progress-bar-fill"></div>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Veuillez patienter, ne fermez pas cette page</p>
+    </div>
+</div>
 
 <div class="max-w-3xl mx-auto py-8 px-4">
     <div class="flex items-center mb-6">
@@ -350,9 +408,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div id="typeMultiple" 
                          class="type-envoi-option border-2 rounded-lg p-3 text-center cursor-pointer transition <?= (isset($_POST['type_envoi']) && $_POST['type_envoi'] == 'multiple') ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300' ?>">
-                        <i class="fas fa-users text-blue-600 text-xl mb-1"></i>
-                        <p class="font-medium text-gray-800">Envoi multiple</p>
-                        <p class="text-xs text-gray-500">À plusieurs destinataires</p>
+                        <i class="fas fa-list text-blue-600 text-xl mb-1"></i>
+                        <p class="font-medium text-gray-800">Envoi par liste</p>
+                        <p class="text-xs text-gray-500">À tous les contacts d'une liste</p>
                     </div>
                 </div>
                 <input type="hidden" name="type_envoi" id="type_envoi" value="<?= isset($_POST['type_envoi']) ? $_POST['type_envoi'] : 'simple' ?>">
@@ -363,7 +421,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="block text-sm font-medium text-gray-700 mb-1">
                     <i class="fas fa-user mr-1"></i> Destinataire *
                 </label>
-                <select name="contact_unique" id="contact_unique" class="w-full">
+                <select name="contact_unique" id="contact_unique" class="w-full" style="width: 100%;">
                     <option value="">Sélectionnez un contact...</option>
                     <?php foreach ($contacts as $contact): ?>
                         <option value="<?= $contact['id_contact'] ?>" <?= (isset($_POST['contact_unique']) && $_POST['contact_unique'] == $contact['id_contact']) ? 'selected' : '' ?>>
@@ -373,36 +431,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </select>
             </div>
             
-            <!-- Zone Envoi multiple -->
+            <!-- Zone Envoi multiple (Liste uniquement) -->
             <div id="multipleZone" class="mb-4" style="display: none;">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        <i class="fas fa-list mr-1"></i> Choisir une liste
-                    </label>
-                    <select name="liste_id" id="liste_id" class="w-full">
-                        <option value="">-- Sélectionnez une liste --</option>
-                        <?php foreach ($listes as $liste): ?>
-                            <option value="<?= $liste['id_liste'] ?>">
-                                <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <p class="text-xs text-gray-500 mt-1">Ou sélectionnez des contacts individuellement ci-dessous</p>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        <i class="fas fa-users mr-1"></i> Sélection manuelle des contacts
-                    </label>
-                    <select name="destinataires[]" id="contact_search" multiple class="w-full">
-                        <?php foreach ($contacts as $contact): ?>
-                            <option value="<?= $contact['id_contact'] ?>">
-                                <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?> - <?= htmlspecialchars($contact['telephone']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <p class="text-xs text-gray-500 mt-1">Tapez pour rechercher, sélectionnez-en plusieurs</p>
-                </div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <i class="fas fa-list mr-1"></i> Sélectionner une liste *
+                </label>
+                <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
+                    <option value="">-- Sélectionnez une liste --</option>
+                    <?php foreach ($listes as $liste): ?>
+                        <option value="<?= $liste['id_liste'] ?>" <?= (isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Le message sera envoyé à tous les contacts de cette liste</p>
             </div>
             
             <!-- Message -->
@@ -417,7 +459,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             
             <div class="flex justify-end">
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition">
+                <button type="submit" id="submitBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition">
                     <i class="fas fa-paper-plane mr-2"></i>Envoyer
                 </button>
             </div>
@@ -431,14 +473,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 $(document).ready(function() {
-    $('#contact_search').select2({
-        placeholder: "Rechercher et sélectionner des contacts...",
-        allowClear: true,
-        width: '100%',
-        language: 'fr',
-        closeOnSelect: false
-    });
-    
     $('#contact_unique').select2({
         placeholder: "Sélectionnez un contact...",
         allowClear: true,
@@ -459,6 +493,9 @@ const typeMultiple = document.getElementById('typeMultiple');
 const simpleZone = document.getElementById('simpleZone');
 const multipleZone = document.getElementById('multipleZone');
 const typeEnvoiInput = document.getElementById('type_envoi');
+const submitBtn = document.getElementById('submitBtn');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const smsForm = document.getElementById('smsForm');
 
 function setTypeEnvoi(type) {
     if (type === 'simple') {
@@ -470,9 +507,7 @@ function setTypeEnvoi(type) {
         multipleZone.style.display = 'none';
         typeEnvoiInput.value = 'simple';
         
-        $('#contact_search').prop('disabled', true);
         $('#liste_id').prop('disabled', true);
-        $('#contact_search').next().css('opacity', '0.5');
         $('#liste_id').next().css('opacity', '0.5');
         $('#contact_unique').prop('disabled', false);
         $('#contact_unique').next().css('opacity', '1');
@@ -485,12 +520,10 @@ function setTypeEnvoi(type) {
         multipleZone.style.display = 'block';
         typeEnvoiInput.value = 'multiple';
         
-        $('#contact_search').prop('disabled', false);
-        $('#liste_id').prop('disabled', false);
-        $('#contact_search').next().css('opacity', '1');
-        $('#liste_id').next().css('opacity', '1');
         $('#contact_unique').prop('disabled', true);
         $('#contact_unique').next().css('opacity', '0.5');
+        $('#liste_id').prop('disabled', false);
+        $('#liste_id').next().css('opacity', '1');
     }
 }
 
@@ -524,7 +557,40 @@ $('#liste_id').on('change', function() {
     }
 });
 
-document.getElementById('smsForm').addEventListener('submit', function(e) {
+// Fonction pour activer le mode chargement
+function setLoading(loading) {
+    if (loading) {
+        // Désactiver le bouton et changer son apparence
+        submitBtn.classList.add('btn-loading');
+        submitBtn.disabled = true;
+        
+        // Sauvegarder le contenu original
+        const originalContent = submitBtn.innerHTML;
+        submitBtn.setAttribute('data-original-content', originalContent);
+        
+        // Modifier le bouton
+        submitBtn.innerHTML = '<i class="fas fa-circle-notch mr-2"></i>Envoi en cours...';
+        
+        // Afficher l'overlay
+        loadingOverlay.classList.add('active');
+    } else {
+        // Réactiver le bouton
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.disabled = false;
+        
+        // Restaurer le contenu original
+        const originalContent = submitBtn.getAttribute('data-original-content');
+        if (originalContent) {
+            submitBtn.innerHTML = originalContent;
+        }
+        
+        // Cacher l'overlay
+        loadingOverlay.classList.remove('active');
+    }
+}
+
+// Gestion de la soumission du formulaire avec indicateur de chargement
+smsForm.addEventListener('submit', function(e) {
     const type_envoi = document.getElementById('type_envoi').value;
     const message = document.getElementById('message').value.trim();
     let hasRecipients = false;
@@ -534,8 +600,7 @@ document.getElementById('smsForm').addEventListener('submit', function(e) {
         hasRecipients = contact && contact !== '';
     } else {
         const liste = $('#liste_id').val();
-        const contacts = $('#contact_search').val();
-        hasRecipients = (liste && liste !== '') || (contacts && contacts.length > 0);
+        hasRecipients = liste && liste !== '';
     }
     
     if (!hasRecipients) {
@@ -548,6 +613,12 @@ document.getElementById('smsForm').addEventListener('submit', function(e) {
         showToast('Veuillez saisir un message', 'error');
         return false;
     }
+    
+    // Si tout est valide, on active le mode chargement
+    setLoading(true);
+    
+    // Le formulaire va se soumettre normalement ici
+    // Note: On ne désactive pas les champs Select2 pour éviter les problèmes de valeur
 });
 
 function showToast(message, type = 'success') {
@@ -559,6 +630,12 @@ function showToast(message, type = 'success') {
     toast.innerHTML = `<div class="toast-content">${message}</div>`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+}
+
+// Si la page se recharge avec un succès ou une erreur, on cache le loading
+if (performance.navigation.type === 1) {
+    // Page rechargée (après soumission)
+    setLoading(false);
 }
 </script>
 

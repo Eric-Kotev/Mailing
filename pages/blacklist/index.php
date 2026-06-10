@@ -439,10 +439,10 @@ $totalBlacklisted = count($blacklistWithContact);
         let bgColor = '#10b981';
         
         const types = {
-            success: { icon: '✅', color: '#10b981' },
-            error: { icon: '❌', color: '#ef4444' },
-            info: { icon: 'ℹ️', color: '#3b82f6' },
-            warning: { icon: '⚠️', color: '#f59e0b' }
+            success: {  color: '#10b981' },
+            error: { color: '#ef4444' },
+            info: { color: '#3b82f6' },
+            warning: { color: '#f59e0b' }
         };
         
         if (types[type]) {
