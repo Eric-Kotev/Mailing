@@ -31,6 +31,12 @@ if (!$contacts || empty($contacts)) {
     exit;
 }
 
-echo json_encode($contacts[0]);
-exit; 
+$contact = $contacts[0];
+
+// Récupérer les valeurs des champs personnalisés pour ce contact
+$customValues = getContactCustomValues($id);
+$contact['custom_values'] = $customValues;
+
+echo json_encode($contact);
+exit;
 ?>

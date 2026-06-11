@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (empty($message) && !$hasFile && !$hasAudio) {
         $error = "Veuillez saisir un message ou ajouter un fichier/audio";
     } else {
-        $apiUrl = 'http://72.62.26.166:8081/api/controller.php';
+        $apiUrl = 'http://164.68.103.147:8081/api/controller.php';
         $endpoint = '/messages/send-text';
         $data = [];
         

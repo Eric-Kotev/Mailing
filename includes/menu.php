@@ -119,23 +119,23 @@ $isAdmin = isAdminForMenu();
             <span class="menu-title">Configuration</span>
         </div>
 
-        <a href="index.php?page=canaux/index"
+       <!-- <a href="index.php?page=canaux/index"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
            <?= $currentPage == 'canaux/index'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-plug w-5 mr-3 text-yellow-400"></i>
             <span class="menu-text">Canaux d'envoi</span>
-        </a>
+        </a>-->
 
-        <a href="index.php?page=parametres/credits"
+        <!--<a href="index.php?page=parametres/credits"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
            <?= $currentPage == 'parametres/credits'
                 ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>"
             <i class="fas fa-coins w-5 mr-3 text-amber-400"></i>
             <span class="menu-text">Commander crédits</span>
-        </a>
+        </a> -->
 
         <a href="index.php?page=parametres/compte"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
@@ -153,15 +153,24 @@ $isAdmin = isAdminForMenu();
             </div>
 
             <a href="index.php?page=admin/users"
-               class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-               <?= $currentPage == 'admin/users'
+            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
+            <?= $currentPage == 'admin/users'
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
                 <i class="fas fa-users-cog w-5 mr-3 text-indigo-400"></i>
                 <span class="menu-text">Gestion des utilisateurs</span>
             </a>
-        <?php endif; ?>
 
+            <!-- Ajouter ce lien pour les champs personnalisés -->
+            <a href="index.php?page=admin/custom_fields"
+            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
+            <?= $currentPage == 'admin/custom_fields'
+                    ? 'bg-blue-600 text-white shadow-lg'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
+                <i class="fas fa-tags w-5 mr-3 text-purple-400"></i>
+                <span class="menu-text">Champs personnalisés</span>
+            </a>
+        <?php endif; ?>
     </nav>
 
     <!-- Footer -->

@@ -13,27 +13,6 @@ $_SESSION['user_credits'] = $credits;
             <button id="sidebarToggle" class="text-gray-500 hover:text-gray-700 mr-4">
                 <i class="fas fa-bars text-xl"></i>
             </button>
-            <div class="text-xl font-semibold text-gray-800">
-                <?php 
-                $pageTitle = $_GET['page'] ?? 'dashboard';
-                $titles = [
-                    'dashboard' => 'Tableau de bord',
-                    'contacts/index' => 'Mes contacts',
-                    'contacts/ajouter' => 'Ajouter un contact',
-                    'contacts/import' => 'Importer des contacts',
-                    'listes/index' => 'Mes listes',
-                    'listes/ajouter' => 'Nouvelle liste',
-                    'campagnes/index' => 'Historique des campagnes',
-                    'campagnes/nouvelle' => 'Nouvelle campagne',
-                    'canaux/index' => 'Canaux d\'envoi',
-                    'canaux/ajouter' => 'Ajouter un canal',
-                    'blacklist/index' => 'Blacklist',
-                    'parametres/credits' => 'Commander des crédits',
-                    'parametres/compte' => 'Paramètres du compte'
-                ];
-                echo $titles[$pageTitle] ?? ucfirst(str_replace('/', ' - ', $pageTitle));
-                ?>
-            </div>
         </div>
         
         <div class="flex items-center space-x-4">

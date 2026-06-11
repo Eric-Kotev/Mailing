@@ -73,19 +73,19 @@ class Database {
     }
     
     public function select($table, $conditions = [], $select = '*') {
-    $query = "select=" . $select;
-    
-    foreach ($conditions as $col => $value) {
-        if ($col === 'user') {
-            $query .= '&"user"=eq.' . urlencode($value);
-        } else {
-            $query .= "&" . $col . "=eq." . urlencode($value);
+        $query = "select=" . $select;
+        
+        foreach ($conditions as $col => $value) {
+            if ($col === 'user') {
+                $query .= '&"user"=eq.' . urlencode($value);
+            } else {
+                $query .= "&" . $col . "=eq." . urlencode($value);
+            }
         }
+        
+        $endpoint = $table . '?' . $query;
+        return $this->request('GET', $endpoint);
     }
-    
-    $endpoint = $table . '?' . $query;
-    return $this->request('GET', $endpoint);
-}
     
     public function insert($table, $data) {
         return $this->request('POST', $table, $data);
@@ -219,4 +219,106 @@ function setActiveWhatsAppSession($idCompte, $sessionName) {
         'nom_session' => $sessionName
     ]);
 }
-?>
+
+// ============================================
+// FONCTIONS POUR CHAMPS PERSONNALISÉS
+// ============================================
+
+/**
+ * Récupère tous les champs personnalisés d'un compte
+ */
+function getCustomFields($idCompte, $onlyActive = true) {
+    global $db;
+    
+    $conditions = ['id_compte' => $idCompte];
+    if ($onlyActive) {
+        $conditions['is_active'] = true;
+    }
+    
+    return $db->select('custom_fields', $conditions, '*', 'field_order ASC');
+}
+
+/**
+ * Récupère les valeurs des champs personnalisés pour un contact
+ */
+function getContactCustomValues($idContact) {
+    global $db;
+    
+    // Récupérer les valeurs
+    $values = $db->select('contact_custom_values', ['id_contact' => $idContact]);
+    
+    if (empty($values)) {
+        return [];
+    }
+    
+    $result = [];
+    foreach ($values as $value) {
+        $field = $db->select('custom_fields', ['id_custom_field' => $value['id_custom_field']]);
+        if (!empty($field)) {
+            $field = $field[0];
+            $result[$field['field_name']] = [
+                'value' => $value['field_value'],
+                'label' => $field['field_label'],
+                'type' => $field['field_type'],
+                'options' => $field['field_options']
+            ];
+        }
+    }
+    
+    return $result;
+}
+
+/**
+ * Sauvegarde les valeurs des champs personnalisés pour un contact
+ */
+function saveContactCustomValues($idContact, $customValues) {
+    global $db;
+    
+    if (empty($customValues)) {
+        return;
+    }
+    
+    // Récupérer tous les champs personnalisés du compte
+    $allFields = $db->select('custom_fields', ['id_compte' => $_SESSION['user_id']]);
+    $fieldMap = [];
+    foreach ($allFields as $field) {
+        $fieldMap[$field['field_name']] = $field['id_custom_field'];
+    }
+    
+    foreach ($customValues as $fieldName => $value) {
+        if (!isset($fieldMap[$fieldName]) || empty($value)) {
+            continue;
+        }
+        
+        $idField = $fieldMap[$fieldName];
+        
+        // Vérifier si la valeur existe déjà
+        $exists = $db->select('contact_custom_values', [
+            'id_contact' => $idContact,
+            'id_custom_field' => $idField
+        ]);
+        
+        if (!empty($exists)) {
+            // Update
+            $db->update('contact_custom_values', 
+                ['field_value' => $value], 
+                ['id_contact' => $idContact, 'id_custom_field' => $idField]
+            );
+        } else {
+            // Insert
+            $db->insert('contact_custom_values', [
+                'id_contact' => $idContact,
+                'id_custom_field' => $idField,
+                'field_value' => $value
+            ]);
+        }
+    }
+}
+
+/**
+ * Supprime toutes les valeurs des champs personnalisés pour un contact
+ */
+function deleteContactCustomValues($idContact) {
+    global $db;
+    $db->deleteWithConditions('contact_custom_values', ['id_contact' => $idContact]);
+}

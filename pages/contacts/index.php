@@ -15,6 +15,15 @@ foreach ($blacklistItems as $bl) {
     $blacklistDetails[$bl['id_contact']] = $bl;
 }
 
+// Récupérer les champs personnalisés pour le modal
+$customFields = getCustomFields($idCompte);
+
+// Pré-calculer les valeurs des champs personnalisés pour tous les contacts
+$contactsCustomValues = [];
+foreach ($contacts as $contact) {
+    $contactsCustomValues[$contact['id_contact']] = getContactCustomValues($contact['id_contact']);
+}
+
 $totalContacts = count($contacts);
 
 // ============================================
@@ -41,16 +50,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
         'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
         'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
         'ville' => !empty($_POST['ville']) ? $_POST['ville'] : null,
-        'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France',
-        'champs1' => !empty($_POST['champs1']) ? $_POST['champs1'] : null,
-        'champs2' => !empty($_POST['champs2']) ? $_POST['champs2'] : null,
-        'champs3' => !empty($_POST['champs3']) ? $_POST['champs3'] : null,
-        'champs4' => !empty($_POST['champs4']) ? $_POST['champs4'] : null,
-        'champs5' => !empty($_POST['champs5']) ? $_POST['champs5'] : null
+        'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France'
     ];
     
     try {
-        $db->insert('contact', $data);
+        $contactId = $db->insertAndGetId('contact', $data);
+        
+        // Sauvegarder les champs personnalisés
+        if (isset($_POST['custom_fields']) && is_array($_POST['custom_fields'])) {
+            saveContactCustomValues($contactId, $_POST['custom_fields']);
+        }
+        
         echo json_encode(['success' => true, 'message' => 'Contact ajouté avec succès']);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -80,16 +90,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_contact']
         'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
         'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
         'ville' => !empty($_POST['ville']) ? $_POST['ville'] : null,
-        'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France',
-        'champs1' => !empty($_POST['champs1']) ? $_POST['champs1'] : null,
-        'champs2' => !empty($_POST['champs2']) ? $_POST['champs2'] : null,
-        'champs3' => !empty($_POST['champs3']) ? $_POST['champs3'] : null,
-        'champs4' => !empty($_POST['champs4']) ? $_POST['champs4'] : null,
-        'champs5' => !empty($_POST['champs5']) ? $_POST['champs5'] : null
+        'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France'
     ];
     
     try {
         $db->update('contact', $data, ['id_contact' => $id]);
+        
+        // Sauvegarder les champs personnalisés
+        if (isset($_POST['custom_fields']) && is_array($_POST['custom_fields'])) {
+            saveContactCustomValues($id, $_POST['custom_fields']);
+        }
+        
         echo json_encode(['success' => true, 'message' => 'Contact modifié avec succès']);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -264,6 +275,19 @@ unset($_SESSION['flash_error']);
             opacity: 1 !important;
             transform: scale(1) !important;
         }
+        .custom-field-badge {
+            display: inline-block;
+            background-color: #f3f4f6;
+            border-radius: 9999px;
+            padding: 2px 8px;
+            font-size: 11px;
+            margin: 2px 4px 2px 0;
+            white-space: nowrap;
+        }
+        .custom-field-badge strong {
+            font-weight: 600;
+            color: #4b5563;
+        }
     </style>
 </head>
 <body>
@@ -320,6 +344,7 @@ unset($_SESSION['flash_error']);
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ville</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Infos</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -328,7 +353,7 @@ unset($_SESSION['flash_error']);
                 <tbody id="contactsTableBody">
                     <?php if (empty($contacts)): ?>
                         <tr id="noContactsRow">
-                            <td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                            <td colspan="8" class="px-6 py-8 text-center text-gray-500">
                                 <i class="fas fa-address-book text-4xl mb-2 block"></i>
                                 Aucun contact pour le moment.
                                 <button type="button" onclick="openAddContactModal()" class="text-blue-600 block mt-2">Ajouter votre premier contact →</button>
@@ -337,8 +362,7 @@ unset($_SESSION['flash_error']);
                     <?php else: ?>
                         <?php foreach ($contacts as $contact): 
                             $isBlacklisted = in_array($contact['id_contact'], $blacklistedIds);
-                            $blacklistInfo = $isBlacklisted ? $blacklistDetails[$contact['id_contact']] : null;
-                            $motif = $blacklistInfo ? $blacklistInfo['motif'] : '';
+                            $customVals = $contactsCustomValues[$contact['id_contact']] ?? [];
                         ?>
                             <tr class="contact-row hover:bg-gray-50 transition <?= $isBlacklisted ? 'bg-red-50' : '' ?>" 
                                 data-name="<?= strtolower(htmlspecialchars($contact['prenom'] . ' ' . $contact['nom'])) ?>"
@@ -353,6 +377,17 @@ unset($_SESSION['flash_error']);
                                 <td class="px-6 py-4"><?= htmlspecialchars($contact['email'] ?? '-') ?></td>
                                 <td class="px-6 py-4"><?= htmlspecialchars($contact['telephone'] ?? '-') ?></td>
                                 <td class="px-6 py-4"><?= htmlspecialchars($contact['ville'] ?? '-') ?></td>
+                                <td class="px-6 py-4">
+                                    <?php if (!empty($customVals)): ?>
+                                        <?php foreach ($customVals as $field): ?>
+                                            <span class="custom-field-badge">
+                                                <strong><?= htmlspecialchars($field['label']) ?>:</strong> <?= htmlspecialchars(substr($field['value'], 0, 30)) ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <span class="text-gray-400 text-xs">-</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="px-6 py-4"><?= date('d/m/Y', strtotime($contact['date_inscription'])) ?></td>
                                 <td class="px-6 py-4">
                                     <?php if ($isBlacklisted): ?>
@@ -393,16 +428,52 @@ unset($_SESSION['flash_error']);
             <form id="addContactForm" method="POST">
                 <input type="hidden" name="action_add_contact" value="1">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="email" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label><input type="tel" name="telephone" id="telephone" placeholder="33612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label><input type="date" name="date_naissance" id="date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Pays</label><input type="text" name="pays" id="pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="add_email" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label><input type="tel" name="telephone" id="add_telephone" placeholder="33612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label><input type="date" name="date_naissance" id="add_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="add_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="add_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Pays</label><input type="text" name="pays" id="add_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
                 </div>
-                <div class="mt-4"><label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label><textarea name="adresse" id="adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea></div>
+                <div class="mt-4"><label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label><textarea name="adresse" id="add_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea></div>
+                
+                <!-- Champs personnalisés pour l'ajout -->
+                <?php if (!empty($customFields)): ?>
+                <div class="mt-6 pt-4 border-t border-gray-200">
+                    <h3 class="text-md font-semibold text-gray-700 mb-3">Informations supplémentaires</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="addCustomFieldsContainer">
+                        <?php foreach ($customFields as $field): ?>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    <?= htmlspecialchars($field['field_label']) ?>
+                                    <?php if ($field['is_required']): ?><span class="text-red-500">*</span><?php endif; ?>
+                                </label>
+                                <?php if ($field['field_type'] === 'textarea'): ?>
+                                    <textarea name="custom_fields[<?= $field['field_name'] ?>]" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></textarea>
+                                <?php elseif ($field['field_type'] === 'select' && !empty($field['field_options'])): 
+                                    $options = explode('|', $field['field_options']);
+                                ?>
+                                    <select name="custom_fields[<?= $field['field_name'] ?>]" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                        <option value="">-- Sélectionner --</option>
+                                        <?php foreach ($options as $opt): ?>
+                                            <option value="<?= htmlspecialchars(trim($opt)) ?>"><?= htmlspecialchars(trim($opt)) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php elseif ($field['field_type'] === 'date'): ?>
+                                    <input type="date" name="custom_fields[<?= $field['field_name'] ?>]" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                <?php elseif ($field['field_type'] === 'number'): ?>
+                                    <input type="number" name="custom_fields[<?= $field['field_name'] ?>]" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                <?php else: ?>
+                                    <input type="text" name="custom_fields[<?= $field['field_name'] ?>]" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+                
                 <div class="mt-6 flex justify-end space-x-2">
                     <button type="button" onclick="closeAddContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
                     <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
@@ -436,16 +507,13 @@ unset($_SESSION['flash_error']);
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Pays</label><input type="text" name="pays" id="edit_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
                 </div>
                 <div class="mt-4"><label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label><textarea name="adresse" id="edit_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea></div>
-                <div class="mt-6 pt-4 border-t border-gray-200">
-                    <h3 class="text-md font-semibold text-gray-700 mb-3">Champs personnalisés</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 1</label><input type="text" name="champs1" id="edit_champs1" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 2</label><input type="text" name="champs2" id="edit_champs2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 3</label><input type="text" name="champs3" id="edit_champs3" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 4</label><input type="text" name="champs4" id="edit_champs4" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Champ 5</label><input type="text" name="champs5" id="edit_champs5" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    </div>
+                
+                <!-- Champs personnalisés dynamiques -->
+                <div class="mt-6 pt-4 border-t border-gray-200" id="customFieldsSection">
+                    <h3 class="text-md font-semibold text-gray-700 mb-3">Informations supplémentaires</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="editCustomFieldsContainer"></div>
                 </div>
+                
                 <div class="mt-6 flex justify-end space-x-2">
                     <button type="button" onclick="closeEditContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
                     <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
@@ -527,6 +595,9 @@ function showToast(message, type = 'success') {
 <?php if ($flashMessage): ?> showToast('<?= addslashes($flashMessage) ?>', 'success'); <?php endif; ?>
 <?php if ($flashError): ?> showToast('<?= addslashes($flashError) ?>', 'error'); <?php endif; ?>
 
+// Définition des champs personnalisés depuis PHP
+const customFieldsConfig = <?= json_encode($customFields) ?>;
+
 // ============================================
 // MODAL D'AJOUT
 // ============================================
@@ -570,15 +641,54 @@ async function openEditContactModal(contactId) {
         document.getElementById('edit_code_postal').value = contact.code_postal || '';
         document.getElementById('edit_pays').value = contact.pays || 'France';
         document.getElementById('edit_adresse').value = contact.adresse || '';
-        document.getElementById('edit_champs1').value = contact.champs1 || '';
-        document.getElementById('edit_champs2').value = contact.champs2 || '';
-        document.getElementById('edit_champs3').value = contact.champs3 || '';
-        document.getElementById('edit_champs4').value = contact.champs4 || '';
-        document.getElementById('edit_champs5').value = contact.champs5 || '';
+        
+        const container = document.getElementById('editCustomFieldsContainer');
+        container.innerHTML = '';
+        
+        if (customFieldsConfig.length > 0) {
+            document.getElementById('customFieldsSection').style.display = 'block';
+            
+            for (const field of customFieldsConfig) {
+                const currentValue = contact.custom_values?.[field.field_name]?.value || '';
+                const required = field.is_required ? '<span class="text-red-500">*</span>' : '';
+                
+                let fieldHtml = '<div><label class="block text-sm font-medium text-gray-700 mb-1">' + escapeHtml(field.field_label) + ' ' + required + '</label>';
+                
+                if (field.field_type === 'textarea') {
+                    fieldHtml += '<textarea name="custom_fields[' + escapeHtml(field.field_name) + ']" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">' + escapeHtml(currentValue) + '</textarea>';
+                } 
+                else if (field.field_type === 'select' && field.field_options) {
+                    const options = field.field_options.split('|');
+                    fieldHtml += '<select name="custom_fields[' + escapeHtml(field.field_name) + ']" class="w-full border border-gray-300 rounded-lg px-3 py-2">';
+                    fieldHtml += '<option value="">-- Sélectionner --</option>';
+                    for (const opt of options) {
+                        const optTrimmed = opt.trim();
+                        const selected = currentValue === optTrimmed ? 'selected' : '';
+                        fieldHtml += '<option value="' + escapeHtml(optTrimmed) + '" ' + selected + '>' + escapeHtml(optTrimmed) + '</option>';
+                    }
+                    fieldHtml += '</select>';
+                }
+                else if (field.field_type === 'date') {
+                    fieldHtml += '<input type="date" name="custom_fields[' + escapeHtml(field.field_name) + ']" value="' + escapeHtml(currentValue) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">';
+                }
+                else if (field.field_type === 'number') {
+                    fieldHtml += '<input type="number" name="custom_fields[' + escapeHtml(field.field_name) + ']" value="' + escapeHtml(currentValue) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">';
+                }
+                else {
+                    fieldHtml += '<input type="text" name="custom_fields[' + escapeHtml(field.field_name) + ']" value="' + escapeHtml(currentValue) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">';
+                }
+                
+                fieldHtml += '</div>';
+                container.innerHTML += fieldHtml;
+            }
+        } else {
+            document.getElementById('customFieldsSection').style.display = 'none';
+        }
         
         modal.style.display = 'flex';
         setTimeout(() => modalContent.classList.add('modal-show'), 10);
     } catch (error) {
+        console.error(error);
         showToast('Erreur lors du chargement du contact', 'error');
     }
 }
@@ -760,7 +870,7 @@ function filterContacts() {
             if (tbody) {
                 noResultRow = document.createElement('tr');
                 noResultRow.id = 'noResultRow';
-                noResultRow.innerHTML = '<td colspan="7" class="px-6 py-8 text-center text-gray-500"><i class="fas fa-search text-4xl mb-2 block"></i>Aucun contact ne correspond à votre recherche.</td>';
+                noResultRow.innerHTML = '<td colspan="8" class="px-6 py-8 text-center text-gray-500"><i class="fas fa-search text-4xl mb-2 block"></i>Aucun contact ne correspond à votre recherche.</td>';
                 tbody.appendChild(noResultRow);
             }
         }
@@ -780,6 +890,16 @@ filterBtns.forEach(btn => {
         filterContacts();
     });
 });
+
+// ============================================
+// FONCTIONS UTILITAIRES
+// ============================================
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 // Fermeture des modales
 document.getElementById('addContactModal')?.addEventListener('click', function(e) { if (e.target === this) closeAddContactModal(); });

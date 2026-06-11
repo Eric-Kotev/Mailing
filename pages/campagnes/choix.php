@@ -275,7 +275,7 @@ $hasSmsAppareils = !empty($smsAppareils);
     </div>
 </div>
 
-<!-- MODAL DE CONNEXION POUR NOUVEL APPAREIL -->
+<!-- MODAL DE CONNEXION POUR NOUVEL APPAREIL (AVEC OEIL POUR PASSWORD) -->
 <div id="newAppareilModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all duration-300 scale-95 opacity-0" id="newAppareilContent">
         <div class="p-6">
@@ -307,9 +307,16 @@ $hasSmsAppareils = !empty($smsAppareils);
                     <label class="block text-sm font-medium text-gray-700 mb-1">
                         Mot de passe API *
                     </label>
-                    <input type="password" id="api_password" 
-                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
-                           placeholder="Entrez votre mot de passe">
+                    <div class="password-container" style="position: relative;">
+                        <input type="password" id="api_password" 
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
+                               placeholder="Entrez votre mot de passe"
+                               style="padding-right: 45px;">
+                        <button type="button" class="toggle-password" onclick="togglePassword('api_password', this)" 
+                                style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; background: transparent; border: none; font-size: 1.1rem;">
+                            <i class="far fa-eye"></i>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="flex justify-end space-x-2 mt-6">
@@ -360,6 +367,57 @@ $hasSmsAppareils = !empty($smsAppareils);
     </div>
 </div>
 
+<style>
+    .modal-show { opacity: 1 !important; transform: scale(1) !important; }
+    #qrImage { max-width: 250px; height: auto; }
+    .toast-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10000;
+        animation: slideInRight 0.3s ease-out;
+    }
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    .toast-notification .toast-content {
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    
+    /* Style pour le conteneur du mot de passe */
+    .password-container {
+        position: relative;
+    }
+    .toggle-password {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #9ca3af;
+        transition: color 0.2s ease;
+        z-index: 10;
+        background: transparent;
+        border: none;
+        font-size: 1.1rem;
+    }
+    .toggle-password:hover {
+        color: #3b82f6;
+    }
+    .toggle-password:focus {
+        outline: none;
+    }
+</style>
+
 <script>
 const API_BASE_URL = 'http://72.62.26.166:8081/api/controller.php';
 const API_KEY = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
@@ -371,6 +429,22 @@ let whatsappSession = '<?= $whatsappSession ?>';
 let hasSessions = <?= $hasWhatsAppConfig ? 'true' : 'false' ?>;
 let currentApiUsername = '';
 let currentApiPassword = '';
+
+// Fonction pour afficher/masquer le mot de passe
+function togglePassword(inputId, buttonElement) {
+    const passwordInput = document.getElementById(inputId);
+    const icon = buttonElement.querySelector('i');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        passwordInput.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
 
 function showToast(message, type = 'warning') {
     const existingToasts = document.querySelectorAll('.toast-notification');
@@ -524,7 +598,6 @@ async function selectSession(sessionName, sessionId) {
         const result = await response.json();
         if (result.success) {
             showToast(`Session "${sessionName}" activée`, 'success');
-            // REDIRECTION VERS LA PAGE D'ENVOI WHATSAPP
             setTimeout(() => {
                 window.location.href = 'index.php?page=campagnes/envoyer_whatsapp';
             }, 500);
@@ -568,6 +641,15 @@ function openNewAppareilModal() {
     const modalContent = document.getElementById('newAppareilContent');
     document.getElementById('api_username').value = '';
     document.getElementById('api_password').value = '';
+    // Réinitialiser le type du champ mot de passe
+    const pwdInput = document.getElementById('api_password');
+    if (pwdInput) pwdInput.type = 'password';
+    // Réinitialiser l'icône
+    const toggleBtn = document.querySelector('#newAppareilModal .toggle-password i');
+    if (toggleBtn) {
+        toggleBtn.classList.remove('fa-eye-slash');
+        toggleBtn.classList.add('fa-eye');
+    }
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
@@ -939,29 +1021,5 @@ document.getElementById('deviceModal').addEventListener('click', function(e) {
 });
 </script>
 
-<style>
-    .modal-show { opacity: 1 !important; transform: scale(1) !important; }
-    #qrImage { max-width: 250px; height: auto; }
-    .toast-notification {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 10000;
-        animation: slideInRight 0.3s ease-out;
-    }
-    @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-    .toast-notification .toast-content {
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 14px;
-        font-weight: 500;
-    }
-</style>
+</body>
+</html>

@@ -23,7 +23,7 @@ $allowedPages = [
     'canaux/index', 'canaux/ajouter', 'canaux/supprimer',
     'blacklist/index',
     'parametres/compte', 'parametres/credits',
-    'admin/users', 'admin/users/edit', 'admin/users/add_credits',
+    'admin/users', 'admin/users/edit', 'admin/users/add_credits', 'admin/custom_fields',
 ];
 
 if (!in_array($page, $allowedPages)) {
