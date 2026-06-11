@@ -19,6 +19,7 @@ try {
 
     $idCompte = $_SESSION['user_id'];
     $sessionId = trim($_POST['session_id'] ?? '');
+    $sessionName = trim($_POST['session_name'] ?? '');
 
     if (empty($sessionId)) {
         throw new Exception('ID de session requis');
@@ -34,16 +35,19 @@ try {
         throw new Exception('Session non trouvée');
     }
     
+    $sessionName = $session[0]['nom_session'];
+    $isActive = $session[0]['est_active'];
+    
     // Récupérer toutes les sessions
     $allSessions = $db->select('whatsapp_sessions', ['id_compte' => $idCompte]);
     
-    // Vérifier que ce n'est pas la dernière session
-    if (count($allSessions) <= 1) {
-        throw new Exception('Vous ne pouvez pas supprimer votre dernière session');
-    }
+    // SUPPRESSION DE LA RESTRICTION - On peut maintenant supprimer la dernière session
+    // if (count($allSessions) <= 1) {
+    //     throw new Exception('Vous ne pouvez pas supprimer votre dernière session');
+    // }
     
-    // Si la session à supprimer est active, activer une autre session
-    if ($session[0]['est_active']) {
+    // Si la session à supprimer est active, activer une autre session (s'il y en a)
+    if ($isActive && count($allSessions) > 1) {
         foreach ($allSessions as $s) {
             if ($s['id_session'] !== $sessionId) {
                 $db->update('whatsapp_sessions', ['est_active' => true], ['id_session' => $s['id_session']]);
@@ -52,9 +56,8 @@ try {
         }
     }
     
-    // SUPPRESSION DIRECTE AVEC CURL (format correct)
+    // SUPPRESSION DANS LA BASE DE DONNÉES (Supabase)
     $supabaseUrl = SUPABASE_URL . '/rest/v1/whatsapp_sessions';
-    // Encoder correctement les valeurs pour l'URL
     $encodedSessionId = urlencode($sessionId);
     $encodedCompteId = urlencode($idCompte);
     $deleteUrl = $supabaseUrl . '?id_session=eq.' . $encodedSessionId . '&id_compte=eq.' . $encodedCompteId;
