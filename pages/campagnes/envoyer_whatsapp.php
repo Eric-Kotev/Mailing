@@ -27,7 +27,7 @@ if (!$whatsappSession) {
     exit;
 }
 
-// Récupérer les IDs des contacts blacklistés (sans condition id_compte)
+// Récupérer les IDs des contacts blacklistés
 $blacklist = $db->select('blacklist');
 $blacklistIds = [];
 foreach ($blacklist as $b) {
@@ -39,7 +39,7 @@ foreach ($blacklist as $b) {
 // Récupérer tous les contacts du compte
 $tousContacts = $db->select('contact', ['id_compte' => $idCompte]);
 
-// Filtrer
+// Filtrer les contacts non blacklistés
 $contacts = [];
 foreach ($tousContacts as $contact) {
     if (!in_array($contact['id_contact'], $blacklistIds)) {
@@ -47,11 +47,37 @@ foreach ($tousContacts as $contact) {
     }
 }
 
+// Récupérer les listes avec le nombre de contacts
+$listesBrutes = $db->select('liste', ['id_compte' => $idCompte]);
+$listes = [];
+
+foreach ($listesBrutes as $liste) {
+    $listeContacts = $db->select('liste_contact', ['id_liste' => $liste['id_liste']]);
+    $nbContacts = 0;
+    foreach ($listeContacts as $lc) {
+        if (!in_array($lc['id_contact'], $blacklistIds)) {
+            $nbContacts++;
+        }
+    }
+    
+    $listes[] = [
+        'id_liste' => $liste['id_liste'],
+        'nom_liste' => $liste['nom_liste'],
+        'nombre_contacts' => $nbContacts
+    ];
+}
+
 $error = '';
 $success = '';
 
+// Variables pour l'envoi groupé
+$envoiEnCours = false;
+$progressTotal = 0;
+$progressActuel = 0;
+$resultats = [];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $chatId = $_POST['chat_id'] ?? '';
+    $type_envoi = $_POST['type_envoi'] ?? 'simple';
     $message = $_POST['message'] ?? '';
     
     // Vérifier si un fichier audio a été enregistré
@@ -61,214 +87,302 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Vérifier si un fichier a été uploadé
     $hasFile = isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK;
     
-    if (empty($chatId)) {
-        $error = "Veuillez sélectionner un destinataire";
-    } elseif (empty($message) && !$hasFile && !$hasAudio) {
-        $error = "Veuillez saisir un message ou ajouter un fichier/audio";
-    } else {
-        $apiUrl = 'http://164.68.103.147:8081/api/controller.php';
-        $endpoint = '/messages/send-text';
-        $data = [];
+    if ($type_envoi === 'simple') {
+        // ============================================
+        // ENVOI UNIQUE
+        // ============================================
+        $chatId = $_POST['chat_id'] ?? '';
         
-        // Récupérer le nom du contact pour l'historique
-        $contactNom = '';
-        foreach ($contacts as $contact) {
-            $telephone = $contact['telephone'] ?? '';
-            if (!empty($telephone)) {
-                $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
-                if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
-                    $telephoneClean = '33' . substr($telephoneClean, 1);
-                }
-                $whatsappNumberTest = $telephoneClean . '@c.us';
-                if ($whatsappNumberTest === $chatId) {
-                    $contactNom = $contact['prenom'] . ' ' . $contact['nom'];
-                    break;
+        if (empty($chatId)) {
+            $error = "Veuillez sélectionner un destinataire";
+        } elseif (empty($message) && !$hasFile && !$hasAudio) {
+            $error = "Veuillez saisir un message ou ajouter un fichier/audio";
+        } else {
+            // Récupérer le nom du contact pour l'historique
+            $contactNom = '';
+            foreach ($contacts as $contact) {
+                $telephone = $contact['telephone'] ?? '';
+                if (!empty($telephone)) {
+                    $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
+                    if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
+                        $telephoneClean = '33' . substr($telephoneClean, 1);
+                    }
+                    $whatsappNumberTest = $telephoneClean . '@c.us';
+                    if ($whatsappNumberTest === $chatId) {
+                        $contactNom = $contact['prenom'] . ' ' . $contact['nom'];
+                        break;
+                    }
                 }
             }
+            
+            $resultat = envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom);
+            
+            if ($resultat['success']) {
+                $success = $resultat['message'];
+            } else {
+                $error = $resultat['error'];
+            }
+        }
+    } else {
+        // ============================================
+        // ENVOI À UNE LISTE
+        // ============================================
+        $liste_id = $_POST['liste_id'] ?? '';
+        
+        if (empty($liste_id)) {
+            $error = "Veuillez sélectionner une liste";
+        } elseif (empty($message) && !$hasFile && !$hasAudio) {
+            $error = "Veuillez saisir un message ou ajouter un fichier/audio";
+        } else {
+            // Récupérer les contacts de la liste
+            $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
+            $destinataires = [];
+            
+            foreach ($listeContacts as $lc) {
+                if (!in_array($lc['id_contact'], $blacklistIds)) {
+                    $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
+                    if (!empty($contact)) {
+                        $contact = $contact[0];
+                        $telephone = $contact['telephone'] ?? '';
+                        if (!empty($telephone)) {
+                            $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
+                            if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
+                                $telephoneClean = '33' . substr($telephoneClean, 1);
+                            }
+                            $whatsappNumber = $telephoneClean . '@c.us';
+                            $destinataires[] = [
+                                'chat_id' => $whatsappNumber,
+                                'nom' => $contact['prenom'] . ' ' . $contact['nom'],
+                                'id_contact' => $contact['id_contact']
+                            ];
+                        }
+                    }
+                }
+            }
+            
+            if (empty($destinataires)) {
+                $error = "Aucun destinataire valide dans cette liste";
+            } else {
+                $total = count($destinataires);
+                $envoyes = 0;
+                $erreurs = 0;
+                $resultats = [];
+                
+                // Démarrer l'envoi groupé
+                $envoiEnCours = true;
+                $progressTotal = $total;
+                
+                foreach ($destinataires as $index => $dest) {
+                    $progressActuel = $index + 1;
+                    
+                    // Envoyer le message
+                    $resultat = envoyerMessageWhatsApp($dest['chat_id'], $message, $hasFile, $hasAudio, $whatsappSession, $dest['nom']);
+                    
+                    if ($resultat['success']) {
+                        $envoyes++;
+                        $resultats[] = [
+                            'destinataire' => $dest['nom'],
+                            'statut' => 'succes',
+                            'message' => $resultat['message']
+                        ];
+                    } else {
+                        $erreurs++;
+                        $resultats[] = [
+                            'destinataire' => $dest['nom'],
+                            'statut' => 'erreur',
+                            'message' => $resultat['error']
+                        ];
+                    }
+                    
+                    // Si ce n'est pas le dernier message, attendre un délai aléatoire entre 2 et 5 minutes
+                    if ($index < $total - 1) {
+                        $delai = rand(120, 300); // 2 à 5 minutes en secondes
+                        sleep($delai);
+                    }
+                }
+                
+                $success = "Envoi terminé : $envoyes message(s) envoyé(s), $erreurs erreur(s)";
+                $envoiEnCours = false;
+            }
+        }
+    }
+}
+
+// Fonction pour envoyer un message WhatsApp
+function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom) {
+    global $db, $idCompte;
+    
+    $apiUrl = 'http://164.68.103.147:8081/api/controller.php';
+    $endpoint = '/messages/send-text';
+    $data = [];
+    
+    // Récupérer les fichiers si présents
+    if ($hasAudio) {
+        $audioData = $_POST['audio_data'] ?? '';
+        $base64Data = preg_replace('#^data:audio/[^;]+;base64,#', '', $audioData);
+        $fileData = $base64Data;
+        $originalName = 'audio_enregistre_' . date('Ymd_His') . '.webm';
+        
+        $endpoint = '/messages/send-voice';
+        $data = [
+            'session' => $whatsappSession,
+            'chatId' => $chatId,
+            'data' => $fileData,
+            'mimetype' => 'audio/webm',
+            'filename' => $originalName,
+            'convert' => true
+        ];
+        
+        if (!empty($message)) {
+            $data['caption'] = $message;
+        }
+    } elseif ($hasFile) {
+        $uploadDir = __DIR__ . '/../../uploads/temp/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
         }
         
-        // Priorité à l'audio enregistré
-        if ($hasAudio) {
-            // Extraire les données base64
-            $base64Data = preg_replace('#^data:audio/[^;]+;base64,#', '', $audioData);
-            $fileData = $base64Data;
-            $originalName = 'audio_enregistre_' . date('Ymd_His') . '.webm';
-            
+        $originalName = $_FILES['fichier']['name'];
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $tempName = uniqid() . '.' . $extension;
+        $filePath = $uploadDir . $tempName;
+        move_uploaded_file($_FILES['fichier']['tmp_name'], $filePath);
+        
+        $mimeType = mime_content_type($filePath);
+        $fileData = base64_encode(file_get_contents($filePath));
+        
+        if (strpos($mimeType, 'image/') !== false) {
+            $endpoint = '/messages/send-image';
+            $data = [
+                'session' => $whatsappSession,
+                'chatId' => $chatId,
+                'data' => $fileData,
+                'mimetype' => $mimeType,
+                'filename' => $originalName,
+                'caption' => $message
+            ];
+        } elseif (strpos($mimeType, 'video/') !== false) {
+            $endpoint = '/messages/send-video';
+            $data = [
+                'session' => $whatsappSession,
+                'chatId' => $chatId,
+                'data' => $fileData,
+                'mimetype' => $mimeType,
+                'filename' => $originalName,
+                'caption' => $message,
+                'asNote' => false,
+                'convert' => false
+            ];
+        } elseif (strpos($mimeType, 'audio/') !== false) {
             $endpoint = '/messages/send-voice';
             $data = [
                 'session' => $whatsappSession,
                 'chatId' => $chatId,
                 'data' => $fileData,
-                'mimetype' => 'audio/webm',
+                'mimetype' => $mimeType,
                 'filename' => $originalName,
                 'convert' => true
             ];
-            
-            // Ajouter la légende si un message est présent
             if (!empty($message)) {
                 $data['caption'] = $message;
             }
-        }
-        // Sinon fichier uploadé
-        elseif ($hasFile) {
-            $uploadDir = __DIR__ . '/../../uploads/temp/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
-            }
-            
-            $originalName = $_FILES['fichier']['name'];
-            $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-            $tempName = uniqid() . '.' . $extension;
-            $filePath = $uploadDir . $tempName;
-            move_uploaded_file($_FILES['fichier']['tmp_name'], $filePath);
-            
-            $mimeType = mime_content_type($filePath);
-            $fileData = base64_encode(file_get_contents($filePath));
-            
-            if (strpos($mimeType, 'image/') !== false) {
-                $endpoint = '/messages/send-image';
-                $data = [
-                    'session' => $whatsappSession,
-                    'chatId' => $chatId,
-                    'data' => $fileData,
-                    'mimetype' => $mimeType,
-                    'filename' => $originalName,
-                    'caption' => $message
-                ];
-            } elseif (strpos($mimeType, 'video/') !== false) {
-                $endpoint = '/messages/send-video';
-                $data = [
-                    'session' => $whatsappSession,
-                    'chatId' => $chatId,
-                    'data' => $fileData,
-                    'mimetype' => $mimeType,
-                    'filename' => $originalName,
-                    'caption' => $message,
-                    'asNote' => false,
-                    'convert' => false
-                ];
-            } elseif (strpos($mimeType, 'audio/') !== false) {
-                $endpoint = '/messages/send-voice';
-                $data = [
-                    'session' => $whatsappSession,
-                    'chatId' => $chatId,
-                    'data' => $fileData,
-                    'mimetype' => $mimeType,
-                    'filename' => $originalName,
-                    'convert' => true
-                ];
-                if (!empty($message)) {
-                    $data['caption'] = $message;
-                }
-            } else {
-                $endpoint = '/messages/send-file';
-                $data = [
-                    'session' => $whatsappSession,
-                    'chatId' => $chatId,
-                    'data' => $fileData,
-                    'mimetype' => $mimeType,
-                    'filename' => $originalName,
-                    'caption' => $message
-                ];
-            }
-            
-            unlink($filePath);
-        } 
-        // Sinon message texte simple
-        else {
-            $endpoint = '/messages/send-text';
+        } else {
+            $endpoint = '/messages/send-file';
             $data = [
                 'session' => $whatsappSession,
                 'chatId' => $chatId,
-                'text' => $message
+                'data' => $fileData,
+                'mimetype' => $mimeType,
+                'filename' => $originalName,
+                'caption' => $message
             ];
         }
         
-        // Appel API WhatsApp
-        $fullUrl = $apiUrl . $endpoint;
+        unlink($filePath);
+    } else {
+        // Message texte simple
+        $endpoint = '/messages/send-text';
+        $data = [
+            'session' => $whatsappSession,
+            'chatId' => $chatId,
+            'text' => $message
+        ];
+    }
+    
+    // Appel API WhatsApp
+    $fullUrl = $apiUrl . $endpoint;
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $fullUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'X-Controller-Key: 29f51fbe00e64ac5a5e3ce6eefbb79b5'
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    // Préparer les données pour l'historique
+    $destinatairesNoms = [$contactNom . ' (' . $chatId . ')'];
+    $destinatairesJson = json_encode($destinatairesNoms);
+    
+    $titre = "WhatsApp - " . date('d/m/Y H:i');
+    if (!empty($message)) {
+        $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
+    }
+    
+    if ($httpCode === 200 || $httpCode === 201) {
+        $campagneData = [
+            'id_compte' => $idCompte,
+            'type_campagne' => 'whatsapp',
+            'titre' => $titre,
+            'message' => $message,
+            'destinataires' => $destinatairesJson,
+            'nb_destinataires' => 1,
+            'nb_envoyes' => 1,
+            'nb_succes' => 1,
+            'nb_erreurs' => 0,
+            'appareil_utilise' => $whatsappSession,
+            'statut' => 'envoye',
+            'created_at' => date('Y-m-d H:i:s')
+        ];
         
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $fullUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'X-Controller-Key: 29f51fbe00e64ac5a5e3ce6eefbb79b5'
-        ]);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        // ============================================
-        // PRÉPARER LES DONNÉES POUR L'HISTORIQUE
-        // ============================================
-        $destinatairesNoms = [];
-        if (!empty($contactNom)) {
-            $destinatairesNoms[] = $contactNom . ' (' . $chatId . ')';
-        } else {
-            $destinatairesNoms[] = $chatId;
-        }
-        $destinatairesJson = json_encode($destinatairesNoms);
-        
-        $titre = "WhatsApp - " . date('d/m/Y H:i');
-        if (!empty($message)) {
-            $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
-        }
-        
-        if ($httpCode === 200 || $httpCode === 201) {
-            $success = "Message envoyé avec succès !";
-            if ($hasAudio) {
-                $success .= " (audio inclus)";
-            } elseif ($hasFile) {
-                $success .= " (fichier joint inclus)";
-            }
-            
-            // ENREGISTREMENT SUCCÈS
-            $campagneData = [
-                'id_compte' => $idCompte,
-                'type_campagne' => 'whatsapp',
-                'titre' => $titre,
-                'message' => $message,
-                'destinataires' => $destinatairesJson,
-                'nb_destinataires' => 1,
-                'nb_envoyes' => 1,
-                'nb_succes' => 1,
-                'nb_erreurs' => 0,
-                'appareil_utilise' => $whatsappSession,
-                'statut' => 'envoye',
-                'created_at' => date('Y-m-d H:i:s')
-            ];
-            
-        } else {
-            $error = "Echec: Votre message n'a pas été correctement envoyé";
-            
-            // ENREGISTREMENT ÉCHEC
-            $campagneData = [
-                'id_compte' => $idCompte,
-                'type_campagne' => 'whatsapp',
-                'titre' => $titre,
-                'message' => $message,
-                'destinataires' => $destinatairesJson,
-                'nb_destinataires' => 1,
-                'nb_envoyes' => 1,
-                'nb_succes' => 0,
-                'nb_erreurs' => 1,
-                'appareil_utilise' => $whatsappSession,
-                'statut' => 'echoue',
-                'erreur' => substr($response, 0, 500),
-                'created_at' => date('Y-m-d H:i:s')
-            ];
-        }
-        
-        // Enregistrer dans la base
         try {
             $db->insert('campagne', $campagneData);
         } catch (Exception $e) {
             error_log("Erreur insertion historique WhatsApp: " . $e->getMessage());
         }
+        
+        return ['success' => true, 'message' => 'Message envoyé avec succès !'];
+    } else {
+        $campagneData = [
+            'id_compte' => $idCompte,
+            'type_campagne' => 'whatsapp',
+            'titre' => $titre,
+            'message' => $message,
+            'destinataires' => $destinatairesJson,
+            'nb_destinataires' => 1,
+            'nb_envoyes' => 1,
+            'nb_succes' => 0,
+            'nb_erreurs' => 1,
+            'appareil_utilise' => $whatsappSession,
+            'statut' => 'echoue',
+            'erreur' => substr($response, 0, 500),
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+        
+        try {
+            $db->insert('campagne', $campagneData);
+        } catch (Exception $e) {
+            error_log("Erreur insertion historique WhatsApp: " . $e->getMessage());
+        }
+        
+        return ['success' => false, 'error' => "Échec de l'envoi: " . substr($response, 0, 200)];
     }
 }
 ?>
@@ -326,6 +440,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
+        .toast-notification.info .toast-content { background: #3b82f6; }
+        
+        .type-envoi-option {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .type-envoi-option:hover {
+            transform: translateY(-2px);
+        }
         
         .recording-active {
             animation: pulse 1s infinite;
@@ -336,13 +459,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             100% { transform: scale(1); opacity: 1; }
         }
 
-        /* Styles pour le drag & drop */
         #fileUploadArea {
             transition: all 0.2s ease;
             cursor: pointer;
         }
         
-        /* Animation de chargement du bouton */
         .btn-loading {
             opacity: 0.7;
             cursor: not-allowed;
@@ -359,7 +480,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             to { transform: rotate(360deg); }
         }
         
-        /* Overlay de chargement global */
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -387,6 +507,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-radius: 12px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
             text-align: center;
+            min-width: 350px;
         }
         
         .loading-spinner i {
@@ -403,7 +524,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         .progress-bar-container {
-            width: 300px;
+            width: 100%;
             margin-top: 15px;
         }
         
@@ -420,13 +541,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #22c55e;
             width: 0%;
             transition: width 0.3s ease;
-            animation: loading 2s infinite;
         }
         
-        @keyframes loading {
-            0% { width: 0%; }
-            50% { width: 70%; }
-            100% { width: 100%; }
+        .resultats-detail {
+            max-height: 300px;
+            overflow-y: auto;
+            text-align: left;
+            margin-top: 15px;
+            font-size: 12px;
+        }
+        
+        .resultat-succes {
+            color: #10b981;
+            padding: 5px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .resultat-erreur {
+            color: #ef4444;
+            padding: 5px 0;
+            border-bottom: 1px solid #e5e7eb;
         }
     </style>
 </head>
@@ -436,13 +570,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div id="loadingOverlay" class="loading-overlay">
     <div class="loading-spinner">
         <i class="fab fa-whatsapp"></i>
-        <p>Envoi du message en cours...</p>
+        <p id="loadingMessage">Envoi du message en cours...</p>
         <div class="progress-bar-container">
             <div class="progress-bar">
-                <div class="progress-bar-fill"></div>
+                <div class="progress-bar-fill" id="progressBarFill"></div>
             </div>
         </div>
-        <p class="text-xs text-gray-500 mt-2">Veuillez patienter, ne fermez pas cette page</p>
+        <div id="resultatsDetail" class="resultats-detail" style="display: none;"></div>
     </div>
 </div>
 
@@ -465,11 +599,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         
         <?php if ($success): ?>
-            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded"><?= $success ?></div>
+            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded"><?= nl2br($success) ?></div>
         <?php endif; ?>
         
         <?php if ($error): ?>
             <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded"><?= $error ?></div>
+        <?php endif; ?>
+        
+        <?php if (!empty($resultats)): ?>
+            <div class="mb-4 border rounded-lg overflow-hidden">
+                <div class="bg-gray-50 px-4 py-2 font-bold border-b">Détail des envois</div>
+                <div class="max-h-64 overflow-y-auto">
+                    <?php foreach ($resultats as $r): ?>
+                        <div class="px-4 py-2 border-b <?= $r['statut'] == 'succes' ? 'text-green-600' : 'text-red-600' ?>">
+                            <i class="fas <?= $r['statut'] == 'succes' ? 'fa-check-circle' : 'fa-exclamation-circle' ?> mr-2"></i>
+                            <?= htmlspecialchars($r['destinataire']) ?> : <?= htmlspecialchars($r['message']) ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
         <?php endif; ?>
         
         <?php if (empty($contacts)): ?>
@@ -480,11 +628,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         <?php else: ?>
             <form method="POST" enctype="multipart/form-data" id="whatsappForm">
-                <div class="mb-4">
+                <!-- Type d'envoi -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-envelope mr-1"></i> Type d'envoi *
+                    </label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div id="typeSimple" 
+                             class="type-envoi-option border-2 rounded-lg p-3 text-center cursor-pointer transition <?= (!isset($_POST['type_envoi']) || $_POST['type_envoi'] == 'simple') ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-green-300' ?>">
+                            <i class="fas fa-user text-green-600 text-xl mb-1"></i>
+                            <p class="font-medium text-gray-800">Envoi unique</p>
+                            <p class="text-xs text-gray-500">À un seul destinataire</p>
+                        </div>
+                        <div id="typeMultiple" 
+                             class="type-envoi-option border-2 rounded-lg p-3 text-center cursor-pointer transition <?= (isset($_POST['type_envoi']) && $_POST['type_envoi'] == 'multiple') ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-green-300' ?>">
+                            <i class="fas fa-list text-green-600 text-xl mb-1"></i>
+                            <p class="font-medium text-gray-800">Envoi par liste</p>
+                            <p class="text-xs text-gray-500">À tous les contacts d'une liste</p>
+                        </div>
+                    </div>
+                    <input type="hidden" name="type_envoi" id="type_envoi" value="<?= isset($_POST['type_envoi']) ? $_POST['type_envoi'] : 'simple' ?>">
+                </div>
+                
+                <!-- Zone Envoi unique -->
+                <div id="simpleZone" class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">
                         <i class="fab fa-whatsapp mr-1 text-green-600"></i> Destinataire *
                     </label>
-                    <select name="chat_id" id="contact_search" required class="w-full" style="width: 100%;">
+                    <select name="chat_id" id="contact_search" class="w-full" style="width: 100%;">
                         <option value="">Tapez le nom, prénom ou numéro...</option>
                         <?php foreach ($contacts as $contact): 
                             $telephone = $contact['telephone'] ?? '';
@@ -513,6 +684,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </p>
                 </div>
                 
+                <!-- Zone Envoi multiple -->
+                <div id="multipleZone" class="mb-4" style="display: none;">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        <i class="fas fa-list mr-1"></i> Sélectionner une liste *
+                    </label>
+                    <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
+                        <option value="">-- Sélectionnez une liste --</option>
+                        <?php foreach ($listes as $liste): ?>
+                            <option value="<?= $liste['id_liste'] ?>">
+                                <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">
+                        <i class="fas fa-clock mr-1"></i> Les messages seront envoyés avec un délai aléatoire. Cela peut prendre un peu de temps
+                    </p>
+                </div>
+                
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Message <span id="messageRequired" class="text-gray-400 text-xs">(optionnel si fichier/audio)</span></label>
                     <textarea name="message" id="message" rows="4" 
@@ -534,7 +723,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </button>
                     </div>
                     
-                    <!-- Zone d'upload fichier -->
                     <div id="fileUploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hidden">
                         <input type="file" name="fichier" id="fichier" class="hidden" accept="image/*,video/*,audio/*,.pdf">
                         <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
@@ -544,7 +732,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <button type="button" id="removeFileBtn" class="text-red-500 text-sm mt-2 hidden">Supprimer</button>
                     </div>
                     
-                    <!-- Zone d'enregistrement audio -->
                     <div id="audioRecordArea" class="border-2 border-gray-300 rounded-lg p-4 text-center hidden">
                         <div class="mb-3">
                             <div id="recordingTimer" class="text-2xl font-mono text-gray-700 mb-2">00:00</div>
@@ -588,43 +775,67 @@ $(document).ready(function() {
         width: '100%',
         language: 'fr'
     });
+    
+    $('#liste_id').select2({
+        placeholder: "-- Sélectionnez une liste --",
+        allowClear: true,
+        width: '100%',
+        language: 'fr'
+    });
 });
 
-// Éléments du DOM
-const submitBtn = document.getElementById('submitBtn');
-const loadingOverlay = document.getElementById('loadingOverlay');
-const whatsappForm = document.getElementById('whatsappForm');
+// Gestion du type d'envoi
+const typeSimple = document.getElementById('typeSimple');
+const typeMultiple = document.getElementById('typeMultiple');
+const simpleZone = document.getElementById('simpleZone');
+const multipleZone = document.getElementById('multipleZone');
+const typeEnvoiInput = document.getElementById('type_envoi');
 
-// Fonction pour activer/désactiver le mode chargement
-function setLoading(loading) {
-    if (loading) {
-        // Désactiver le bouton et changer son apparence
-        submitBtn.classList.add('btn-loading');
-        submitBtn.disabled = true;
+function setTypeEnvoi(type) {
+    if (type === 'simple') {
+        typeSimple.classList.add('border-green-500', 'bg-green-50');
+        typeSimple.classList.remove('border-gray-200');
+        typeMultiple.classList.remove('border-green-500', 'bg-green-50');
+        typeMultiple.classList.add('border-gray-200');
+        simpleZone.style.display = 'block';
+        multipleZone.style.display = 'none';
+        typeEnvoiInput.value = 'simple';
         
-        // Sauvegarder le contenu original
-        const originalContent = submitBtn.innerHTML;
-        submitBtn.setAttribute('data-original-content', originalContent);
-        
-        // Modifier le bouton
-        submitBtn.innerHTML = '<i class="fab fa-whatsapp fa-spin mr-2"></i>Envoi en cours...';
-        
-        // Afficher l'overlay
-        loadingOverlay.classList.add('active');
+        $('#liste_id').prop('disabled', true);
+        $('#liste_id').next().css('opacity', '0.5');
+        $('#contact_search').prop('disabled', false);
+        $('#contact_search').next().css('opacity', '1');
     } else {
-        // Réactiver le bouton
-        submitBtn.classList.remove('btn-loading');
-        submitBtn.disabled = false;
+        typeMultiple.classList.add('border-green-500', 'bg-green-50');
+        typeMultiple.classList.remove('border-gray-200');
+        typeSimple.classList.remove('border-green-500', 'bg-green-50');
+        typeSimple.classList.add('border-gray-200');
+        simpleZone.style.display = 'none';
+        multipleZone.style.display = 'block';
+        typeEnvoiInput.value = 'multiple';
         
-        // Restaurer le contenu original
-        const originalContent = submitBtn.getAttribute('data-original-content');
-        if (originalContent) {
-            submitBtn.innerHTML = originalContent;
-        }
-        
-        // Cacher l'overlay
-        loadingOverlay.classList.remove('active');
+        $('#contact_search').prop('disabled', true);
+        $('#contact_search').next().css('opacity', '0.5');
+        $('#liste_id').prop('disabled', false);
+        $('#liste_id').next().css('opacity', '1');
     }
+}
+
+typeSimple.addEventListener('click', () => setTypeEnvoi('simple'));
+typeMultiple.addEventListener('click', () => setTypeEnvoi('multiple'));
+
+setTypeEnvoi(typeEnvoiInput.value);
+
+// Toast notification
+function showToast(message, type = 'success') {
+    const existingToasts = document.querySelectorAll('.toast-notification');
+    existingToasts.forEach(toast => toast.remove());
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    toast.innerHTML = `<div class="toast-content">${message}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
 }
 
 // ENREGISTREMENT AUDIO
@@ -649,7 +860,6 @@ const audioDataInput = document.getElementById('audioData');
 const removeAudioBtn = document.getElementById('removeAudioBtn');
 const messageRequired = document.getElementById('messageRequired');
 
-// Toggle entre les options
 uploadFileBtn.addEventListener('click', () => {
     fileUploadArea.classList.remove('hidden');
     audioRecordArea.classList.add('hidden');
@@ -662,13 +872,9 @@ recordAudioBtn.addEventListener('click', () => {
     resetFileUpload();
 });
 
-// GESTION DE L'UPLOAD DE FICHIER
-
-// Fonction pour gérer le fichier
 function handleFile(file) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(2);
     
-    // Vérifier la taille (max 10 Mo)
     if (file.size > 10 * 1024 * 1024) {
         showToast('Le fichier est trop volumineux. Maximum 10 Mo.', 'error');
         resetFileUpload();
@@ -687,23 +893,18 @@ function handleFile(file) {
     messageRequired.innerHTML = '<span class="text-green-600">(optionnel)</span>';
 }
 
-// Gestion du clic sur la zone pour ouvrir l'explorateur
 fileUploadArea.addEventListener('click', (e) => {
-    // Éviter de déclencher si on clique sur le bouton supprimer
     if (e.target !== removeFileBtn && !removeFileBtn.contains(e.target)) {
         fichierInput.click();
     }
 });
 
-// Gestion du changement de fichier via l'input
 fichierInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
         handleFile(e.target.files[0]);
     }
 });
 
-// DRAG & DROP
-// Empêcher les comportements par défaut
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     fileUploadArea.addEventListener(eventName, preventDefaults, false);
     document.body.addEventListener(eventName, preventDefaults, false);
@@ -714,7 +915,6 @@ function preventDefaults(e) {
     e.stopPropagation();
 }
 
-// Mettre en évidence la zone
 ['dragenter', 'dragover'].forEach(eventName => {
     fileUploadArea.addEventListener(eventName, highlight, false);
 });
@@ -733,7 +933,6 @@ function unhighlight(e) {
     fileUploadArea.classList.add('border-gray-300');
 }
 
-// Gestion du drop
 fileUploadArea.addEventListener('drop', handleDrop, false);
 
 function handleDrop(e) {
@@ -746,7 +945,6 @@ function handleDrop(e) {
     }
 }
 
-// Bouton supprimer
 removeFileBtn.addEventListener('click', () => {
     fichierInput.value = '';
     fileInfoDiv.classList.add('hidden');
@@ -756,7 +954,6 @@ removeFileBtn.addEventListener('click', () => {
     }
 });
 
-// Enregistrement audio
 async function startRecording() {
     try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -855,7 +1052,7 @@ removeAudioBtn.addEventListener('click', () => {
     }
 });
 
-// COMPTEUR DE CARACTÈRES
+// Compteur de caractères
 const messageTextarea = document.getElementById('message');
 if (messageTextarea) {
     messageTextarea.addEventListener('input', function() {
@@ -864,47 +1061,129 @@ if (messageTextarea) {
     });
 }
 
-// VALIDATION AVANT SOUMISSION AVEC INDICATEUR DE CHARGEMENT
+// Variables pour l'overlay de chargement
+const submitBtn = document.getElementById('submitBtn');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const whatsappForm = document.getElementById('whatsappForm');
+const progressBarFill = document.getElementById('progressBarFill');
+const loadingMessage = document.getElementById('loadingMessage');
+const progressText = document.getElementById('progressText');
+const resultatsDetail = document.getElementById('resultatsDetail');
+
+
+function setLoading(loading, totalMessages = 0) {
+    if (loading) {
+        submitBtn.classList.add('btn-loading');
+        submitBtn.disabled = true;
+        const originalContent = submitBtn.innerHTML;
+        submitBtn.setAttribute('data-original-content', originalContent);
+        submitBtn.innerHTML = '<i class="fab fa-whatsapp fa-spin mr-2"></i>Envoi en cours...';
+        loadingOverlay.classList.add('active');
+        
+        if (totalMessages > 1) {
+            loadingMessage.innerHTML = 'Envoi groupé en cours...<br><span class="text-sm text-gray-500">Délai de 2 à 5 minutes entre chaque message</span>';
+
+            resultatsDetail.innerHTML = '<div class="text-center text-gray-500">Envoi du message en cours...</div>';
+        } else {
+            loadingMessage.innerHTML = 'Envoi du message en cours...';
+        }
+        
+    } else {
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.disabled = false;
+        const originalContent = submitBtn.getAttribute('data-original-content');
+        if (originalContent) {
+            submitBtn.innerHTML = originalContent;
+        }
+        loadingOverlay.classList.remove('active');
+        resultatsDetail.style.display = 'none';
+    }
+}
+
+// Validation et soumission
 whatsappForm.addEventListener('submit', function(e) {
-    // Récupérer la valeur correcte du select2
-    const chatId = $('#contact_search').val();
+    const type_envoi = document.getElementById('type_envoi').value;
+    const message = messageTextarea?.value.trim() || '';
     const hasFile = fichierInput.files.length > 0;
     const hasAudio = audioDataInput.value !== '';
-    const hasMessage = messageTextarea.value.trim() !== '';
+    let hasRecipients = false;
+    let totalMessages = 0;
     
-    if (!chatId || chatId === '') {
+    if (type_envoi === 'simple') {
+        const chatId = $('#contact_search').val();
+        hasRecipients = chatId && chatId !== '';
+        totalMessages = 1;
+    } else {
+        const liste = $('#liste_id').val();
+        hasRecipients = liste && liste !== '';
+        const selectedOption = $('#liste_id option:selected');
+        const text = selectedOption.text();
+        const match = text.match(/\((\d+)/);
+        if (match && match[1]) {
+            totalMessages = parseInt(match[1]);
+        }
+    }
+    
+    if (!hasRecipients) {
         e.preventDefault();
-        showToast('Veuillez sélectionner un destinataire', 'error');
+        showToast('Veuillez sélectionner un destinataire ou une liste', 'error');
         return false;
     }
     
-    if (!hasMessage && !hasFile && !hasAudio) {
+    if (!message && !hasFile && !hasAudio) {
         e.preventDefault();
         showToast('Veuillez saisir un message ou ajouter un fichier/audio', 'error');
         return false;
     }
     
-    // Si tout est valide, on active le mode chargement
-    setLoading(true);
+    if (totalMessages > 10) {
+        if (!confirm(`Vous allez envoyer ${totalMessages} messages avec un délai de 2 à 5 minutes entre chaque. Cela peut prendre plusieurs minutes. Continuer ?`)) {
+            e.preventDefault();
+            return false;
+        }
+    }
     
-    // Le formulaire va se soumettre normalement ici
+    setLoading(true, totalMessages);
+    
+    // Lancer une vérification périodique pour les envois groupés
+    if (totalMessages > 1) {
+        let currentProgress = 0;
+        const checkInterval = setInterval(function() {
+            fetch(window.location.href + '?check_progress=1')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.current > currentProgress) {
+                        currentProgress = data.current;
+                        
+                        if (data.resultats && data.resultats.length) {
+                            let html = '';
+                            data.resultats.forEach(r => {
+                                html += `<div class="${r.statut === 'succes' ? 'resultat-succes' : 'resultat-erreur'}">
+                                     ${escapeHtml(r.destinataire)} : ${escapeHtml(r.message)}
+                                </div>`;
+                            });
+                            resultatsDetail.innerHTML = html;
+                        }
+                    }
+                    
+                    if (data.completed) {
+                        clearInterval(checkInterval);
+                    }
+                })
+                .catch(() => {});
+        }, 3000);
+        
+        setTimeout(() => {
+            clearInterval(checkInterval);
+        }, 3600000); // 1 heure max
+    }
 });
 
-// TOAST NOTIFICATION
-function showToast(message, type = 'success') {
-    const existingToasts = document.querySelectorAll('.toast-notification');
-    existingToasts.forEach(toast => toast.remove());
-    const toast = document.createElement('div');
-    toast.className = `toast-notification ${type}`;
-    toast.innerHTML = `<div class="toast-content">${message}</div>`;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
-
-// Si la page se recharge avec un succès ou une erreur, on cache le loading
-if (performance.navigation.type === 1) {
-    // Page rechargée (après soumission)
-    setLoading(false);
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 </script>
 

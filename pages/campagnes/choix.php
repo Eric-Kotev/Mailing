@@ -535,24 +535,69 @@ function closeDynamicConfirmModal() {
 // GESTION WHATSAPP
 // ============================================
 
-function deleteSession(sessionId, sessionName) {
+// ============================================
+// GESTION WHATSAPP - SUPPRESSION (CORRIGÉE)
+// ============================================
+
+async function deleteSession(sessionId, sessionName) {
     showConfirmModal(sessionName, async () => {
         showToast('Suppression en cours...', 'info');
+        
         try {
-            const response = await fetch('/delete_session.php', {
+            // URL correcte pour Waha - note: pas de /api/controller.php/sessions mais /api/controller.php/sessions/nomSession
+            const wahaUrl = `http://164.68.103.147:8081/api/controller.php/sessions/${encodeURIComponent(sessionName)}`;
+            
+            console.log("Tentative de suppression Waha:", wahaUrl);
+            
+            // 1. Supprimer la session dans Waha (API)
+            const wahaResponse = await fetch(wahaUrl, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Controller-Key': API_KEY
+                }
+            });
+            
+            console.log("Waha Response Status:", wahaResponse.status);
+            
+            // Lire la réponse même si erreur
+            let wahaResult = null;
+            try {
+                wahaResult = await wahaResponse.json();
+                console.log("Waha Response:", wahaResult);
+            } catch(e) {
+                const text = await wahaResponse.text();
+                console.log("Waha Response Text:", text);
+            }
+            
+            if (wahaResponse.ok) {
+                showToast(`Session "${sessionName}" supprimée dans Waha`, 'success');
+            } else {
+                console.warn(`Erreur Waha (${wahaResponse.status}):`, wahaResult);
+                showToast(`Attention: La session "${sessionName}" n'a pas été trouvée dans Waha (code ${wahaResponse.status})`, 'warning');
+                // On continue quand même pour supprimer en base
+            }
+            
+            // 2. Supprimer la session dans la base de données
+            const dbResponse = await fetch('/delete_session.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `session_id=${encodeURIComponent(sessionId)}`
             });
-            const result = await response.json();
-            if (result.success) {
-                showToast(`Session "${sessionName}" supprimée`, 'success');
-                setTimeout(() => location.reload(), 1000);
+            
+            const dbResult = await dbResponse.json();
+            
+            if (dbResult.success) {
+                showToast(`Session "${sessionName}" supprimée avec succès`, 'success');
+                setTimeout(() => location.reload(), 1500);
             } else {
-                showToast(result.error || 'Erreur', 'error');
+                showToast(dbResult.error || 'Erreur lors de la suppression en base', 'error');
             }
+            
         } catch (error) {
-            showToast('Erreur: ' + error.message, 'error');
+            console.error('Erreur détaillée:', error);
+            showToast('Erreur réseau: ' + error.message, 'error');
         }
     });
 }
