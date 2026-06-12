@@ -119,14 +119,15 @@ function formatWhatsAppNumber($telephone) {
 }
 
 // Fonction pour vérifier le statut de la session WhatsApp
+// Fonction pour vérifier le statut de la session WhatsApp
 function checkWhatsAppSession($whatsappSession, $apiUrl, $apiKey) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $apiUrl . '/sessions/' . $whatsappSession . '/status');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type': 'application/json',
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+        'Content-Type: application/json',
         'X-Controller-Key: ' . $apiKey
-    ]);
+    ));
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -137,10 +138,9 @@ function checkWhatsAppSession($whatsappSession, $apiUrl, $apiKey) {
     }
     
     $result = json_decode($response, true);
-    $status = $result['status'] ?? $result['state'] ?? '';
+    $status = isset($result['status']) ? $result['status'] : (isset($result['state']) ? $result['state'] : '');
     return ($status === 'WORKING' || $status === 'connected');
 }
-
 // Fonction pour envoyer un message WhatsApp
 function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom, $apiUrl, $apiKey, $campagneConfigId = null) {
     global $db, $idCompte;
