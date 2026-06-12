@@ -41,7 +41,6 @@ $api_username = $_SESSION['sms_api_username'];
 $api_password = $_SESSION['sms_api_password'];
 
 // Récupérer les contacts (en excluant la blacklist)
-// 1. Récupérer les IDs des contacts blacklistés
 $blacklist = $db->select('blacklist');
 $blacklistIds = [];
 foreach ($blacklist as $b) {
@@ -50,10 +49,10 @@ foreach ($blacklist as $b) {
     }
 }
 
-// 2. Récupérer tous les contacts du compte
+// Récupérer tous les contacts du compte
 $tousContacts = $db->select('contact', ['id_compte' => $idCompte]);
 
-// 3. Filtrer les contacts non blacklistés
+// Filtrer les contacts non blacklistés
 $contacts = [];
 foreach ($tousContacts as $contact) {
     if (!in_array($contact['id_contact'], $blacklistIds)) {
@@ -81,12 +80,11 @@ foreach ($listesBrutes as $liste) {
     ];
 }
 
-
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $message = $_POST['message'];
+   $message = trim($_POST['message'] ?? '');
     $type_envoi = $_POST['type_envoi'] ?? 'simple';
     
     $recipients = [];
@@ -390,10 +388,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #6b21a5;
             margin-bottom: 8px;
         }
-        .campagne-info-text {
-            font-size: 13px;
-            color: #4a1d6d;
-        }
     </style>
 </head>
 <body>
@@ -430,7 +424,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="fas fa-bullhorn mr-2"></i>
                 Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
             </div>
-           
         </div>
         
         <div class="bg-blue-50 p-3 rounded mb-4">
@@ -497,7 +490,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                     <option value="">-- Sélectionnez une liste --</option>
                     <?php foreach ($listes as $liste): ?>
-                        <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste'])) ? 'selected' : '' ?>>
+                        <option value="<?= $liste['id_liste'] ?>">
                             <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -511,7 +504,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <i class="fas fa-comment mr-1"></i> Message *
                 </label>
                 <textarea name="message" id="message" rows="5" required
-                          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"></textarea>
+                          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
+                          placeholder="Votre message..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : '' ?></textarea>
                 <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
             </div>
             
