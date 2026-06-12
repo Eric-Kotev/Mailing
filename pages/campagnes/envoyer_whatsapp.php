@@ -91,7 +91,6 @@ foreach ($listesBrutes as $liste) {
     ];
 }
 
-
 $error = '';
 $success = '';
 $resultats = [];
@@ -102,23 +101,16 @@ function formatWhatsAppNumber($telephone) {
         return null;
     }
     
-    // Nettoyer le numéro (garder uniquement les chiffres)
     $telephone = preg_replace('/[^0-9]/', '', $telephone);
     
-    // Format pour Madagascar (9 chiffres)
     if (strlen($telephone) == 9) {
         $telephone = '261' . $telephone;
-    }
-    // Format pour France (10 chiffres commençant par 0)
-    elseif (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
+    } elseif (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
         $telephone = '33' . substr($telephone, 1);
-    }
-    // Format international sans l'indicatif
-    elseif (strlen($telephone) == 9 && substr($telephone, 0, 1) != '0') {
+    } elseif (strlen($telephone) == 9 && substr($telephone, 0, 1) != '0') {
         $telephone = '261' . $telephone;
     }
     
-    // Vérifier que le numéro a le bon format international
     if (strlen($telephone) < 10 || strlen($telephone) > 15) {
         return null;
     }
@@ -177,68 +169,76 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
             $data['caption'] = $message;
         }
     } elseif ($hasFile) {
-        $uploadDir = __DIR__ . '/../../uploads/temp/';
+        // Chemin absolu pour le dossier uploads
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/uploads/temp/';
+        
+        // Créer le dossier s'il n'existe pas avec les bons droits
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0755, true);
         }
         
         $originalName = $_FILES['fichier']['name'];
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
         $tempName = uniqid() . '.' . $extension;
         $filePath = $uploadDir . $tempName;
-        move_uploaded_file($_FILES['fichier']['tmp_name'], $filePath);
         
-        $mimeType = mime_content_type($filePath);
-        $fileData = base64_encode(file_get_contents($filePath));
-        
-        if (strpos($mimeType, 'image/') !== false) {
-            $endpoint = '/messages/send-image';
-            $data = [
-                'session' => $whatsappSession,
-                'chatId' => $chatId,
-                'data' => $fileData,
-                'mimetype' => $mimeType,
-                'filename' => $originalName,
-                'caption' => $message
-            ];
-        } elseif (strpos($mimeType, 'video/') !== false) {
-            $endpoint = '/messages/send-video';
-            $data = [
-                'session' => $whatsappSession,
-                'chatId' => $chatId,
-                'data' => $fileData,
-                'mimetype' => $mimeType,
-                'filename' => $originalName,
-                'caption' => $message,
-                'asNote' => false,
-                'convert' => false
-            ];
-        } elseif (strpos($mimeType, 'audio/') !== false) {
-            $endpoint = '/messages/send-voice';
-            $data = [
-                'session' => $whatsappSession,
-                'chatId' => $chatId,
-                'data' => $fileData,
-                'mimetype' => $mimeType,
-                'filename' => $originalName,
-                'convert' => true
-            ];
-            if (!empty($message)) {
-                $data['caption'] = $message;
+        // Déplacer le fichier
+        if (move_uploaded_file($_FILES['fichier']['tmp_name'], $filePath)) {
+            $mimeType = mime_content_type($filePath);
+            $fileData = base64_encode(file_get_contents($filePath));
+            
+            if (strpos($mimeType, 'image/') !== false) {
+                $endpoint = '/messages/send-image';
+                $data = [
+                    'session' => $whatsappSession,
+                    'chatId' => $chatId,
+                    'data' => $fileData,
+                    'mimetype' => $mimeType,
+                    'filename' => $originalName,
+                    'caption' => $message
+                ];
+            } elseif (strpos($mimeType, 'video/') !== false) {
+                $endpoint = '/messages/send-video';
+                $data = [
+                    'session' => $whatsappSession,
+                    'chatId' => $chatId,
+                    'data' => $fileData,
+                    'mimetype' => $mimeType,
+                    'filename' => $originalName,
+                    'caption' => $message,
+                    'asNote' => false,
+                    'convert' => false
+                ];
+            } elseif (strpos($mimeType, 'audio/') !== false) {
+                $endpoint = '/messages/send-voice';
+                $data = [
+                    'session' => $whatsappSession,
+                    'chatId' => $chatId,
+                    'data' => $fileData,
+                    'mimetype' => $mimeType,
+                    'filename' => $originalName,
+                    'convert' => true
+                ];
+                if (!empty($message)) {
+                    $data['caption'] = $message;
+                }
+            } else {
+                $endpoint = '/messages/send-file';
+                $data = [
+                    'session' => $whatsappSession,
+                    'chatId' => $chatId,
+                    'data' => $fileData,
+                    'mimetype' => $mimeType,
+                    'filename' => $originalName,
+                    'caption' => $message
+                ];
             }
+            
+            unlink($filePath);
         } else {
-            $endpoint = '/messages/send-file';
-            $data = [
-                'session' => $whatsappSession,
-                'chatId' => $chatId,
-                'data' => $fileData,
-                'mimetype' => $mimeType,
-                'filename' => $originalName,
-                'caption' => $message
-            ];
+            error_log("Erreur: Impossible de déplacer le fichier uploadé");
+            return ['success' => false, 'error' => "Erreur lors de l'upload du fichier"];
         }
-        
-        unlink($filePath);
     } else {
         $endpoint = '/messages/send-text';
         $data = [
@@ -354,7 +354,7 @@ if (!$sessionConnected && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
     $type_envoi = $_POST['type_envoi'] ?? 'simple';
-    $message = $_POST['message'] ;
+    $message = trim($_POST['message'] ?? '');
     $audioData = $_POST['audio_data'] ?? '';
     $hasAudio = !empty($audioData) && strpos($audioData, 'base64,') !== false;
     $hasFile = isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK;
@@ -383,7 +383,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             
             if ($resultat['success']) {
                 $success = $resultat['message'];
-                // Mettre à jour le statut de la campagne config
                 $db->update('campagne_config', [
                     'statut' => 'envoyee',
                     'sent_at' => date('Y-m-d H:i:s')
@@ -393,6 +392,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             }
         }
     } else {
+        $liste_id = $_POST['liste_id'] ?? '';
         
         if (empty($liste_id)) {
             $error = "Veuillez sélectionner une liste";
@@ -448,7 +448,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                         ];
                     }
                     
-                    // Délai entre les messages (2-5 minutes = 120-300 secondes)
                     if ($index < $total - 1) {
                         $delai = rand(120, 300);
                         sleep($delai);
@@ -457,7 +456,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                 
                 $success = "Envoi terminé : $envoyes message(s) envoyé(s), $erreurs erreur(s)";
                 
-                // Mettre à jour le statut de la campagne config
                 $db->update('campagne_config', [
                     'statut' => 'envoyee',
                     'sent_at' => date('Y-m-d H:i:s')
@@ -657,10 +655,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             color: #6b21a5;
             margin-bottom: 8px;
         }
-        .campagne-info-text {
-            font-size: 13px;
-            color: #4a1d6d;
-        }
     </style>
 </head>
 <body>
@@ -793,7 +787,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                     <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                         <option value="">-- Sélectionnez une liste --</option>
                         <?php foreach ($listes as $liste): ?>
-                            <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste'])) ? 'selected' : '' ?>>
+                            <option value="<?= $liste['id_liste'] ?>">
                                 <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
                             </option>
                         <?php endforeach; ?>
@@ -807,7 +801,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                     <label class="block text-sm font-medium text-gray-700 mb-1">Message <span id="messageRequired" class="text-gray-400 text-xs">(optionnel si fichier/audio)</span></label>
                     <textarea name="message" id="message" rows="4" 
                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500"
-                              ></textarea>
+                              placeholder="Votre message..."></textarea>
                     <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
                 </div>
                 
@@ -817,8 +811,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                     
                     <div class="flex space-x-2 mb-3">
                         <button type="button" id="uploadFileBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition">
-                            <i class="fas fa-upload mr-2"></i>Fichier
-                        </button>
+                            <i class="fas fa-upload mr-2"></i>Fichier                        </button>
                         <button type="button" id="recordAudioBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition">
                             <i class="fas fa-microphone mr-2"></i>Enregistrer audio
                         </button>
@@ -927,7 +920,6 @@ typeMultiple.addEventListener('click', () => setTypeEnvoi('multiple'));
 
 setTypeEnvoi(typeEnvoiInput.value);
 
-// Toast notification
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
