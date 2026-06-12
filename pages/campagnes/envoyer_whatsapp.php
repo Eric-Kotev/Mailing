@@ -124,7 +124,7 @@ function checkWhatsAppSession($whatsappSession, $apiUrl, $apiKey) {
     curl_setopt($ch, CURLOPT_URL, $apiUrl . '/sessions/' . $whatsappSession . '/status');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
+        'Content-Type': 'application/json',
         'X-Controller-Key: ' . $apiKey
     ]);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -169,12 +169,12 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
             $data['caption'] = $message;
         }
     } elseif ($hasFile) {
-        // Chemin absolu pour le dossier uploads
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/uploads/temp/';
+        // Utiliser /tmp qui est toujours accessible
+        $uploadDir = '/tmp/whatsapp_uploads/';
         
-        // Créer le dossier s'il n'existe pas avec les bons droits
+        // Créer le dossier temporaire si besoin
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+            mkdir($uploadDir, 0777, true);
         }
         
         $originalName = $_FILES['fichier']['name'];
@@ -811,7 +811,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                     
                     <div class="flex space-x-2 mb-3">
                         <button type="button" id="uploadFileBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition">
-                            <i class="fas fa-upload mr-2"></i>Fichier                        </button>
+                            <i class="fas fa-upload mr-2"></i>Fichier
+                        </button>
                         <button type="button" id="recordAudioBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition">
                             <i class="fas fa-microphone mr-2"></i>Enregistrer audio
                         </button>
@@ -861,7 +862,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/fr.js"></script>
 
 <script>
-// Initialisation Select2
 $(document).ready(function() {
     $('#contact_search').select2({
         placeholder: "Tapez le nom, prénom ou numéro...",
@@ -878,7 +878,6 @@ $(document).ready(function() {
     });
 });
 
-// Gestion du type d'envoi
 const typeSimple = document.getElementById('typeSimple');
 const typeMultiple = document.getElementById('typeMultiple');
 const simpleZone = document.getElementById('simpleZone');
@@ -931,7 +930,6 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// ENREGISTREMENT AUDIO
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingTimer = null;
@@ -1145,7 +1143,6 @@ removeAudioBtn.addEventListener('click', () => {
     }
 });
 
-// Compteur de caractères
 const messageTextarea = document.getElementById('message');
 if (messageTextarea) {
     messageTextarea.addEventListener('input', function() {
@@ -1154,7 +1151,6 @@ if (messageTextarea) {
     });
 }
 
-// Variables pour l'overlay de chargement
 const submitBtn = document.getElementById('submitBtn');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const whatsappForm = document.getElementById('whatsappForm');
@@ -1190,7 +1186,6 @@ function setLoading(loading, totalMessages = 0) {
     }
 }
 
-// Validation et soumission
 whatsappForm.addEventListener('submit', function(e) {
     const type_envoi = document.getElementById('type_envoi').value;
     const message = messageTextarea?.value.trim() || '';
