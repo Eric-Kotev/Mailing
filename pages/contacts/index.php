@@ -345,7 +345,7 @@ unset($_SESSION['flash_error']);
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ville</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Infos</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date d'inscription</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                     </tr>

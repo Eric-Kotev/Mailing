@@ -1,338 +1,362 @@
 <?php
 global $db;
+
 $idCompte = $_SESSION['user_id'];
+$campagneId = $_GET['campagne_id'] ?? null;
+$searchTerm = $_GET['search'] ?? '';
 
-// Récupérer toutes les campagnes
-$allCampagnes = $db->select('campagne', ['id_compte' => $idCompte], '*', 'created_at DESC');
+// Récupérer les campagnes config
+if (!empty($searchTerm)) {
+    // Récupérer toutes les campagnes puis filtrer
+    $allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC');
+    $campagnes = [];
+    foreach ($allCampagnes as $c) {
+        if (stripos($c['nom_campagne'], $searchTerm) !== false || 
+            stripos($c['objet'] ?? '', $searchTerm) !== false ||
+            stripos($c['message'], $searchTerm) !== false) {
+            $campagnes[] = $c;
+        }
+    }
+} else {
+    $campagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC');
+}
 
-// Statistiques
-$stats = ['total' => 0, 'whatsapp' => 0, 'sms' => 0, 'messages' => 0];
-foreach ($allCampagnes as $c) {
-    $stats['total']++;
-    if ($c['type_campagne'] == 'whatsapp') $stats['whatsapp']++;
-    else $stats['sms']++;
-    $stats['messages'] += $c['nb_envoyes'];
+// Compter les envois pour chaque campagne
+foreach ($campagnes as $key => $campagne) {
+    $envois = $db->select('campagne', ['id_campagne_config' => $campagne['id_campagne_config']]);
+    $campagnes[$key]['nb_envois'] = count($envois);
+}
+
+// Si une campagne est sélectionnée, récupérer les détails des envois
+$campagneSelectionnee = null;
+$envoisListe = [];
+if ($campagneId) {
+    $campagneSelectionnee = $db->select('campagne_config', [
+        'id_campagne_config' => $campagneId,
+        'id_compte' => $idCompte
+    ]);
+    if ($campagneSelectionnee) {
+        $campagneSelectionnee = $campagneSelectionnee[0];
+        $envoisListe = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
+    }
 }
 ?>
 
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historique des campagnes - <?= APP_NAME ?></title>
+    <style>
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .status-brouillon { background: #f3f4f6; color: #4b5563; }
+        .status-planifiee { background: #fef3c7; color: #92400e; }
+        .status-envoyee { background: #dcfce7; color: #166534; }
+        .status-annulee { background: #fee2e2; color: #991b1b; }
+        
+        .campagne-row {
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .campagne-row:hover {
+            background-color: #f9fafb;
+        }
+        .envoi-row:hover {
+            background-color: #fef3c7;
+        }
+        .search-clear {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            cursor: pointer;
+        }
+        .search-clear:hover {
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+
 <div class="space-y-6">
-    <!-- En-tête -->
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-2xl font-bold text-gray-800">Historique des campagnes</h1>
-            <p class="text-gray-500">Retrouvez toutes vos campagnes d'envoi (SMS et WhatsApp)</p>
+            <p class="text-gray-500">Consultez toutes vos campagnes et leurs envois</p>
         </div>
-        <a href="index.php?page=campagnes/choix" class="text-blue-600 hover:text-blue-800">
-            <i class="fas fa-arrow-left"></i> Retour
+        <?php if ($campagneId): ?>
+            <a href="index.php?page=campagnes/historique" class="text-blue-600 hover:text-blue-800">
+                <i class="fas fa-arrow-left mr-1"></i> Voir toutes les campagnes
+            </a>
+        <?php endif; ?>
+    </div>
+
+    <?php if ($campagneId && $campagneSelectionnee): ?>
+        <!-- Affichage des détails de la campagne sélectionnée -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="p-4 border-b bg-purple-50">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-purple-800">
+                            <i class="fas fa-bullhorn mr-2"></i>
+                            <?= htmlspecialchars($campagneSelectionnee['nom_campagne']) ?>
+                        </h2>
+                        <p class="text-sm text-purple-600 mt-1">
+                            Créée le <?= date('d/m/Y H:i', strtotime($campagneSelectionnee['created_at'])) ?>
+                        </p>
+                    </div>
+                    <span class="status-badge status-<?= $campagneSelectionnee['statut'] ?>">
+                        <?php
+                        $statusText = [
+                            'brouillon' => 'Brouillon',
+                            'planifiee' => 'Planifiée',
+                            'envoyee' => 'Envoyée',
+                            'annulee' => 'Annulée'
+                        ];
+                        echo $statusText[$campagneSelectionnee['statut']] ?? $campagneSelectionnee['statut'];
+                        ?>
+                    </span>
+                </div>
+                <?php if ($campagneSelectionnee['objet']): ?>
+                    <div class="mt-2 text-sm text-gray-600">
+                        <strong>Objet :</strong> <?= htmlspecialchars($campagneSelectionnee['objet']) ?>
+                    </div>
+                <?php endif; ?>
+                <div class="mt-1 text-sm text-gray-600">
+                    <strong>Message :</strong> <?= htmlspecialchars(substr($campagneSelectionnee['message'], 0, 100)) ?>...
+                </div>
+            </div>
+            
+            <!-- Liste des envois de cette campagne -->
+            <div class="p-4">
+                <h3 class="font-semibold text-gray-700 mb-3">
+                    <i class="fas fa-envelope mr-2"></i>
+                    Envois réalisés (<?= count($envoisListe) ?>)
+                </h3>
+                
+                <?php if (empty($envoisListe)): ?>
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-2 block"></i>
+                        Aucun envoi pour cette campagne.
+                        <?php if ($campagneSelectionnee['statut'] == 'brouillon'): ?>
+                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagneId ?>" class="text-green-600 block mt-2">
+                                <i class="fas fa-plus mr-1"></i>Envoyer un message
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Message</th>
+                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Destinataires</th>
+                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Succès</th>
+                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Échecs</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Appareil</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                <?php foreach ($envoisListe as $envoi): ?>
+                                    <tr class="envoi-row hover:bg-gray-50">
+                                        <td class="px-4 py-2 text-sm text-gray-500 whitespace-nowrap">
+                                            <?= date('d/m/Y H:i', strtotime($envoi['created_at'])) ?>
+                                        </td>
+                                        <td class="px-4 py-2">
+                                            <?php if ($envoi['type_campagne'] == 'whatsapp'): ?>
+                                                <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">WhatsApp</span>
+                                            <?php else: ?>
+                                                <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">SMS</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="px-4 py-2">
+                                            <div class="text-sm text-gray-800 max-w-xs truncate" title="<?= htmlspecialchars($envoi['message']) ?>">
+                                                <?= htmlspecialchars(substr($envoi['message'], 0, 50)) ?>...
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-2 text-center text-sm"><?= $envoi['nb_destinataires'] ?></td>
+                                        <td class="px-4 py-2 text-center text-sm text-green-600"><?= $envoi['nb_succes'] ?></td>
+                                        <td class="px-4 py-2 text-center text-sm text-red-600"><?= $envoi['nb_erreurs'] ?></td>
+                                        <td class="px-4 py-2 text-sm text-gray-500">
+                                            <?= htmlspecialchars(substr($envoi['appareil_utilise'] ?? '-', 0, 25)) ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Statistiques des envois -->
+                    <?php
+                    $totalSucces = 0;
+                    $totalErreurs = 0;
+                    $totalDestinataires = 0;
+                    foreach ($envoisListe as $e) {
+                        $totalSucces += $e['nb_succes'];
+                        $totalErreurs += $e['nb_erreurs'];
+                        $totalDestinataires += $e['nb_destinataires'];
+                    }
+                    ?>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 pt-3 border-t">
+                        <div class="bg-blue-50 rounded-lg p-2 text-center">
+                            <div class="text-lg font-bold text-blue-600"><?= $totalDestinataires ?></div>
+                            <div class="text-xs text-gray-500">Destinataires</div>
+                        </div>
+                        <div class="bg-green-50 rounded-lg p-2 text-center">
+                            <div class="text-lg font-bold text-green-600"><?= $totalSucces ?></div>
+                            <div class="text-xs text-gray-500">Succès</div>
+                        </div>
+                        <div class="bg-red-50 rounded-lg p-2 text-center">
+                            <div class="text-lg font-bold text-red-600"><?= $totalErreurs ?></div>
+                            <div class="text-xs text-gray-500">Échecs</div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        
+        <a href="index.php?page=campagnes/historique" class="inline-block text-blue-600 hover:text-blue-800 mt-2">
+            <i class="fas fa-arrow-left mr-1"></i> Retour à la liste des campagnes
         </a>
-    </div>
-
-    <!-- Cartes statistiques -->
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div class="bg-white rounded-lg shadow p-4 text-center">
-            <div class="text-2xl font-bold text-blue-600"><?= $stats['total'] ?></div>
-            <div class="text-sm text-gray-500">Campagnes totales</div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-4 text-center">
-            <div class="text-2xl font-bold text-green-600"><?= $stats['whatsapp'] ?></div>
-            <div class="text-sm text-gray-500">WhatsApp</div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-4 text-center">
-            <div class="text-2xl font-bold text-blue-600"><?= $stats['sms'] ?></div>
-            <div class="text-sm text-gray-500">SMS</div>
-        </div>
-    </div>
-
-    <!-- Filtres -->
-    <div class="bg-white rounded-lg shadow p-4">
-        <div class="flex flex-wrap gap-2 mb-4">
-            <button onclick="filterByType('tous')" id="filterTous" class="px-4 py-2 rounded-lg transition bg-blue-600 text-white">
-                Tous
-            </button>
-            <button onclick="filterByType('whatsapp')" id="filterWhatsapp" class="px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300">
-                <i class="fab fa-whatsapp mr-1"></i> WhatsApp
-            </button>
-            <button onclick="filterByType('sms')" id="filterSms" class="px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300">
-                <i class="fas fa-comment-dots mr-1"></i> SMS
-            </button>
-        </div>
         
-        <div class="flex gap-2">
-            <div class="flex-1 relative">
-                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="searchInput" 
-                       placeholder="Rechercher..."
-                       class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
-            </div>
-            <button onclick="clearSearch()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg">
-                <i class="fas fa-times mr-1"></i> Effacer
-            </button>
+    <?php else: ?>
+        <!-- Barre de recherche -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <form method="GET" action="" class="relative">
+                <input type="hidden" name="page" value="campagnes/historique">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" name="search" value="<?= htmlspecialchars($searchTerm) ?>" 
+                           placeholder="Rechercher par nom, objet ou message..." 
+                           class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
+                    <?php if (!empty($searchTerm)): ?>
+                        <a href="index.php?page=campagnes/historique" class="search-clear">
+                            <i class="fas fa-times-circle"></i>
+                        </a>
+                    <?php endif; ?>
+                </div>
+                <div class="mt-2 flex justify-between items-center">
+                    <span class="text-xs text-gray-500">
+                        <?php if (!empty($searchTerm)): ?>
+                            <?= count($campagnes) ?> résultat(s) pour "<strong><?= htmlspecialchars($searchTerm) ?></strong>"
+                        <?php else: ?>
+                            <?= count($campagnes) ?> campagne(s) au total
+                        <?php endif; ?>
+                    </span>
+                    <?php if (!empty($searchTerm)): ?>
+                        <a href="index.php?page=campagnes/historique" class="text-sm text-blue-600 hover:text-blue-800">
+                            Effacer la recherche
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </form>
         </div>
-    </div>
 
-    <!-- Tableau -->
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Message</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Nb</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Appareil</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <?php foreach ($allCampagnes as $c): ?>
-                        <tr class="campagne-row hover:bg-gray-50" data-type="<?= $c['type_campagne'] ?>">
-                            <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                                <?= date('d/m/Y H:i', strtotime($c['created_at'])) ?>
-                            </td>
-                            <td class="px-4 py-3">
-                                <?php if ($c['type_campagne'] == 'whatsapp'): ?>
-                                    <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">WhatsApp</span>
-                                <?php else: ?>
-                                    <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">SMS</span>
-                                <?php endif; ?>
-                            </td>
-                            <td class="px-4 py-3">
-                                <div class="text-sm text-gray-800 max-w-md truncate" title="<?= htmlspecialchars($c['message']) ?>">
-                                    <?= htmlspecialchars(substr($c['message'], 0, 50)) ?>...
-                                </div>
-                            </td>
-                            <td class="px-4 py-3 text-center text-sm text-gray-600"><?= $c['nb_destinataires'] ?></td>
-                            <td class="px-4 py-3 text-sm text-gray-500">
-                                <?= htmlspecialchars(substr($c['appareil_utilise'] ?? '-', 0, 30)) ?>
-                            </td>
-                            <td class="px-4 py-3">
-                                <button onclick='showDetails(<?= json_encode($c) ?>);' class="text-blue-600 hover:text-blue-800">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                            </td>
+        <!-- Liste des campagnes (cliquables) -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Canal</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Envois</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                         </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($campagnes)): ?>
+                            <tr>
+                                <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                                    <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
+                                    <?php if (!empty($searchTerm)): ?>
+                                        Aucune campagne ne correspond à "<strong><?= htmlspecialchars($searchTerm) ?></strong>".
+                                    <?php else: ?>
+                                        Aucune campagne pour le moment.
+                                        <a href="index.php?page=campagnes/creer" class="text-purple-600 block mt-2">Créer votre première campagne →</a>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($campagnes as $campagne): ?>
+                                <tr class="campagne-row hover:bg-gray-50" 
+                                    onclick="window.location.href='index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>'">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center">
+                                            <div class="bg-purple-100 rounded-full p-2 mr-3">
+                                                <i class="fas fa-bullhorn text-purple-600 text-sm"></i>
+                                            </div>
+                                            <div>
+                                                <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
+                                                <?php if ($campagne['objet']): ?>
+                                                    <div class="text-xs text-gray-500"><?= htmlspecialchars(substr($campagne['objet'], 0, 40)) ?></div>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <?php if ($campagne['id_canal'] == 'sms'): ?>
+                                            <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">SMS</span>
+                                        <?php elseif ($campagne['id_canal'] == 'whatsapp'): ?>
+                                            <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">WhatsApp</span>
+                                        <?php else: ?>
+                                            <span class="bg-gray-100 text-gray-500 px-2 py-1 rounded-full text-xs">Non défini</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="font-semibold text-blue-600"><?= $campagne['nb_envois'] ?></span>
+                                        <span class="text-xs text-gray-500"> envoi(s)</span>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="status-badge status-<?= $campagne['statut'] ?>">
+                                            <?php
+                                            $statusText = [
+                                                'brouillon' => 'Brouillon',
+                                                'planifiee' => 'Planifiée',
+                                                'envoyee' => 'Envoyée',
+                                                'annulee' => 'Annulée'
+                                            ];
+                                            echo $statusText[$campagne['statut']] ?? $campagne['statut'];
+                                            ?>
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-500">
+                                        <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
+                                    </td>
+                                    <td class="px-6 py-4 text-center whitespace-nowrap" onclick="event.stopPropagation()">
+                                        <?php if ($campagne['statut'] == 'brouillon'): ?>
+                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                               class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Envoyer">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <a href="index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                           class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les envois">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <div id="noResults" class="text-center py-8 hidden">
-            <p class="text-gray-500">Aucune campagne trouvée</p>
-        </div>
-    </div>
+    <?php endif; ?>
 </div>
 
-<!-- Modal Détails -->
-<div id="detailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto">
-        <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-            <h3 class="text-xl font-bold text-gray-800" id="modalTitle"></h3>
-            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
-                <i class="fas fa-times text-xl"></i>
-            </button>
-        </div>
-        <div class="p-6" id="modalContent"></div>
-        <div class="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end">
-            <button onclick="closeModal()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Fermer</button>
-        </div>
-    </div>
-</div>
-
-<script>
-function filterByType(type) {
-    var rows = document.querySelectorAll('.campagne-row');
-    var filterTous = document.getElementById('filterTous');
-    var filterWhatsapp = document.getElementById('filterWhatsapp');
-    var filterSms = document.getElementById('filterSms');
-    
-    if (type === 'tous') {
-        filterTous.className = 'px-4 py-2 rounded-lg transition bg-blue-600 text-white';
-        filterWhatsapp.className = 'px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300';
-        filterSms.className = 'px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300';
-    } else if (type === 'whatsapp') {
-        filterTous.className = 'px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300';
-        filterWhatsapp.className = 'px-4 py-2 rounded-lg transition bg-green-600 text-white';
-        filterSms.className = 'px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300';
-    } else if (type === 'sms') {
-        filterTous.className = 'px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300';
-        filterWhatsapp.className = 'px-4 py-2 rounded-lg transition bg-gray-200 text-gray-700 hover:bg-gray-300';
-        filterSms.className = 'px-4 py-2 rounded-lg transition bg-blue-600 text-white';
-    }
-    
-    for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        var rowType = row.getAttribute('data-type');
-        
-        if (type === 'tous' || rowType === type) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    }
-    
-    filterTable();
-}
-
-function filterTable() {
-    var searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
-    var rows = document.querySelectorAll('.campagne-row');
-    var visibleCount = 0;
-    var noResults = document.getElementById('noResults');
-    
-    for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        var text = row.textContent.toLowerCase();
-        
-        if (searchTerm === '' || text.indexOf(searchTerm) !== -1) {
-            if (row.style.display !== 'none') {
-                row.style.display = '';
-                visibleCount++;
-            }
-        } else {
-            if (row.style.display !== 'none') {
-                row.style.display = 'none';
-            }
-        }
-    }
-    
-    if (visibleCount === 0) {
-        noResults.classList.remove('hidden');
-    } else {
-        noResults.classList.add('hidden');
-    }
-}
-
-function clearSearch() {
-    document.getElementById('searchInput').value = '';
-    filterTable();
-}
-
-function showDetails(campagne) {
-    var modal = document.getElementById('detailsModal');
-    var modalTitle = document.getElementById('modalTitle');
-    var modalContent = document.getElementById('modalContent');
-    
-    modalTitle.textContent = campagne.titre || 'Détails de la campagne';
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    
-    var statusBadge = campagne.statut === 'envoye' 
-        ? '<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs"><i class="fas fa-check-circle mr-1"></i>Envoyé</span>'
-        : '<span class="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>';
-    
-    var typeIcon = campagne.type_campagne === 'whatsapp' ? 'fab fa-whatsapp text-green-600' : 'fas fa-comment-dots text-blue-600';
-    var typeBg = campagne.type_campagne === 'whatsapp' ? 'bg-green-100' : 'bg-blue-100';
-    
-    var destList = '';
-    if (campagne.destinataires) {
-        var destinataires = [];
-        try {
-            destinataires = JSON.parse(campagne.destinataires);
-        } catch(e) {
-            destinataires = [campagne.destinataires];
-        }
-        
-        if (destinataires && destinataires.length > 0) {
-            destList = '<div class="space-y-1 max-h-48 overflow-y-auto">';
-            for (var i = 0; i < destinataires.length; i++) {
-                destList += '<div class="flex items-center p-2 bg-gray-50 rounded-lg mb-1">' +
-                            '<i class="fas fa-user-circle text-gray-400 mr-2"></i>' +
-                            '<span class="text-sm">' + escapeHtml(destinataires[i]) + '</span>' +
-                            '</div>';
-            }
-            destList += '</div>';
-        } else {
-            destList = '<p class="text-gray-500 italic">Aucun destinataire</p>';
-        }
-    } else {
-        destList = '<p class="text-gray-500 italic">Aucun destinataire</p>';
-    }
-    
-    modalContent.innerHTML = `
-        <div class="space-y-5">
-            <div class="flex items-center mb-2">
-                <div class="${typeBg} w-10 h-10 rounded-full flex items-center justify-center mr-3">
-                    <i class="${typeIcon} text-xl"></i>
-                </div>
-                <div>${statusBadge}</div>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4">
-                <div class="bg-gray-50 rounded-lg p-3">
-                    <div class="text-xs text-gray-500 mb-1">Date</div>
-                    <div class="font-medium">${escapeHtml(campagne.created_at ? formatDate(campagne.created_at) : '-')}</div>
-                </div>
-                <div class="bg-gray-50 rounded-lg p-3">
-                    <div class="text-xs text-gray-500 mb-1">Appareil</div>
-                    <div class="font-medium text-sm">${escapeHtml(campagne.appareil_utilise || '-')}</div>
-                </div>
-            </div>
-            
-            <div>
-                <div class="text-xs text-gray-500 mb-2">Message</div>
-                <div class="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-                    <p class="text-sm whitespace-pre-wrap">${escapeHtml(campagne.message || '-')}</p>
-                </div>
-            </div>
-            
-            <div>
-                <div class="text-xs text-gray-500 mb-2">Statistiques</div>
-                <div class="grid grid-cols-3 gap-3">
-                    <div class="bg-blue-50 rounded-lg p-3 text-center">
-                        <div class="text-2xl font-bold text-blue-600">${campagne.nb_destinataires || 0}</div>
-                        <div class="text-xs">Total</div>
-                    </div>
-                    <div class="bg-green-50 rounded-lg p-3 text-center">
-                        <div class="text-2xl font-bold text-green-600">${campagne.nb_succes || 0}</div>
-                        <div class="text-xs">Succès</div>
-                    </div>
-                    <div class="bg-red-50 rounded-lg p-3 text-center">
-                        <div class="text-2xl font-bold text-red-600">${campagne.nb_erreurs || 0}</div>
-                        <div class="text-xs">Échecs</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div>
-                <div class="text-xs text-gray-500 mb-2">Destinataires (${campagne.nb_destinataires || 0})</div>
-                <div class="bg-gray-50 rounded-lg p-3">${destList}</div>
-            </div>
-        </div>
-    `;
-}
-
-function formatDate(dateString) {
-    if (!dateString) return '-';
-    var date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR');
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    return text.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-function closeModal() {
-    var modal = document.getElementById('detailsModal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-}
-
-document.getElementById('searchInput').addEventListener('keyup', filterTable);
-document.getElementById('detailsModal').addEventListener('click', function(e) {
-    if (e.target === this) closeModal();
-});
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeModal();
-});
-</script>
-
-<style>
-    #detailsModal { z-index: 1000; }
-    .campagne-row { transition: all 0.2s ease; }
-</style>
+</body>
+</html>

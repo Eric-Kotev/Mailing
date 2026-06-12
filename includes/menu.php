@@ -73,13 +73,13 @@ $isAdmin = isAdminForMenu();
             <span class="menu-text">Historique</span>
         </a>
 
-        <a href="index.php?page=campagnes/choix"
+        <a href="index.php?page=campagnes/creer"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
            <?= $currentPage == 'campagnes/nouvelle' || $currentPage == 'campagnes/choix'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-plus-circle w-5 mr-3 text-green-400"></i>
-            <span class="menu-text">Nouvelle campagne</span>
+            <span class="menu-text">Mes campagne</span>
         </a>
 
         <!-- Contacts -->

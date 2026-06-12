@@ -3,6 +3,34 @@ global $db;
 
 $idCompte = $_SESSION['user_id'];
 
+// ============================================
+// RÉCUPÉRATION DE LA CAMPAGNE CONFIG
+// ============================================
+// Récupérer l'ID depuis l'URL (GET) ou la session
+$campagneConfigId = $_GET['campagne_id'] ?? $_SESSION['campagne_config_id'] ?? null;
+
+if (!$campagneConfigId) {
+    header('Location: index.php?page=campagnes/index');
+    exit;
+}
+
+// Stocker en session pour la suite
+$_SESSION['campagne_config_id'] = $campagneConfigId;
+
+// Récupérer les infos de la campagne config
+$campagneConfig = $db->select('campagne_config', [
+    'id_campagne_config' => $campagneConfigId,
+    'id_compte' => $idCompte
+]);
+
+if (empty($campagneConfig)) {
+    $_SESSION['flash_error'] = "Campagne non trouvée";
+    header('Location: index.php?page=campagnes/index');
+    exit;
+}
+
+$campagne = $campagneConfig[0];
+
 // Récupérer toutes les sessions WhatsApp de l'utilisateur
 $sessions = $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
 
@@ -27,55 +55,323 @@ $smsAppareils = $db->select('sms_appareils', ['id_compte' => $idCompte], '*', 'e
 $hasSmsAppareils = !empty($smsAppareils);
 ?>
 
-<div class="space-y-6">
-    <div class="flex justify-between items-center">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-800">Nouvelle campagne</h1>
-            <p class="text-gray-500">Choisissez le type de message à envoyer</p>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Choisir un canal - <?= APP_NAME ?></title>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <style>
+        .select2-container--default .select2-selection--single {
+            height: 42px;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 4px;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 32px;
+            color: #1f2937;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 40px;
+        }
+        .select2-dropdown {
+            border-radius: 0.5rem;
+            border-color: #d1d5db;
+        }
+        .select2-search__field {
+            border-radius: 0.5rem !important;
+            border: 1px solid #d1d5db !important;
+            padding: 6px !important;
+        }
+        .select2-results__option--highlighted {
+            background-color: #22c55e !important;
+        }
+        .toast-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            animation: slideInRight 0.3s ease-out;
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-notification .toast-content {
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .toast-notification.success .toast-content { background: #10b981; }
+        .toast-notification.error .toast-content { background: #ef4444; }
+        .toast-notification.info .toast-content { background: #3b82f6; }
+        
+        .type-envoi-option {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .type-envoi-option:hover {
+            transform: translateY(-2px);
+        }
+        
+        .recording-active {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        #fileUploadArea {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .btn-loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+            position: relative;
+            pointer-events: none;
+        }
+        
+        .btn-loading i {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .loading-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .loading-spinner {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            text-align: center;
+            min-width: 400px;
+        }
+        
+        .loading-spinner i {
+            font-size: 48px;
+            color: #22c55e;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        
+        .loading-spinner p {
+            margin: 0;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .progress-bar-container {
+            width: 100%;
+            margin-top: 15px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: #22c55e;
+            width: 0%;
+            transition: width 0.3s ease;
+            animation: loading 2s infinite;
+        }
+        
+        @keyframes loading {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+
+        .modal-show {
+            opacity: 1 !important;
+            transform: scale(1) !important;
+        }
+        
+        .campagne-info {
+            background: #f3e8ff;
+            border: 1px solid #d8b4fe;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+        }
+        .campagne-info-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #6b21a5;
+            margin-bottom: 8px;
+        }
+        .campagne-info-text {
+            font-size: 13px;
+            color: #4a1d6d;
+        }
+        
+        .password-container {
+            position: relative;
+        }
+        .password-container input {
+            padding-right: 45px;
+        }
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #9ca3af;
+            background: transparent;
+            border: none;
+            font-size: 1.1rem;
+        }
+        .toggle-password:hover {
+            color: #3b82f6;
+        }
+        
+        .resultats-detail {
+            max-height: 300px;
+            overflow-y: auto;
+            text-align: left;
+            margin-top: 15px;
+            font-size: 12px;
+        }
+        
+        .resultat-succes {
+            color: #10b981;
+            padding: 5px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .resultat-erreur {
+            color: #ef4444;
+            padding: 5px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Overlay de chargement global -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner">
+        <i class="fab fa-whatsapp"></i>
+        <p id="loadingMessage">Envoi du message en cours...</p>
+        <div class="progress-bar-container">
+            <div class="progress-bar">
+                <div class="progress-bar-fill" id="progressBarFill"></div>
+            </div>
         </div>
-        <a href="index.php?page=campagnes/index" class="text-blue-600 hover:text-blue-800">
+        <div id="resultatsDetail" class="resultats-detail" style="display: none;"></div>
+    </div>
+</div>
+
+<div class="max-w-3xl mx-auto py-8 px-4">
+    <div class="flex items-center mb-6">
+        <a href="index.php?page=campagnes/details&id=<?= $campagneConfigId ?>" class="text-blue-600 hover:text-blue-800 mr-4">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
+        <div class="bg-purple-100 p-3 rounded-full mr-4">
+            <i class="fas fa-bullhorn text-purple-600 text-xl"></i>
+        </div>
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">Choisir un canal d'envoi</h1>
+            <p class="text-gray-500">Sélectionnez le canal pour votre campagne</p>
+        </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- SMS -->
-        <div onclick="handleSmsClick()" 
-             class="block bg-white rounded-lg shadow hover:shadow-lg transition transform hover:-translate-y-1 cursor-pointer">
-            <div class="p-6 text-center">
-                <div class="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-comment-dots text-blue-600 text-2xl"></i>
+    <!-- Affichage des infos de la campagne -->
+    <div class="campagne-info">
+        <div class="campagne-info-title">
+            <i class="fas fa-bullhorn mr-2"></i>
+            Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
+        </div>
+        <?php if ($campagne['objet']): ?>
+            <div class="campagne-info-text">
+                <strong>Objet :</strong> <?= htmlspecialchars($campagne['objet']) ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($campagne['date_planification']): ?>
+            <div class="campagne-info-text">
+                <strong>Planifiée le :</strong> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
+            </div>
+        <?php endif; ?>
+        <div class="campagne-info-text mt-2">
+            <strong>Message :</strong> <?= htmlspecialchars(substr($campagne['message'], 0, 100)) ?>...
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- SMS -->
+            <div onclick="handleSmsClick()" 
+                 class="type-envoi-option border-2 rounded-lg p-6 text-center cursor-pointer transition border-gray-200 hover:border-blue-300 hover:shadow-md">
+                <div class="bg-blue-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-comment-dots text-blue-600 text-3xl"></i>
                 </div>
                 <h2 class="text-xl font-bold text-gray-800 mb-2">SMS</h2>
                 <p class="text-gray-500 text-sm mb-3">Messages texte courts</p>
-                <span class="text-xs <?= $hasSmsAppareils ? 'text-green-600' : 'text-blue-600' ?>">
+                <span class="text-xs <?= $hasSmsAppareils ? 'text-green-600' : 'text-orange-600' ?>">
                     <?php if ($hasSmsAppareils): ?>
-                        <?= count($smsAppareils) ?> appareil(s) disponible(s)
+                        <i class="fas fa-check-circle mr-1"></i> <?= count($smsAppareils) ?> appareil(s) disponible(s)
                     <?php else: ?>
-                         Configurer d'abord
+                        <i class="fas fa-exclamation-triangle mr-1"></i> Aucun appareil configuré
                     <?php endif; ?>
                 </span>
             </div>
-        </div>
 
-        <!-- WhatsApp -->
-        <div onclick="handleWhatsAppClick()" 
-             class="block bg-white rounded-lg shadow hover:shadow-lg transition transform hover:-translate-y-1 cursor-pointer">
-            <div class="p-6 text-center">
-                <div class="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <!-- WhatsApp -->
+            <div onclick="handleWhatsAppClick()" 
+                 class="type-envoi-option border-2 rounded-lg p-6 text-center cursor-pointer transition border-gray-200 hover:border-green-300 hover:shadow-md">
+                <div class="bg-green-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
                     <i class="fab fa-whatsapp text-green-600 text-3xl"></i>
                 </div>
                 <h2 class="text-xl font-bold text-gray-800 mb-2">WhatsApp</h2>
                 <p class="text-gray-500 text-sm mb-3">Messages avec médias</p>
-                <span class="text-xs <?= $hasWhatsAppConfig ? 'text-green-600' : 'text-blue-600' ?>">
+                <span class="text-xs <?= $hasWhatsAppConfig ? 'text-green-600' : 'text-orange-600' ?>">
                     <?php if ($hasWhatsAppConfig): ?>
+                        <i class="fas fa-check-circle mr-1"></i> 
                         <?php if (count($sessions) > 1): ?>
                             <?= count($sessions) ?> session(s) disponible(s)
                         <?php else: ?>
                             Session: <?= htmlspecialchars($whatsappSession) ?>
                         <?php endif; ?>
                     <?php else: ?>
-                         Configurer d'abord
+                        <i class="fas fa-exclamation-triangle mr-1"></i> Aucune session configurée
                     <?php endif; ?>
                 </span>
             </div>
@@ -110,7 +406,7 @@ $hasSmsAppareils = !empty($smsAppareils);
                 <?php else: ?>
                     <?php foreach ($sessions as $session): ?>
                         <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-green-50 transition <?= $session['est_active'] ? 'border-green-500 bg-green-50' : 'border-gray-200' ?>">
-                            <div onclick="selectSession('<?= htmlspecialchars($session['nom_session']) ?>', '<?= $session['id_session'] ?>')" class="flex items-center flex-1 cursor-pointer">
+                            <div onclick="selectSession('<?= htmlspecialchars($session['nom_session']) ?>', '<?= $session['id_session'] ?>', '<?= $campagneConfigId ?>')" class="flex items-center flex-1 cursor-pointer">
                                 <i class="fab fa-whatsapp mr-3 <?= $session['est_active'] ? 'text-green-600' : 'text-gray-400' ?>"></i>
                                 <div>
                                     <p class="font-medium text-gray-800"><?= htmlspecialchars($session['nom_session']) ?></p>
@@ -125,7 +421,7 @@ $hasSmsAppareils = !empty($smsAppareils);
                                 <?php else: ?>
                                     <span class="bg-gray-100 text-gray-500 text-xs px-2 py-1 rounded-full">Inactive</span>
                                 <?php endif; ?>
-                                <button onclick="deleteSession('<?= $session['id_session'] ?>', '<?= htmlspecialchars($session['nom_session']) ?>')" 
+                                <button onclick="event.stopPropagation(); deleteSession('<?= $session['id_session'] ?>', '<?= htmlspecialchars($session['nom_session']) ?>')" 
                                         class="text-red-500 hover:text-red-700 transition ml-2 p-1">
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
@@ -140,9 +436,9 @@ $hasSmsAppareils = !empty($smsAppareils);
                         class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
                     <i class="fas fa-plus-circle mr-2"></i>Nouvelle session
                 </button>
-                <button type="button" onclick="goToSendPage()" 
-                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
-                    <i class="fab fa-whatsapp mr-2"></i>Continuer
+                <button type="button" onclick="closeSessionModal()" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                    Annuler
                 </button>
             </div>
         </div>
@@ -237,7 +533,7 @@ $hasSmsAppareils = !empty($smsAppareils);
                 <?php else: ?>
                     <?php foreach ($smsAppareils as $appareil): ?>
                         <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-blue-50 transition cursor-pointer <?= $appareil['est_actif'] ? 'border-blue-500 bg-blue-50' : 'border-gray-200' ?>"
-                             onclick="selectExistingAppareil('<?= $appareil['device_id'] ?>', '<?= htmlspecialchars($appareil['device_name'] ?: 'Appareil') ?>', '<?= $appareil['api_username'] ?>', '<?= $appareil['api_password'] ?>', '<?= $appareil['id_appareil'] ?>')">
+                             onclick="selectExistingAppareil('<?= $appareil['device_id'] ?>', '<?= htmlspecialchars($appareil['device_name'] ?: 'Appareil') ?>', '<?= $appareil['api_username'] ?>', '<?= $appareil['api_password'] ?>', '<?= $appareil['id_appareil'] ?>', '<?= $campagneConfigId ?>')">
                             <div class="flex items-center flex-1">
                                 <i class="fas fa-mobile-alt mr-3 <?= $appareil['est_actif'] ? 'text-blue-600' : 'text-gray-400' ?>"></i>
                                 <div>
@@ -275,7 +571,7 @@ $hasSmsAppareils = !empty($smsAppareils);
     </div>
 </div>
 
-<!-- MODAL DE CONNEXION POUR NOUVEL APPAREIL (AVEC OEIL POUR PASSWORD) -->
+<!-- MODAL DE CONNEXION POUR NOUVEL APPAREIL -->
 <div id="newAppareilModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all duration-300 scale-95 opacity-0" id="newAppareilContent">
         <div class="p-6">
@@ -307,13 +603,11 @@ $hasSmsAppareils = !empty($smsAppareils);
                     <label class="block text-sm font-medium text-gray-700 mb-1">
                         Mot de passe API *
                     </label>
-                    <div class="password-container" style="position: relative;">
+                    <div class="password-container">
                         <input type="password" id="api_password" 
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
-                               placeholder="Entrez votre mot de passe"
-                               style="padding-right: 45px;">
-                        <button type="button" class="toggle-password" onclick="togglePassword('api_password', this)" 
-                                style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #9ca3af; background: transparent; border: none; font-size: 1.1rem;">
+                               placeholder="Entrez votre mot de passe">
+                        <button type="button" class="toggle-password" onclick="togglePassword('api_password', this)">
                             <i class="far fa-eye"></i>
                         </button>
                     </div>
@@ -367,58 +661,33 @@ $hasSmsAppareils = !empty($smsAppareils);
     </div>
 </div>
 
-<style>
-    .modal-show { opacity: 1 !important; transform: scale(1) !important; }
-    #qrImage { max-width: 250px; height: auto; }
-    .toast-notification {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 10000;
-        animation: slideInRight 0.3s ease-out;
-    }
-    @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-    .toast-notification .toast-content {
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 14px;
-        font-weight: 500;
-    }
-    
-    /* Style pour le conteneur du mot de passe */
-    .password-container {
-        position: relative;
-    }
-    .toggle-password {
-        position: absolute;
-        right: 15px;
-        top: 50%;
-        transform: translateY(-50%);
-        cursor: pointer;
-        color: #9ca3af;
-        transition: color 0.2s ease;
-        z-index: 10;
-        background: transparent;
-        border: none;
-        font-size: 1.1rem;
-    }
-    .toggle-password:hover {
-        color: #3b82f6;
-    }
-    .toggle-password:focus {
-        outline: none;
-    }
-</style>
+<!-- Formulaire caché pour passer l'ID de campagne -->
+<form id="campagneForm" method="POST" style="display: none;">
+    <input type="hidden" name="campagne_config_id" id="campagne_config_id" value="<?= $campagneConfigId ?>">
+</form>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/fr.js"></script>
 
 <script>
+// Initialisation Select2
+$(document).ready(function() {
+    $('#contact_search').select2({
+        placeholder: "Tapez le nom, prénom ou numéro...",
+        allowClear: true,
+        width: '100%',
+        language: 'fr'
+    });
+    
+    $('#liste_id').select2({
+        placeholder: "-- Sélectionnez une liste --",
+        allowClear: true,
+        width: '100%',
+        language: 'fr'
+    });
+});
+
 const API_BASE_URL = 'http://72.62.26.166:8081/api/controller.php';
 const API_KEY = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
 const SMS_API_URL = 'http://72.62.26.166:8085';
@@ -429,6 +698,7 @@ let whatsappSession = '<?= $whatsappSession ?>';
 let hasSessions = <?= $hasWhatsAppConfig ? 'true' : 'false' ?>;
 let currentApiUsername = '';
 let currentApiPassword = '';
+let campagneConfigId = '<?= $campagneConfigId ?>';
 
 // Fonction pour afficher/masquer le mot de passe
 function togglePassword(inputId, buttonElement) {
@@ -531,12 +801,14 @@ function closeDynamicConfirmModal() {
     }
 }
 
-// ============================================
-// GESTION WHATSAPP
-// ============================================
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 // ============================================
-// GESTION WHATSAPP - SUPPRESSION (CORRIGÉE)
+// GESTION WHATSAPP
 // ============================================
 
 async function deleteSession(sessionId, sessionName) {
@@ -544,12 +816,8 @@ async function deleteSession(sessionId, sessionName) {
         showToast('Suppression en cours...', 'info');
         
         try {
-            // URL pour Waha
             const wahaUrl = `http://164.68.103.147:8081/api/controller.php/sessions/${encodeURIComponent(sessionName)}`;
             
-            console.log("Tentative de suppression Waha:", wahaUrl);
-            
-            // 1. Supprimer la session dans Waha (API)
             const wahaResponse = await fetch(wahaUrl, {
                 method: 'DELETE',
                 headers: {
@@ -559,15 +827,10 @@ async function deleteSession(sessionId, sessionName) {
                 }
             });
             
-            console.log("Waha Response Status:", wahaResponse.status);
-            
             if (wahaResponse.ok) {
                 console.log(`Session "${sessionName}" supprimée dans Waha`);
-            } else {
-                console.warn(`Erreur Waha (${wahaResponse.status})`);
             }
             
-            // 2. Supprimer la session dans la base de données
             const dbResponse = await fetch('/delete_session.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -582,15 +845,19 @@ async function deleteSession(sessionId, sessionName) {
             } else {
                 showToast(dbResult.error || 'Erreur lors de la suppression en base', 'error');
             }
-            
         } catch (error) {
             console.error('Erreur détaillée:', error);
             showToast('Erreur réseau: ' + error.message, 'error');
         }
     });
 }
+
 function handleWhatsAppClick() {
     openSessionModal();
+}
+
+function handleSmsClick() {
+    openSmsModal();
 }
 
 function openSessionModal() {
@@ -612,7 +879,10 @@ function closeSessionModal() {
 }
 
 function goToSendPage() {
-    window.location.href = 'index.php?page=campagnes/envoyer_whatsapp';
+    const form = document.getElementById('campagneForm');
+    document.getElementById('campagne_config_id').value = campagneConfigId;
+    form.action = 'index.php?page=campagnes/envoyer_whatsapp';
+    form.submit();
 }
 
 function openNewSessionModal() {
@@ -620,7 +890,7 @@ function openNewSessionModal() {
     openWhatsAppModal();
 }
 
-async function selectSession(sessionName, sessionId) {
+async function selectSession(sessionName, sessionId, campagneId) {
     try {
         const response = await fetch('/activate_session.php', {
             method: 'POST',
@@ -631,7 +901,10 @@ async function selectSession(sessionName, sessionId) {
         if (result.success) {
             showToast(`Session "${sessionName}" activée`, 'success');
             setTimeout(() => {
-                window.location.href = 'index.php?page=campagnes/envoyer_whatsapp';
+                const form = document.getElementById('campagneForm');
+                document.getElementById('campagne_config_id').value = campagneId;
+                form.action = 'index.php?page=campagnes/envoyer_whatsapp';
+                form.submit();
             }, 500);
         } else {
             showToast(result.error || 'Erreur', 'error');
@@ -640,227 +913,6 @@ async function selectSession(sessionName, sessionId) {
         showToast('Erreur: ' + error.message, 'error');
     }
 }
-
-// ============================================
-// GESTION SMS
-// ============================================
-
-function handleSmsClick() {
-    openSmsModal();
-}
-
-function openSmsModal() {
-    const modal = document.getElementById('smsModal');
-    const modalContent = document.getElementById('smsModalContent');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
-}
-
-function closeSmsModal() {
-    const modal = document.getElementById('smsModal');
-    const modalContent = document.getElementById('smsModalContent');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }, 200);
-}
-
-function openNewAppareilModal() {
-    closeSmsModal();
-    const modal = document.getElementById('newAppareilModal');
-    const modalContent = document.getElementById('newAppareilContent');
-    document.getElementById('api_username').value = '';
-    document.getElementById('api_password').value = '';
-    // Réinitialiser le type du champ mot de passe
-    const pwdInput = document.getElementById('api_password');
-    if (pwdInput) pwdInput.type = 'password';
-    // Réinitialiser l'icône
-    const toggleBtn = document.querySelector('#newAppareilModal .toggle-password i');
-    if (toggleBtn) {
-        toggleBtn.classList.remove('fa-eye-slash');
-        toggleBtn.classList.add('fa-eye');
-    }
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
-}
-
-function closeNewAppareilModal() {
-    const modal = document.getElementById('newAppareilModal');
-    const modalContent = document.getElementById('newAppareilContent');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        openSmsModal();
-    }, 200);
-}
-
-function openDeviceModal() {
-    const modal = document.getElementById('deviceModal');
-    const modalContent = document.getElementById('deviceModalContent');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
-}
-
-function closeDeviceModal() {
-    const modal = document.getElementById('deviceModal');
-    const modalContent = document.getElementById('deviceModalContent');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }, 200);
-}
-
-async function selectExistingAppareil(deviceId, deviceName, apiUsername, apiPassword, appareilId) {
-    try {
-        showToast('Activation de l\'appareil...', 'info');
-        const response = await fetch('/activate_sms_appareil.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `appareil_id=${encodeURIComponent(appareilId)}&device_id=${encodeURIComponent(deviceId)}&device_name=${encodeURIComponent(deviceName)}&api_username=${encodeURIComponent(apiUsername)}&api_password=${encodeURIComponent(apiPassword)}`
-        });
-        const result = await response.json();
-        if (result.success) {
-            showToast(`Appareil "${deviceName}" activé`, 'success');
-            closeSmsModal();
-            setTimeout(() => {
-                window.location.href = 'index.php?page=campagnes/envoyer_sms';
-            }, 500);
-        } else {
-            showToast(result.error || 'Erreur', 'error');
-        }
-    } catch (error) {
-        showToast('Erreur: ' + error.message, 'error');
-    }
-}
-
-document.getElementById('smsLoginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const api_username = document.getElementById('api_username').value.trim();
-    const api_password = document.getElementById('api_password').value.trim();
-    if (!api_username || !api_password) {
-        showToast('Veuillez entrer vos identifiants', 'error');
-        return;
-    }
-    currentApiUsername = api_username;
-    currentApiPassword = api_password;
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Connexion...';
-    submitBtn.disabled = true;
-    try {
-        const response = await fetch(`${SMS_API_URL}/devices.php`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_username: api_username, api_password: api_password })
-        });
-        const result = await response.json();
-        if (result.status === 'ok' && result.devices && result.devices.length > 0) {
-            closeNewAppareilModal();
-            displayDevices(result.devices);
-        } else {
-            showToast('Aucun appareil trouvé ou identifiants incorrects', 'error');
-        }
-    } catch (error) {
-        console.error('Erreur:', error);
-        showToast('Erreur de connexion à l\'API', 'error');
-    } finally {
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    }
-});
-
-function displayDevices(devices) {
-    const container = document.getElementById('deviceList');
-    container.innerHTML = '';
-    devices.forEach(device => {
-        const deviceId = device.id;
-        const deviceName = device.name || 'Appareil';
-        const div = document.createElement('div');
-        div.className = 'flex items-center justify-between p-3 border rounded-lg hover:bg-blue-50 transition cursor-pointer border-gray-200';
-        div.onclick = () => saveAndSelectDevice(deviceId, deviceName);
-        div.innerHTML = `
-            <div class="flex items-center">
-                <i class="fas fa-mobile-alt mr-3 text-blue-600"></i>
-                <div>
-                    <p class="font-medium text-gray-800">${escapeHtml(deviceName)}</p>
-                    <p class="text-xs text-gray-500">ID: ${escapeHtml(deviceId)}</p>
-                </div>
-            </div>
-            <i class="fas fa-chevron-right text-gray-400"></i>
-        `;
-        container.appendChild(div);
-    });
-    openDeviceModal();
-}
-
-async function saveAndSelectDevice(deviceId, deviceName) {
-    try {
-        showToast('Enregistrement...', 'info');
-        const params = new URLSearchParams();
-        params.append('device_id', deviceId);
-        params.append('device_name', deviceName);
-        params.append('api_username', currentApiUsername);
-        params.append('api_password', currentApiPassword);
-        const response = await fetch('/save_sms_appareil.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params
-        });
-        const result = await response.json();
-        if (result.success) {
-            showToast(`Appareil "${deviceName}" enregistré et activé`, 'success');
-            closeDeviceModal();
-            setTimeout(() => {
-                window.location.href = 'index.php?page=campagnes/envoyer_sms';
-            }, 500);
-        } else {
-            showToast(result.error || 'Erreur', 'error');
-        }
-    } catch (error) {
-        showToast('Erreur: ' + error.message, 'error');
-    }
-}
-
-function deleteSmsAppareil(appareilId, appareilName) {
-    closeSmsModal();
-    setTimeout(() => {
-        showConfirmModal(appareilName, async () => {
-            showToast('Suppression en cours...', 'info');
-            try {
-                const response = await fetch('/delete_sms_appareil.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `appareil_id=${encodeURIComponent(appareilId)}`
-                });
-                const result = await response.json();
-                if (result.success) {
-                    showToast(`Appareil "${appareilName}" supprimé`, 'success');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showToast(result.error || 'Erreur', 'error');
-                }
-            } catch (error) {
-                showToast('Erreur: ' + error.message, 'error');
-            }
-        });
-    }, 250);
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// ============================================
-// WHATSAPP - QR CODE
-// ============================================
 
 function openWhatsAppModal() {
     const modal = document.getElementById('whatsappModal');
@@ -1008,7 +1060,10 @@ async function checkSessionStatus(sessionName) {
                     'Connexion WhatsApp réussie !</div>';
                 showToast('Connexion réussie !', 'success');
                 setTimeout(() => {
-                    window.location.href = 'index.php?page=campagnes/envoyer_whatsapp';
+                    const form = document.getElementById('campagneForm');
+                    document.getElementById('campagne_config_id').value = campagneConfigId;
+                    form.action = 'index.php?page=campagnes/envoyer_whatsapp';
+                    form.submit();
                 }, 2000);
             }
             if (attempts >= maxAttempts && !isConnected) {
@@ -1022,7 +1077,218 @@ async function checkSessionStatus(sessionName) {
 }
 
 // ============================================
-// Événements
+// GESTION SMS
+// ============================================
+
+function openSmsModal() {
+    const modal = document.getElementById('smsModal');
+    const modalContent = document.getElementById('smsModalContent');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => modalContent.classList.add('modal-show'), 10);
+}
+
+function closeSmsModal() {
+    const modal = document.getElementById('smsModal');
+    const modalContent = document.getElementById('smsModalContent');
+    modalContent.classList.remove('modal-show');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }, 200);
+}
+
+function openNewAppareilModal() {
+    closeSmsModal();
+    const modal = document.getElementById('newAppareilModal');
+    const modalContent = document.getElementById('newAppareilContent');
+    document.getElementById('api_username').value = '';
+    document.getElementById('api_password').value = '';
+    const pwdInput = document.getElementById('api_password');
+    if (pwdInput) pwdInput.type = 'password';
+    const toggleBtn = document.querySelector('#newAppareilModal .toggle-password i');
+    if (toggleBtn) {
+        toggleBtn.classList.remove('fa-eye-slash');
+        toggleBtn.classList.add('fa-eye');
+    }
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => modalContent.classList.add('modal-show'), 10);
+}
+
+function closeNewAppareilModal() {
+    const modal = document.getElementById('newAppareilModal');
+    const modalContent = document.getElementById('newAppareilContent');
+    modalContent.classList.remove('modal-show');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        openSmsModal();
+    }, 200);
+}
+
+function openDeviceModal() {
+    const modal = document.getElementById('deviceModal');
+    const modalContent = document.getElementById('deviceModalContent');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => modalContent.classList.add('modal-show'), 10);
+}
+
+function closeDeviceModal() {
+    const modal = document.getElementById('deviceModal');
+    const modalContent = document.getElementById('deviceModalContent');
+    modalContent.classList.remove('modal-show');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }, 200);
+}
+
+async function selectExistingAppareil(deviceId, deviceName, apiUsername, apiPassword, appareilId, campagneId) {
+    try {
+        showToast('Activation de l\'appareil...', 'info');
+        const response = await fetch('/activate_sms_appareil.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `appareil_id=${encodeURIComponent(appareilId)}&device_id=${encodeURIComponent(deviceId)}&device_name=${encodeURIComponent(deviceName)}&api_username=${encodeURIComponent(apiUsername)}&api_password=${encodeURIComponent(apiPassword)}`
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToast(`Appareil "${deviceName}" activé`, 'success');
+            closeSmsModal();
+            setTimeout(() => {
+                const form = document.getElementById('campagneForm');
+                document.getElementById('campagne_config_id').value = campagneId;
+                form.action = 'index.php?page=campagnes/envoyer_sms';
+                form.submit();
+            }, 500);
+        } else {
+            showToast(result.error || 'Erreur', 'error');
+        }
+    } catch (error) {
+        showToast('Erreur: ' + error.message, 'error');
+    }
+}
+
+document.getElementById('smsLoginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const api_username = document.getElementById('api_username').value.trim();
+    const api_password = document.getElementById('api_password').value.trim();
+    if (!api_username || !api_password) {
+        showToast('Veuillez entrer vos identifiants', 'error');
+        return;
+    }
+    currentApiUsername = api_username;
+    currentApiPassword = api_password;
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Connexion...';
+    submitBtn.disabled = true;
+    try {
+        const response = await fetch(`${SMS_API_URL}/devices.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_username: api_username, api_password: api_password })
+        });
+        const result = await response.json();
+        if (result.status === 'ok' && result.devices && result.devices.length > 0) {
+            closeNewAppareilModal();
+            displayDevices(result.devices);
+        } else {
+            showToast('Aucun appareil trouvé ou identifiants incorrects', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur de connexion à l\'API', 'error');
+    } finally {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+function displayDevices(devices) {
+    const container = document.getElementById('deviceList');
+    container.innerHTML = '';
+    devices.forEach(device => {
+        const deviceId = device.id;
+        const deviceName = device.name || 'Appareil';
+        const div = document.createElement('div');
+        div.className = 'flex items-center justify-between p-3 border rounded-lg hover:bg-blue-50 transition cursor-pointer border-gray-200';
+        div.onclick = () => saveAndSelectDevice(deviceId, deviceName);
+        div.innerHTML = `
+            <div class="flex items-center">
+                <i class="fas fa-mobile-alt mr-3 text-blue-600"></i>
+                <div>
+                    <p class="font-medium text-gray-800">${escapeHtml(deviceName)}</p>
+                    <p class="text-xs text-gray-500">ID: ${escapeHtml(deviceId)}</p>
+                </div>
+            </div>
+            <i class="fas fa-chevron-right text-gray-400"></i>
+        `;
+        container.appendChild(div);
+    });
+    openDeviceModal();
+}
+
+async function saveAndSelectDevice(deviceId, deviceName) {
+    try {
+        showToast('Enregistrement...', 'info');
+        const params = new URLSearchParams();
+        params.append('device_id', deviceId);
+        params.append('device_name', deviceName);
+        params.append('api_username', currentApiUsername);
+        params.append('api_password', currentApiPassword);
+        const response = await fetch('/save_sms_appareil.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToast(`Appareil "${deviceName}" enregistré et activé`, 'success');
+            closeDeviceModal();
+            setTimeout(() => {
+                const form = document.getElementById('campagneForm');
+                document.getElementById('campagne_config_id').value = campagneConfigId;
+                form.action = 'index.php?page=campagnes/envoyer_sms';
+                form.submit();
+            }, 500);
+        } else {
+            showToast(result.error || 'Erreur', 'error');
+        }
+    } catch (error) {
+        showToast('Erreur: ' + error.message, 'error');
+    }
+}
+
+function deleteSmsAppareil(appareilId, appareilName) {
+    closeSmsModal();
+    setTimeout(() => {
+        showConfirmModal(appareilName, async () => {
+            showToast('Suppression en cours...', 'info');
+            try {
+                const response = await fetch('/delete_sms_appareil.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `appareil_id=${encodeURIComponent(appareilId)}`
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showToast(`Appareil "${appareilName}" supprimé`, 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(result.error || 'Erreur', 'error');
+                }
+            } catch (error) {
+                showToast('Erreur: ' + error.message, 'error');
+            }
+        });
+    }, 250);
+}
+
+// ============================================
+// Événements de fermeture
 // ============================================
 
 document.addEventListener('keydown', function(e) {
@@ -1036,19 +1302,19 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-document.getElementById('whatsappModal').addEventListener('click', function(e) {
+document.getElementById('whatsappModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeWhatsAppModal();
 });
-document.getElementById('sessionModal').addEventListener('click', function(e) {
+document.getElementById('sessionModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeSessionModal();
 });
-document.getElementById('smsModal').addEventListener('click', function(e) {
+document.getElementById('smsModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeSmsModal();
 });
-document.getElementById('newAppareilModal').addEventListener('click', function(e) {
+document.getElementById('newAppareilModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeNewAppareilModal();
 });
-document.getElementById('deviceModal').addEventListener('click', function(e) {
+document.getElementById('deviceModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeDeviceModal();
 });
 </script>

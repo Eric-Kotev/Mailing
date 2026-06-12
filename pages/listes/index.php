@@ -35,6 +35,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_liste']) &
 }
 
 // ============================================
+// TRAITEMENT DE L'AJOUT DE CONTACT À UNE LISTE (AJAX)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contacts_to_list']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    header('Content-Type: application/json');
+    
+    $id_liste = $_POST['id_liste'] ?? null;
+    $selectedContacts = $_POST['selected_contacts'] ?? [];
+    
+    if (!$id_liste) {
+        echo json_encode(['success' => false, 'error' => 'Liste invalide']);
+        exit;
+    }
+    
+    if (empty($selectedContacts)) {
+        echo json_encode(['success' => false, 'error' => 'Veuillez sélectionner au moins un contact']);
+        exit;
+    }
+    
+    // Vérifier que la liste appartient bien au compte
+    $listeExists = $db->select('liste', ['id_liste' => $id_liste, 'id_compte' => $idCompte]);
+    if (empty($listeExists)) {
+        echo json_encode(['success' => false, 'error' => 'Liste invalide']);
+        exit;
+    }
+    
+    // Récupérer les contacts déjà dans la liste
+    $existingContacts = $db->select('liste_contact', ['id_liste' => $id_liste]);
+    $existingIds = array_column($existingContacts, 'id_contact');
+    
+    $addedCount = 0;
+    $alreadyExists = 0;
+    
+    foreach ($selectedContacts as $id_contact) {
+        if (!in_array($id_contact, $existingIds)) {
+            try {
+                $db->insert('liste_contact', [
+                    'id_liste' => $id_liste,
+                    'id_contact' => $id_contact
+                ]);
+                $addedCount++;
+            } catch (Exception $e) {
+                // Erreur silencieuse
+            }
+        } else {
+            $alreadyExists++;
+        }
+    }
+    
+    if ($addedCount > 0) {
+        $message = "$addedCount contact(s) ajouté(s) à la liste";
+        if ($alreadyExists > 0) {
+            $message .= " ($alreadyExists déjà présent(s))";
+        }
+        echo json_encode(['success' => true, 'message' => $message]);
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Aucun contact ajouté (ils sont peut-être déjà dans la liste)']);
+    }
+    exit;
+}
+
+// ============================================
 // TRAITEMENT DE L'IMPORT CSV (AJAX)
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
@@ -256,6 +317,9 @@ foreach ($listes as $key => $listeItem) {
     $listes[$key]['nb_contacts'] = count($contactsCount);
 }
 
+// Récupérer tous les contacts pour la modale d'ajout
+$tousContacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'nom.asc');
+
 $totalListes = count($listes);
 
 // Messages flash
@@ -308,6 +372,17 @@ unset($_SESSION['flash_error']);
         .modal-add-liste.modal-show {
             opacity: 1 !important;
             transform: scale(1) !important;
+        }
+        
+        /* Styles pour le modal d'ajout de contacts */
+        .contact-item.hide {
+            display: none;
+        }
+        .dropdown-search-input {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
         }
     </style>
 </head>
@@ -374,8 +449,9 @@ unset($_SESSION['flash_error']);
                                 <td class="px-6 py-4"><?= date('d/m/Y', strtotime($liste['date_creation'])) ?></td>
                                 <td class="px-6 py-4 text-right space-x-2">
                                     <button type="button" onclick="openRenameModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-yellow-600 hover:text-yellow-800" title="Renommer"><i class="fas fa-edit"></i></button>
-                                    <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" class="text-green-600 hover:text-green-800" title="Voir ou ajouter un contact"><i class="fas fa-eye"></i></a>
-                                    <button type="button" onclick="openImportModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-purple-600 hover:text-purple-800" title="Importer"><i class="fas fa-file-import"></i></button>
+                                    <button type="button" onclick="openAddContactToListModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-blue-600 hover:text-blue-800" title="Ajouter un contact"><i class="fas fa-user-plus"></i></button>
+                                    <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" class="text-green-600 hover:text-green-800" title="Voir les contacts"><i class="fas fa-eye"></i></a>
+                                    <button type="button" onclick="openImportModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-purple-600 hover:text-purple-800" title="Importer CSV"><i class="fas fa-file-import"></i></button>
                                     <button type="button" onclick="openClearModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" data-count="<?= $liste['nb_contacts'] ?>" class="text-orange-600 hover:text-orange-800" title="Vider"><i class="fas fa-trash-alt"></i></button>
                                     <button type="button" onclick="openDeleteModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-red-600 hover:text-red-800" title="Supprimer"><i class="fas fa-times-circle"></i></button>
                                 </td>
@@ -427,6 +503,73 @@ unset($_SESSION['flash_error']);
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODAL AJOUTER CONTACT À UNE LISTE -->
+<!-- ============================================ -->
+<div id="addContactToListModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col">
+        <div class="p-6 border-b">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center">
+                    <div class="bg-blue-100 p-2 rounded-full mr-3">
+                        <i class="fas fa-user-plus text-blue-600 text-xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800">Ajouter des contacts</h3>
+                </div>
+                <button type="button" onclick="closeAddContactToListModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <p class="text-gray-500 mt-1">Ajouter des contacts à la liste : <strong id="addContactListName"></strong></p>
+        </div>
+        
+        <div class="p-6 flex-1 overflow-y-auto">
+            <div class="mb-4">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="searchContactInput" placeholder="Rechercher un contact par nom, email ou téléphone..." 
+                           class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+            
+            <div class="border rounded-lg overflow-hidden">
+                <div class="max-h-96 overflow-y-auto" id="contactsListContainer">
+                    <div id="loadingContacts" class="p-4 text-center text-gray-500">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Chargement des contacts...
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 flex justify-between items-center">
+                <div>
+                    <span class="text-sm text-gray-500">
+                        <span id="selectedCount">0</span> contact(s) sélectionné(s)
+                    </span>
+                </div>
+                <div class="flex space-x-2">
+                    <button type="button" onclick="selectAllContacts()" class="text-sm text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-check-double"></i> Tout sélectionner
+                    </button>
+                    <button type="button" onclick="selectNoneContacts()" class="text-sm text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i> Tout désélectionner
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="p-6 border-t bg-gray-50 flex justify-end space-x-2">
+            <button type="button" onclick="closeAddContactToListModal()" 
+                    class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                Annuler
+            </button>
+            <button type="button" onclick="submitAddContactsToList()" id="submitAddContactsBtn"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                <i class="fas fa-plus mr-2"></i>Ajouter les contacts sélectionnés
+            </button>
         </div>
     </div>
 </div>
@@ -520,6 +663,156 @@ function closeAddListeModal() {
     const modalContent = modal.querySelector('.modal-add-liste');
     modalContent.classList.remove('modal-show');
     setTimeout(() => modal.style.display = 'none', 200);
+}
+
+// ============================================
+// MODAL AJOUTER CONTACT À UNE LISTE
+// ============================================
+let currentListId = null;
+let allContacts = <?= json_encode($tousContacts) ?>;
+let contactsNotInList = [];
+
+async function openAddContactToListModal(button) {
+    currentListId = button.getAttribute('data-id');
+    const listName = button.getAttribute('data-name');
+    document.getElementById('addContactListName').innerHTML = listName;
+    
+    // Récupérer les contacts déjà dans la liste
+    document.getElementById('contactsListContainer').innerHTML = '<div class="p-4 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Chargement...</div>';
+    document.getElementById('addContactToListModal').style.display = 'flex';
+    
+    try {
+        const response = await fetch(`index.php?page=listes/details&id=${currentListId}&get_contacts=1`, {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const result = await response.json();
+        
+        if (result.success && result.contacts_ids) {
+            const existingIds = result.contacts_ids;
+            contactsNotInList = allContacts.filter(c => !existingIds.includes(c.id_contact));
+        } else {
+            contactsNotInList = allContacts;
+        }
+        
+        renderContactsList();
+    } catch (error) {
+        contactsNotInList = allContacts;
+        renderContactsList();
+    }
+}
+
+function renderContactsList() {
+    const container = document.getElementById('contactsListContainer');
+    const searchTerm = document.getElementById('searchContactInput')?.value.toLowerCase() || '';
+    
+    let filteredContacts = contactsNotInList.filter(contact => {
+        const fullName = (contact.prenom + ' ' + contact.nom).toLowerCase();
+        const email = (contact.email || '').toLowerCase();
+        const telephone = (contact.telephone || '').toLowerCase();
+        return fullName.includes(searchTerm) || email.includes(searchTerm) || telephone.includes(searchTerm);
+    });
+    
+    if (filteredContacts.length === 0) {
+        container.innerHTML = '<div class="p-4 text-center text-gray-500"><i class="fas fa-users"></i> Aucun contact disponible à ajouter</div>';
+        document.getElementById('selectedCount').innerText = '0';
+        return;
+    }
+    
+    let html = '';
+    filteredContacts.forEach(contact => {
+        html += `
+            <label class="contact-item flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100">
+                <input type="checkbox" name="selected_contact" value="${contact.id_contact}" class="contact-checkbox w-4 h-4 text-blue-600 rounded mr-3" onchange="updateContactSelectedCount()">
+                <div class="flex-1">
+                    <div class="font-medium text-gray-800">${escapeHtml(contact.prenom)} ${escapeHtml(contact.nom)}</div>
+                    <div class="text-xs text-gray-500">
+                        ${contact.email ? '<i class="fas fa-envelope mr-1"></i>' + escapeHtml(contact.email) : ''}
+                        ${contact.telephone ? '<i class="fas fa-phone ml-2 mr-1"></i>' + escapeHtml(contact.telephone) : ''}
+                    </div>
+                </div>
+            </label>
+        `;
+    });
+    
+    container.innerHTML = html;
+    updateContactSelectedCount();
+}
+
+function updateContactSelectedCount() {
+    const checkboxes = document.querySelectorAll('#contactsListContainer .contact-checkbox:checked');
+    document.getElementById('selectedCount').innerText = checkboxes.length;
+}
+
+function selectAllContacts() {
+    document.querySelectorAll('#contactsListContainer .contact-checkbox').forEach(cb => cb.checked = true);
+    updateContactSelectedCount();
+}
+
+function selectNoneContacts() {
+    document.querySelectorAll('#contactsListContainer .contact-checkbox').forEach(cb => cb.checked = false);
+    updateContactSelectedCount();
+}
+
+function closeAddContactToListModal() {
+    document.getElementById('addContactToListModal').style.display = 'none';
+}
+
+async function submitAddContactsToList() {
+    const selectedContacts = Array.from(document.querySelectorAll('#contactsListContainer .contact-checkbox:checked')).map(cb => cb.value);
+    
+    if (selectedContacts.length === 0) {
+        showToast('Veuillez sélectionner au moins un contact', 'warning');
+        return;
+    }
+    
+    const submitBtn = document.getElementById('submitAddContactsBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Ajout...';
+    submitBtn.disabled = true;
+    
+    const formData = new FormData();
+    formData.append('action_add_contacts_to_list', '1');
+    formData.append('id_liste', currentListId);
+    selectedContacts.forEach(id => formData.append('selected_contacts[]', id));
+    
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeAddContactToListModal();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        showToast('Erreur réseau', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+}
+
+// Recherche dans le modal
+document.getElementById('searchContactInput')?.addEventListener('input', function() {
+    renderContactsList();
+});
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 // ============================================
@@ -653,11 +946,12 @@ document.getElementById('importForm').addEventListener('submit', async function(
 
 // Fermeture des modales
 document.getElementById('addListeModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeAddListeModal(); });
+document.getElementById('addContactToListModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeAddContactToListModal(); });
 document.getElementById('renameModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeRenameModal(); });
 document.getElementById('clearModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeClearModal(); });
 document.getElementById('deleteModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeDeleteModal(); });
 document.getElementById('importModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeImportModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddListeModal(); closeRenameModal(); closeClearModal(); closeDeleteModal(); closeImportModal(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddListeModal(); closeAddContactToListModal(); closeRenameModal(); closeClearModal(); closeDeleteModal(); closeImportModal(); } });
 </script>
 
 </body>

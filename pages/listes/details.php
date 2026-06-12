@@ -160,6 +160,38 @@ unset($_SESSION['flash_error']);
         .toast-notification.warning .toast-content { background: #f59e0b; }
         
         .retire-checkbox { display: none; }
+        
+        /* Styles pour la recherche */
+        .search-input {
+            transition: all 0.2s ease;
+        }
+        .search-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+        }
+        .contact-item.hide {
+            display: none;
+        }
+        .dropdown-search-input {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
+        }
+        
+        /* Hauteur minimale pour la table */
+        .table-container {
+            min-height: 300px;
+        }
+        
+        /* Barre d'actions fixe en haut */
+        .action-bar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+        }
     </style>
 </head>
 <body>
@@ -184,7 +216,7 @@ unset($_SESSION['flash_error']);
         <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= $flashError ?></div>
     <?php endif; ?>
 
-    <!-- AJOUT AVEC DROPDOWN À CHECKBOXES -->
+    <!-- AJOUT AVEC DROPDOWN À CHECKBOXES ET RECHERCHE -->
     <div class="bg-white rounded-lg shadow p-6">
         <h2 class="text-lg font-bold mb-4">Ajouter des contacts à la liste</h2>
         
@@ -209,34 +241,40 @@ unset($_SESSION['flash_error']);
                         </button>
                         
                         <div id="dropdownMenu" 
-                             class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                            <div class="p-2 border-b bg-gray-50 sticky top-0">
-                                <div class="flex justify-between text-sm">
-                                    <button type="button" onclick="selectAll()" class="text-blue-600 hover:text-blue-800">
-                                        <i class="fas fa-check-double"></i> Tout
-                                    </button>
-                                    <button type="button" onclick="selectNone()" class="text-gray-500 hover:text-gray-700">
-                                        <i class="fas fa-times"></i> Aucun
-                                    </button>
+                             class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+                            <!-- Barre de recherche -->
+                            <div class="dropdown-search-input p-2 border-b bg-white rounded-t-lg">
+                                <div class="relative">
+                                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
+                                    <input type="text" 
+                                           id="searchContactInput" 
+                                           placeholder="Rechercher un contact..." 
+                                           class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                             </div>
-                            <?php foreach ($contactsDisponibles as $contact): ?>
-                                <label class="flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100">
-                                    <input type="checkbox" name="selected_contacts[]" value="<?= $contact['id_contact'] ?>" 
-                                           class="contact-checkbox w-4 h-4 text-blue-600 rounded"
-                                           onchange="updateSelectedCount()">
-                                    <div class="ml-3">
-                                        <span class="text-sm font-medium text-gray-800">
-                                            <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?>
-                                        </span>
-                                        <?php if ($contact['email']): ?>
-                                            <span class="text-xs text-gray-500 ml-2"><?= htmlspecialchars($contact['email']) ?></span>
-                                        <?php elseif ($contact['telephone']): ?>
-                                            <span class="text-xs text-gray-500 ml-2"><?= htmlspecialchars($contact['telephone']) ?></span>
-                                        <?php endif; ?>
-                                    </div>
-                                </label>
-                            <?php endforeach; ?>
+                            <!-- Liste des contacts avec scroll -->
+                            <div class="max-h-64 overflow-y-auto" id="contactsListContainer">
+                                <?php foreach ($contactsDisponibles as $contact): ?>
+                                    <label class="contact-item flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+                                           data-nom="<?= strtolower(htmlspecialchars($contact['prenom'] . ' ' . $contact['nom'])) ?>"
+                                           data-email="<?= strtolower(htmlspecialchars($contact['email'] ?? '')) ?>"
+                                           data-telephone="<?= strtolower(htmlspecialchars($contact['telephone'] ?? '')) ?>">
+                                        <input type="checkbox" name="selected_contacts[]" value="<?= $contact['id_contact'] ?>" 
+                                               class="contact-checkbox w-4 h-4 text-blue-600 rounded"
+                                               onchange="updateSelectedCount()">
+                                        <div class="ml-3">
+                                            <span class="text-sm font-medium text-gray-800">
+                                                <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?>
+                                            </span>
+                                            <?php if ($contact['email']): ?>
+                                                <span class="text-xs text-gray-500 ml-2"><?= htmlspecialchars($contact['email']) ?></span>
+                                            <?php elseif ($contact['telephone']): ?>
+                                                <span class="text-xs text-gray-500 ml-2"><?= htmlspecialchars($contact['telephone']) ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -250,20 +288,42 @@ unset($_SESSION['flash_error']);
         <?php endif; ?>
     </div>
 
-    <!-- Liste des contacts de la liste -->
+    <!-- Liste des contacts de la liste avec recherche -->
     <div class="bg-white rounded-lg shadow overflow-hidden">
-        <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-            <h2 class="text-lg font-bold">Contacts dans cette liste</h2>
-            <?php if (!empty($contacts)): ?>
-                <button type="button" id="toggleSelectRetire" 
-                        class="text-sm text-blue-600 hover:text-blue-800">
-                    <i class="fas fa-check-square"></i> Sélectionner pour retirer
-                </button>
-            <?php endif; ?>
+        <div class="p-4 border-b bg-gray-50">
+            <div class="flex justify-between items-center flex-wrap gap-4">
+                <h2 class="text-lg font-bold">Contacts dans cette liste</h2>
+                <div class="flex items-center gap-4">
+                    <!-- Champ de recherche pour la liste -->
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="text" 
+                               id="searchListInput" 
+                               placeholder="Rechercher un contact..." 
+                               class="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 w-64">
+                    </div>
+                </div>
+            </div>
         </div>
         
+        <!-- Barre d'actions (Sélectionner + Retirer) - TOUJOURS VISIBLE -->
+        <?php if (!empty($contacts)): ?>
+            <div class="action-bar px-4 py-3 bg-gray-50 flex justify-between items-center">
+                <button type="button" id="toggleSelectRetire" 
+                        class="text-sm bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-800 px-4 py-2 rounded-lg transition flex items-center gap-2">
+                    <i class="fas fa-check-square"></i> Sélectionner pour retirer
+                </button>
+                
+                <button type="submit" id="retirerContactsBtn" 
+                        form="removeContactsForm"
+                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+                    <i class="fas fa-trash-alt mr-2"></i>Retirer les contacts sélectionnés
+                </button>
+            </div>
+        <?php endif; ?>
+        
         <form id="removeContactsForm">
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto table-container">
                 <table class="w-full">
                     <thead class="bg-gray-50">
                         <tr>
@@ -279,17 +339,21 @@ unset($_SESSION['flash_error']);
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200">
+                    <tbody class="divide-y divide-gray-200" id="contactsListBody">
                         <?php if (empty($contacts)): ?>
                             <tr>
                                 <td colspan="6" class="px-6 py-8 text-center text-gray-500">
                                     <i class="fas fa-users text-3xl mb-2 block text-gray-300"></i>
                                     Aucun contact dans cette liste
-                                 </td>
+                                  </td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($contacts as $contact): ?>
-                                <tr class="hover:bg-gray-50">
+                                <tr class="contact-row hover:bg-gray-50" 
+                                    data-nom="<?= strtolower(htmlspecialchars($contact['prenom'] . ' ' . $contact['nom'])) ?>"
+                                    data-email="<?= strtolower(htmlspecialchars($contact['email'] ?? '')) ?>"
+                                    data-telephone="<?= strtolower(htmlspecialchars($contact['telephone'] ?? '')) ?>"
+                                    data-ville="<?= strtolower(htmlspecialchars($contact['ville'] ?? '')) ?>">
                                     <?php if (!empty($contacts)): ?>
                                         <td class="px-2 py-4 text-center">
                                             <input type="checkbox" name="selected_retire_contacts[]" 
@@ -313,22 +377,13 @@ unset($_SESSION['flash_error']);
                     </tbody>
                 </table>
             </div>
-            
-            <?php if (!empty($contacts)): ?>
-                <div class="p-4 border-t bg-gray-50 flex justify-end">
-                    <button type="submit" id="retirerContactsBtn" 
-                            class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition">
-                        <i class="fas fa-trash-alt mr-2"></i>Retirer les contacts sélectionnés
-                    </button>
-                </div>
-            <?php endif; ?>
         </form>
     </div>
 </div>
 
 <script>
 // ============================================
-// TOAST NOTIFICATION (sans icônes)
+// TOAST NOTIFICATION
 // ============================================
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
@@ -350,6 +405,14 @@ const dropdownMenu = document.getElementById('dropdownMenu');
 if (dropdownButton) {
     dropdownButton.addEventListener('click', function() {
         dropdownMenu.classList.toggle('hidden');
+        if (!dropdownMenu.classList.contains('hidden')) {
+            const searchInput = document.getElementById('searchContactInput');
+            if (searchInput) {
+                searchInput.focus();
+                searchInput.value = '';
+                filterContacts('');
+            }
+        }
     });
 }
 
@@ -371,13 +434,78 @@ function updateSelectedCount() {
 }
 
 function selectAll() {
-    document.querySelectorAll('.contact-checkbox').forEach(cb => cb.checked = true);
+    document.querySelectorAll('.contact-checkbox:not(.hide)').forEach(cb => cb.checked = true);
     updateSelectedCount();
 }
 
 function selectNone() {
     document.querySelectorAll('.contact-checkbox').forEach(cb => cb.checked = false);
     updateSelectedCount();
+}
+
+// Recherche dans le dropdown
+const searchContactInput = document.getElementById('searchContactInput');
+if (searchContactInput) {
+    searchContactInput.addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        filterContacts(searchTerm);
+    });
+}
+
+function filterContacts(searchTerm) {
+    const contactItems = document.querySelectorAll('.contact-item');
+    let visibleCount = 0;
+    
+    contactItems.forEach(item => {
+        const nom = item.getAttribute('data-nom') || '';
+        const email = item.getAttribute('data-email') || '';
+        const telephone = item.getAttribute('data-telephone') || '';
+        
+        if (nom.includes(searchTerm) || email.includes(searchTerm) || telephone.includes(searchTerm) || searchTerm === '') {
+            item.classList.remove('hide');
+            visibleCount++;
+        } else {
+            item.classList.add('hide');
+        }
+    });
+    
+    // Afficher un message si aucun résultat
+    const container = document.getElementById('contactsListContainer');
+    const existingNoResult = document.getElementById('noResultMessage');
+    
+    if (visibleCount === 0 && !existingNoResult) {
+        const noResultMsg = document.createElement('div');
+        noResultMsg.id = 'noResultMessage';
+        noResultMsg.className = 'p-4 text-center text-gray-500';
+        noResultMsg.innerHTML = '<i class="fas fa-search"></i> Aucun contact trouvé';
+        container.appendChild(noResultMsg);
+    } else if (visibleCount > 0 && existingNoResult) {
+        existingNoResult.remove();
+    }
+}
+
+// ============================================
+// RECHERCHE DANS LA LISTE DES CONTACTS
+// ============================================
+const searchListInput = document.getElementById('searchListInput');
+if (searchListInput) {
+    searchListInput.addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        const rows = document.querySelectorAll('#contactsListBody .contact-row');
+        
+        rows.forEach(row => {
+            const nom = row.getAttribute('data-nom') || '';
+            const email = row.getAttribute('data-email') || '';
+            const telephone = row.getAttribute('data-telephone') || '';
+            const ville = row.getAttribute('data-ville') || '';
+            
+            if (nom.includes(searchTerm) || email.includes(searchTerm) || telephone.includes(searchTerm) || ville.includes(searchTerm) || searchTerm === '') {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
 }
 
 // ============================================
@@ -500,7 +628,7 @@ function retirerUnContact(contactId) {
 // ============================================
 const toggleSelectRetire = document.getElementById('toggleSelectRetire');
 const selectAllRetire = document.getElementById('selectAllRetire');
-const retireCheckboxes = document.querySelectorAll('.retire-checkbox');
+let retireCheckboxes = document.querySelectorAll('.retire-checkbox');
 
 if (toggleSelectRetire) {
     toggleSelectRetire.addEventListener('click', function() {
@@ -511,8 +639,16 @@ if (toggleSelectRetire) {
         });
         if (selectAllRetire) selectAllRetire.checked = false;
         this.innerHTML = isVisible ? 
-            '<i class="fas fa-check-square"></i> Afficher la sélection' : 
+            '<i class="fas fa-check-square"></i> Sélectionner pour retirer' : 
             '<i class="fas fa-check-square"></i> Masquer la sélection';
+        // Ajuster le style du bouton
+        if (isVisible) {
+            this.classList.remove('bg-blue-100');
+            this.classList.add('bg-blue-50');
+        } else {
+            this.classList.remove('bg-blue-50');
+            this.classList.add('bg-blue-100');
+        }
     });
 }
 
@@ -531,6 +667,10 @@ if (selectAllRetire) {
 // Initialisation
 document.addEventListener('DOMContentLoaded', function() {
     updateSelectedCount();
+    // Recharger les checkboxes après chaque mise à jour
+    setInterval(() => {
+        retireCheckboxes = document.querySelectorAll('.retire-checkbox');
+    }, 500);
 });
 </script>
 

@@ -36,6 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $_SESSION['user_id'] = $compte['id_compte'];
                     $_SESSION['user_name'] = $compte['prenom'] . ' ' . $compte['nom'];
+                    $_SESSION['user_prenom'] = $compte['prenom'];  // AJOUTÉ
+                    $_SESSION['user_nom'] = $compte['nom'];        // AJOUTÉ
                     $_SESSION['user_entreprise'] = $compte['entreprise'];
                     $_SESSION['user_email'] = $compte['user'];
                     $_SESSION['user_credits'] = floatval($compte['credits_total']);

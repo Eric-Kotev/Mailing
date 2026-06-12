@@ -3,7 +3,33 @@ global $db;
 
 $idCompte = $_SESSION['user_id'];
 
-// Récupérer la session WhatsApp active depuis la nouvelle table whatsapp_sessions
+// ============================================
+// RÉCUPÉRATION DE LA CAMPAGNE CONFIG
+// ============================================
+$campagneConfigId = $_POST['campagne_config_id'] ?? $_SESSION['campagne_config_id'] ?? null;
+
+if (!$campagneConfigId) {
+    header('Location: index.php?page=campagnes/creer');
+    exit;
+}
+
+// Récupérer les infos de la campagne config
+$campagneConfig = $db->select('campagne_config', [
+    'id_campagne_config' => $campagneConfigId,
+    'id_compte' => $idCompte
+]);
+
+if (empty($campagneConfig)) {
+    header('Location: index.php?page=campagnes/creer');
+    exit;
+}
+
+$campagne = $campagneConfig[0];
+
+// Nettoyer la session
+unset($_SESSION['campagne_config_id']);
+
+// Récupérer la session WhatsApp active
 $sessions = $db->select('whatsapp_sessions', [
     'id_compte' => $idCompte,
     'est_active' => true
@@ -13,11 +39,9 @@ $whatsappSession = null;
 if (!empty($sessions)) {
     $whatsappSession = $sessions[0]['nom_session'];
 } else {
-    // Si aucune session active, prendre la première session disponible
     $sessions = $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
     if (!empty($sessions)) {
         $whatsappSession = $sessions[0]['nom_session'];
-        // Activer cette session par défaut
         $db->update('whatsapp_sessions', ['est_active' => true], ['id_session' => $sessions[0]['id_session']]);
     }
 }
@@ -67,149 +91,16 @@ foreach ($listesBrutes as $liste) {
     ];
 }
 
+// Utiliser le message de la campagne config comme valeur par défaut
+$defaultMessage = $campagne['message'];
+$defaultListeId = $campagne['id_liste'];
+
 $error = '';
 $success = '';
-
-// Variables pour l'envoi groupé
-$envoiEnCours = false;
-$progressTotal = 0;
-$progressActuel = 0;
 $resultats = [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $type_envoi = $_POST['type_envoi'] ?? 'simple';
-    $message = $_POST['message'] ?? '';
-    
-    // Vérifier si un fichier audio a été enregistré
-    $audioData = $_POST['audio_data'] ?? '';
-    $hasAudio = !empty($audioData) && strpos($audioData, 'base64,') !== false;
-    
-    // Vérifier si un fichier a été uploadé
-    $hasFile = isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK;
-    
-    if ($type_envoi === 'simple') {
-        // ============================================
-        // ENVOI UNIQUE
-        // ============================================
-        $chatId = $_POST['chat_id'] ?? '';
-        
-        if (empty($chatId)) {
-            $error = "Veuillez sélectionner un destinataire";
-        } elseif (empty($message) && !$hasFile && !$hasAudio) {
-            $error = "Veuillez saisir un message ou ajouter un fichier/audio";
-        } else {
-            // Récupérer le nom du contact pour l'historique
-            $contactNom = '';
-            foreach ($contacts as $contact) {
-                $telephone = $contact['telephone'] ?? '';
-                if (!empty($telephone)) {
-                    $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
-                    if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
-                        $telephoneClean = '33' . substr($telephoneClean, 1);
-                    }
-                    $whatsappNumberTest = $telephoneClean . '@c.us';
-                    if ($whatsappNumberTest === $chatId) {
-                        $contactNom = $contact['prenom'] . ' ' . $contact['nom'];
-                        break;
-                    }
-                }
-            }
-            
-            $resultat = envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom);
-            
-            if ($resultat['success']) {
-                $success = $resultat['message'];
-            } else {
-                $error = $resultat['error'];
-            }
-        }
-    } else {
-        // ============================================
-        // ENVOI À UNE LISTE
-        // ============================================
-        $liste_id = $_POST['liste_id'] ?? '';
-        
-        if (empty($liste_id)) {
-            $error = "Veuillez sélectionner une liste";
-        } elseif (empty($message) && !$hasFile && !$hasAudio) {
-            $error = "Veuillez saisir un message ou ajouter un fichier/audio";
-        } else {
-            // Récupérer les contacts de la liste
-            $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
-            $destinataires = [];
-            
-            foreach ($listeContacts as $lc) {
-                if (!in_array($lc['id_contact'], $blacklistIds)) {
-                    $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
-                    if (!empty($contact)) {
-                        $contact = $contact[0];
-                        $telephone = $contact['telephone'] ?? '';
-                        if (!empty($telephone)) {
-                            $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
-                            if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
-                                $telephoneClean = '33' . substr($telephoneClean, 1);
-                            }
-                            $whatsappNumber = $telephoneClean . '@c.us';
-                            $destinataires[] = [
-                                'chat_id' => $whatsappNumber,
-                                'nom' => $contact['prenom'] . ' ' . $contact['nom'],
-                                'id_contact' => $contact['id_contact']
-                            ];
-                        }
-                    }
-                }
-            }
-            
-            if (empty($destinataires)) {
-                $error = "Aucun destinataire valide dans cette liste";
-            } else {
-                $total = count($destinataires);
-                $envoyes = 0;
-                $erreurs = 0;
-                $resultats = [];
-                
-                // Démarrer l'envoi groupé
-                $envoiEnCours = true;
-                $progressTotal = $total;
-                
-                foreach ($destinataires as $index => $dest) {
-                    $progressActuel = $index + 1;
-                    
-                    // Envoyer le message
-                    $resultat = envoyerMessageWhatsApp($dest['chat_id'], $message, $hasFile, $hasAudio, $whatsappSession, $dest['nom']);
-                    
-                    if ($resultat['success']) {
-                        $envoyes++;
-                        $resultats[] = [
-                            'destinataire' => $dest['nom'],
-                            'statut' => 'succes',
-                            'message' => $resultat['message']
-                        ];
-                    } else {
-                        $erreurs++;
-                        $resultats[] = [
-                            'destinataire' => $dest['nom'],
-                            'statut' => 'erreur',
-                            'message' => $resultat['error']
-                        ];
-                    }
-                    
-                    // Si ce n'est pas le dernier message, attendre un délai aléatoire entre 2 et 5 minutes
-                    if ($index < $total - 1) {
-                        $delai = rand(120, 300); // 2 à 5 minutes en secondes
-                        sleep($delai);
-                    }
-                }
-                
-                $success = "Envoi terminé : $envoyes message(s) envoyé(s), $erreurs erreur(s)";
-                $envoiEnCours = false;
-            }
-        }
-    }
-}
-
 // Fonction pour envoyer un message WhatsApp
-function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom) {
+function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom, $campagneConfigId = null) {
     global $db, $idCompte;
     
     $apiUrl = 'http://164.68.103.147:8081/api/controller.php';
@@ -300,7 +191,6 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
         
         unlink($filePath);
     } else {
-        // Message texte simple
         $endpoint = '/messages/send-text';
         $data = [
             'session' => $whatsappSession,
@@ -309,7 +199,6 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
         ];
     }
     
-    // Appel API WhatsApp
     $fullUrl = $apiUrl . $endpoint;
     
     $ch = curl_init();
@@ -318,7 +207,7 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
-        'X-Controller-Key: 29f51fbe00e64ac5a5e3ce6eefbb79b5'
+        'X-Controller-Key: ' . (defined('WHATSAPP_API_KEY') ? WHATSAPP_API_KEY : '29f51fbe00e64ac5a5e3ce6eefbb79b5')
     ]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -339,6 +228,7 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
     if ($httpCode === 200 || $httpCode === 201) {
         $campagneData = [
             'id_compte' => $idCompte,
+            'id_campagne_config' => $campagneConfigId,
             'type_campagne' => 'whatsapp',
             'titre' => $titre,
             'message' => $message,
@@ -362,6 +252,7 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
     } else {
         $campagneData = [
             'id_compte' => $idCompte,
+            'id_campagne_config' => $campagneConfigId,
             'type_campagne' => 'whatsapp',
             'titre' => $titre,
             'message' => $message,
@@ -383,6 +274,128 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
         }
         
         return ['success' => false, 'error' => "Échec de l'envoi: " . substr($response, 0, 200)];
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $type_envoi = $_POST['type_envoi'] ?? 'simple';
+    $message = $_POST['message'] ?? $defaultMessage;
+    
+    $audioData = $_POST['audio_data'] ?? '';
+    $hasAudio = !empty($audioData) && strpos($audioData, 'base64,') !== false;
+    $hasFile = isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK;
+    
+    if ($type_envoi === 'simple') {
+        $chatId = $_POST['chat_id'] ?? '';
+        
+        if (empty($chatId)) {
+            $error = "Veuillez sélectionner un destinataire";
+        } elseif (empty($message) && !$hasFile && !$hasAudio) {
+            $error = "Veuillez saisir un message ou ajouter un fichier/audio";
+        } else {
+            $contactNom = '';
+            foreach ($contacts as $contact) {
+                $telephone = $contact['telephone'] ?? '';
+                if (!empty($telephone)) {
+                    $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
+                    if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
+                        $telephoneClean = '33' . substr($telephoneClean, 1);
+                    }
+                    $whatsappNumberTest = $telephoneClean . '@c.us';
+                    if ($whatsappNumberTest === $chatId) {
+                        $contactNom = $contact['prenom'] . ' ' . $contact['nom'];
+                        break;
+                    }
+                }
+            }
+            
+            $resultat = envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom, $campagneConfigId);
+            
+            if ($resultat['success']) {
+                $success = $resultat['message'];
+                // Mettre à jour le statut de la campagne config
+                $db->update('campagne_config', [
+                    'statut' => 'envoyee',
+                    'sent_at' => date('Y-m-d H:i:s')
+                ], ['id_campagne_config' => $campagneConfigId]);
+            } else {
+                $error = $resultat['error'];
+            }
+        }
+    } else {
+        $liste_id = $_POST['liste_id'] ?? $defaultListeId;
+        
+        if (empty($liste_id)) {
+            $error = "Veuillez sélectionner une liste";
+        } elseif (empty($message) && !$hasFile && !$hasAudio) {
+            $error = "Veuillez saisir un message ou ajouter un fichier/audio";
+        } else {
+            $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
+            $destinataires = [];
+            
+            foreach ($listeContacts as $lc) {
+                if (!in_array($lc['id_contact'], $blacklistIds)) {
+                    $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
+                    if (!empty($contact)) {
+                        $contact = $contact[0];
+                        $telephone = $contact['telephone'] ?? '';
+                        if (!empty($telephone)) {
+                            $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
+                            if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
+                                $telephoneClean = '33' . substr($telephoneClean, 1);
+                            }
+                            $whatsappNumber = $telephoneClean . '@c.us';
+                            $destinataires[] = [
+                                'chat_id' => $whatsappNumber,
+                                'nom' => $contact['prenom'] . ' ' . $contact['nom']
+                            ];
+                        }
+                    }
+                }
+            }
+            
+            if (empty($destinataires)) {
+                $error = "Aucun destinataire valide dans cette liste";
+            } else {
+                $total = count($destinataires);
+                $envoyes = 0;
+                $erreurs = 0;
+                $resultats = [];
+                
+                foreach ($destinataires as $index => $dest) {
+                    $resultat = envoyerMessageWhatsApp($dest['chat_id'], $message, $hasFile, $hasAudio, $whatsappSession, $dest['nom'], $campagneConfigId);
+                    
+                    if ($resultat['success']) {
+                        $envoyes++;
+                        $resultats[] = [
+                            'destinataire' => $dest['nom'],
+                            'statut' => 'succes',
+                            'message' => $resultat['message']
+                        ];
+                    } else {
+                        $erreurs++;
+                        $resultats[] = [
+                            'destinataire' => $dest['nom'],
+                            'statut' => 'erreur',
+                            'message' => $resultat['error']
+                        ];
+                    }
+                    
+                    if ($index < $total - 1) {
+                        $delai = rand(120, 300);
+                        sleep($delai);
+                    }
+                }
+                
+                $success = "Envoi terminé : $envoyes message(s) envoyé(s), $erreurs erreur(s)";
+                
+                // Mettre à jour le statut de la campagne config
+                $db->update('campagne_config', [
+                    'statut' => 'envoyee',
+                    'sent_at' => date('Y-m-d H:i:s')
+                ], ['id_campagne_config' => $campagneConfigId]);
+            }
+        }
     }
 }
 ?>
@@ -562,6 +575,24 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
             padding: 5px 0;
             border-bottom: 1px solid #e5e7eb;
         }
+        
+        .campagne-info {
+            background: #f3e8ff;
+            border: 1px solid #d8b4fe;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+        }
+        .campagne-info-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #6b21a5;
+            margin-bottom: 8px;
+        }
+        .campagne-info-text {
+            font-size: 13px;
+            color: #4a1d6d;
+        }
     </style>
 </head>
 <body>
@@ -582,7 +613,7 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
 
 <div class="max-w-3xl mx-auto py-8 px-4">
     <div class="flex items-center mb-6">
-        <a href="index.php?page=campagnes/choix" class="text-blue-600 hover:text-blue-800 mr-4">
+        <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 mr-4">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
         <div class="bg-green-100 p-3 rounded-full mr-4">
@@ -592,6 +623,24 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
     </div>
     
     <div class="bg-white rounded-lg shadow p-6">
+        <!-- Affichage des informations de la campagne -->
+        <div class="campagne-info">
+            <div class="campagne-info-title">
+                <i class="fas fa-bullhorn mr-2"></i>
+                Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
+            </div>
+            <?php if ($campagne['objet']): ?>
+                <div class="campagne-info-text">
+                    <strong>Objet :</strong> <?= htmlspecialchars($campagne['objet']) ?>
+                </div>
+            <?php endif; ?>
+            <?php if ($campagne['date_planification']): ?>
+                <div class="campagne-info-text">
+                    <strong>Planifiée le :</strong> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        
         <div class="bg-green-50 p-3 rounded mb-4">
             <p class="text-sm text-green-700">
                 <i class="fas fa-check-circle mr-1"></i> Session active: <strong><?= htmlspecialchars($whatsappSession) ?></strong>
@@ -628,6 +677,8 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
             </div>
         <?php else: ?>
             <form method="POST" enctype="multipart/form-data" id="whatsappForm">
+                <input type="hidden" name="campagne_config_id" value="<?= $campagneConfigId ?>">
+                
                 <!-- Type d'envoi -->
                 <div class="mb-6">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -692,7 +743,7 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
                     <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                         <option value="">-- Sélectionnez une liste --</option>
                         <?php foreach ($listes as $liste): ?>
-                            <option value="<?= $liste['id_liste'] ?>">
+                            <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) || ($defaultListeId == $liste['id_liste'])) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
                             </option>
                         <?php endforeach; ?>
@@ -706,7 +757,7 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
                     <label class="block text-sm font-medium text-gray-700 mb-1">Message <span id="messageRequired" class="text-gray-400 text-xs">(optionnel si fichier/audio)</span></label>
                     <textarea name="message" id="message" rows="4" 
                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500"
-                              placeholder="Votre message..."></textarea>
+                              placeholder="Votre message..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : htmlspecialchars($defaultMessage) ?></textarea>
                     <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
                 </div>
                 
@@ -838,7 +889,7 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// ENREGISTREMENT AUDIO
+// ENREGISTREMENT AUDIO (code identique à avant)
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingTimer = null;
@@ -1067,9 +1118,7 @@ const loadingOverlay = document.getElementById('loadingOverlay');
 const whatsappForm = document.getElementById('whatsappForm');
 const progressBarFill = document.getElementById('progressBarFill');
 const loadingMessage = document.getElementById('loadingMessage');
-const progressText = document.getElementById('progressText');
 const resultatsDetail = document.getElementById('resultatsDetail');
-
 
 function setLoading(loading, totalMessages = 0) {
     if (loading) {
@@ -1082,12 +1131,11 @@ function setLoading(loading, totalMessages = 0) {
         
         if (totalMessages > 1) {
             loadingMessage.innerHTML = 'Envoi groupé en cours...<br><span class="text-sm text-gray-500">Délai de 2 à 5 minutes entre chaque message</span>';
-
-            resultatsDetail.innerHTML = '<div class="text-center text-gray-500">Envoi du message en cours...</div>';
+            resultatsDetail.style.display = 'block';
+            resultatsDetail.innerHTML = '<div class="text-center text-gray-500">Démarrage de l\'envoi...</div>';
         } else {
             loadingMessage.innerHTML = 'Envoi du message en cours...';
         }
-        
     } else {
         submitBtn.classList.remove('btn-loading');
         submitBtn.disabled = false;
@@ -1145,38 +1193,7 @@ whatsappForm.addEventListener('submit', function(e) {
     
     setLoading(true, totalMessages);
     
-    // Lancer une vérification périodique pour les envois groupés
-    if (totalMessages > 1) {
-        let currentProgress = 0;
-        const checkInterval = setInterval(function() {
-            fetch(window.location.href + '?check_progress=1')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.current > currentProgress) {
-                        currentProgress = data.current;
-                        
-                        if (data.resultats && data.resultats.length) {
-                            let html = '';
-                            data.resultats.forEach(r => {
-                                html += `<div class="${r.statut === 'succes' ? 'resultat-succes' : 'resultat-erreur'}">
-                                     ${escapeHtml(r.destinataire)} : ${escapeHtml(r.message)}
-                                </div>`;
-                            });
-                            resultatsDetail.innerHTML = html;
-                        }
-                    }
-                    
-                    if (data.completed) {
-                        clearInterval(checkInterval);
-                    }
-                })
-                .catch(() => {});
-        }, 3000);
-        
-        setTimeout(() => {
-            clearInterval(checkInterval);
-        }, 3600000); // 1 heure max
-    }
+    // Le formulaire va se soumettre normalement ici
 });
 
 function escapeHtml(text) {

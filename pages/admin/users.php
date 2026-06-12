@@ -242,6 +242,26 @@ unset($_SESSION['flash_error']);
         .toggle-password:focus {
             outline: none;
         }
+        
+        /* Badge de statut */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .status-active {
+            background-color: #dcfce7;
+            color: #16a34a;
+        }
+        .status-inactive {
+            background-color: #fee2e2;
+            color: #dc2626;
+        }
     </style>
 </head>
 <body>
@@ -267,66 +287,95 @@ unset($_SESSION['flash_error']);
 
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full">
+            <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entreprise</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Utilisateur</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Identifiant</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Crédits</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rôle</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inscrit le</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entreprise</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Utilisateur</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Identifiant</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Crédits</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rôle</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inscrit le</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
                     <?php foreach ($users as $user): 
                         $isCurrentUser = ($user['id_compte'] == $currentUserId);
-                        $statusColor = $user['actif'] ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-                        $statusText = $user['actif'] ? 'Actif' : 'Suspendu';
                         $roleColor = $user['role'] == 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                        $statusClass = $user['actif'] ? 'status-active' : 'status-inactive';
+                        $statusText = $user['actif'] ? 'Actif' : 'Suspendu';
                     ?>
                         <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4 font-medium"><?= htmlspecialchars($user['entreprise']) ?></td>
-                            <td class="px-6 py-4"><?= htmlspecialchars($user['prenom'] . ' ' . $user['nom']) ?></td>
-                            <td class="px-6 py-4"><?= htmlspecialchars($user['user']) ?></td>
-                            <td class="px-6 py-4 font-bold">
+                            <td class="px-4 py-3 text-sm font-medium text-gray-800">
+                                <?= htmlspecialchars($user['entreprise']) ?>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-700">
+                                <?= htmlspecialchars($user['prenom'] . ' ' . $user['nom']) ?>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-600">
+                                <?= htmlspecialchars($user['user']) ?>
+                            </td>
+                            <td class="px-4 py-3 text-sm font-semibold text-gray-800 whitespace-nowrap">
                                 <?= number_format($user['credits_total'], 2) ?> €
                                 <button onclick="showCreditModal('<?= $user['id_compte'] ?>', '<?= addslashes($user['entreprise']) ?>')" 
-                                        class="ml-2 text-blue-600 hover:text-blue-800 text-sm" title="Ajouter des crédits">
-                                    <i class="fas fa-plus-circle"></i>
+                                        class="ml-1 text-blue-600 hover:text-blue-800" title="Ajouter des crédits">
+                                    <i class="fas fa-plus-circle text-sm"></i>
                                 </button>
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-4 py-3">
                                 <?php if (!$isCurrentUser): ?>
                                     <button onclick="openRoleModal('<?= $user['id_compte'] ?>', '<?= addslashes($user['prenom'] . ' ' . $user['nom']) ?>', '<?= $user['role'] ?>')" 
-                                            class="px-2 py-1 rounded text-xs <?= $roleColor ?> hover:opacity-80 cursor-pointer transition">
+                                            class="px-2 py-1 rounded text-xs <?= $roleColor ?> hover:opacity-80 cursor-pointer transition flex items-center gap-1">
                                         <?= strtoupper($user['role']) ?>
-                                        <i class="fas fa-chevron-down ml-1 text-xs"></i>
+                                        <i class="fas fa-chevron-down text-xs"></i>
                                     </button>
                                 <?php else: ?>
-                                    <span class="px-2 py-1 rounded text-xs <?= $roleColor ?>"><?= strtoupper($user['role']) ?></span>
-                                    <span class="text-xs text-gray-400 ml-1">(vous)</span>
+                                    <span class="px-2 py-1 rounded text-xs <?= $roleColor ?> inline-flex items-center gap-1">
+                                        <?= strtoupper($user['role']) ?>
+                                        <span class="text-xs text-gray-400 ml-1">(vous)</span>
+                                    </span>
                                 <?php endif; ?>
                             </td>
-                            <td class="px-6 py-4">
-                                <?php if (!$isCurrentUser): ?>
-                                    <button onclick="openStatusModal('<?= $user['id_compte'] ?>', '<?= addslashes($user['prenom'] . ' ' . $user['nom']) ?>', '<?= $user['actif'] ?>')" 
-                                            class="px-2 py-1 rounded text-xs <?= $user['actif'] ? 'bg-red-100 text-red-800 hover:bg-red-200' : 'bg-green-100 text-green-800 hover:bg-green-200' ?> transition cursor-pointer">
-                                        <?= $user['actif'] ? 'Suspendre' : 'Activer' ?>
+                            <td class="px-4 py-3">
+                                <span class="status-badge <?= $statusClass ?>">
+                                    <?php if ($user['actif']): ?>
+                                        <i class="fas fa-check-circle text-xs"></i>
+                                    <?php else: ?>
+                                        <i class="fas fa-ban text-xs"></i>
+                                    <?php endif; ?>
+                                    <?= $statusText ?>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                                <?= date('d/m/Y', strtotime($user['date_creation'])) ?>
+                            </td>
+                            <td class="px-4 py-3 text-center whitespace-nowrap">
+                                <div class="flex items-center justify-center gap-2">
+                                    <?php if (!$isCurrentUser): ?>
+                                        <?php if ($user['actif']): ?>
+                                            <button onclick="openStatusModal('<?= $user['id_compte'] ?>', '<?= addslashes($user['prenom'] . ' ' . $user['nom']) ?>', '<?= $user['actif'] ?>')" 
+                                                    class="text-orange-600 hover:text-orange-800 transition" title="Suspendre">
+                                                <i class="fas fa-pause-circle"></i>
+                                            </button>
+                                        <?php else: ?>
+                                            <button onclick="openStatusModal('<?= $user['id_compte'] ?>', '<?= addslashes($user['prenom'] . ' ' . $user['nom']) ?>', '<?= $user['actif'] ?>')" 
+                                                    class="text-green-600 hover:text-green-800 transition" title="Activer">
+                                                <i class="fas fa-play-circle"></i>
+                                            </button>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="text-gray-400" title="Vous ne pouvez pas modifier votre propre statut">
+                                            <i class="fas fa-lock"></i>
+                                        </span>
+                                    <?php endif; ?>
+                                    <button type="button" onclick="openEditUserModal('<?= $user['id_compte'] ?>')" 
+                                            class="text-blue-600 hover:text-blue-800 transition" title="Modifier">
+                                        <i class="fas fa-edit"></i>
                                     </button>
-                                <?php else: ?>
-                                    <span class="px-2 py-1 rounded text-xs bg-gray-100 text-gray-400">Vous-même</span>
-                                <?php endif; ?>
-                             </td>
-                            <td class="px-6 py-4"><?= date('d/m/Y', strtotime($user['date_creation'])) ?></td>
-                            <td class="px-6 py-4 space-x-2">
-                                <button type="button" onclick="openEditUserModal('<?= $user['id_compte'] ?>')" 
-                                        class="text-blue-600 hover:text-blue-800" title="Modifier">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                             </td>
+                                </div>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

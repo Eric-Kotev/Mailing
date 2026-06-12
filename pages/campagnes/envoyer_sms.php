@@ -1,6 +1,34 @@
 <?php
 global $db;
 
+$idCompte = $_SESSION['user_id'];
+
+// ============================================
+// RÉCUPÉRATION DE LA CAMPAGNE CONFIG
+// ============================================
+$campagneConfigId = $_POST['campagne_config_id'] ?? $_SESSION['campagne_config_id'] ?? null;
+
+if (!$campagneConfigId) {
+    header('Location: index.php?page=campagnes/creer');
+    exit;
+}
+
+// Récupérer les infos de la campagne config
+$campagneConfig = $db->select('campagne_config', [
+    'id_campagne_config' => $campagneConfigId,
+    'id_compte' => $idCompte
+]);
+
+if (empty($campagneConfig)) {
+    header('Location: index.php?page=campagnes/creer');
+    exit;
+}
+
+$campagne = $campagneConfig[0];
+
+// Nettoyer la session après récupération
+unset($_SESSION['campagne_config_id']);
+
 // Vérifier si un appareil SMS est sélectionné
 if (!isset($_SESSION['sms_device_id']) || !isset($_SESSION['sms_api_username'])) {
     header('Location: index.php?page=campagnes/choix');
@@ -13,8 +41,6 @@ $api_username = $_SESSION['sms_api_username'];
 $api_password = $_SESSION['sms_api_password'];
 
 // Récupérer les contacts (en excluant la blacklist)
-$idCompte = $_SESSION['user_id'];
-
 // 1. Récupérer les IDs des contacts blacklistés
 $blacklist = $db->select('blacklist');
 $blacklistIds = [];
@@ -35,16 +61,14 @@ foreach ($tousContacts as $contact) {
     }
 }
 
-// Récupérer les listes avec le nombre de contacts (via la table liste_contact)
+// Récupérer les listes avec le nombre de contacts
 $listesBrutes = $db->select('liste', ['id_compte' => $idCompte]);
 $listes = [];
 
 foreach ($listesBrutes as $liste) {
-    // Compter les contacts dans cette liste via la table liste_contact
     $listeContacts = $db->select('liste_contact', ['id_liste' => $liste['id_liste']]);
     $nbContacts = 0;
     foreach ($listeContacts as $lc) {
-        // Vérifier si le contact n'est pas blacklisté
         if (!in_array($lc['id_contact'], $blacklistIds)) {
             $nbContacts++;
         }
@@ -57,15 +81,20 @@ foreach ($listesBrutes as $liste) {
     ];
 }
 
+// Utiliser le message de la campagne config comme valeur par défaut
+$defaultMessage = $campagne['message'];
+$defaultObjet = $campagne['objet'];
+$defaultListeId = $campagne['id_liste'];
+
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $message = $_POST['message'] ?? '';
+    $message = $_POST['message'] ?? $defaultMessage;
     $type_envoi = $_POST['type_envoi'] ?? 'simple';
     
     $recipients = [];
-    $destinatairesNoms = []; // Pour l'historique
+    $destinatairesNoms = [];
     
     if ($type_envoi === 'simple') {
         // Envoi à un seul destinataire
@@ -87,12 +116,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         // Envoi à une liste
-        $liste_id = $_POST['liste_id'] ?? '';
+        $liste_id = $_POST['liste_id'] ?? $defaultListeId;
         if (!empty($liste_id)) {
-            // Récupérer les ID des contacts dans la liste via liste_contact
             $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
             foreach ($listeContacts as $lc) {
-                // Vérifier si le contact n'est pas blacklisté
                 if (!in_array($lc['id_contact'], $blacklistIds)) {
                     $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
                     if (!empty($contact)) {
@@ -118,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Veuillez saisir un message";
     } else {
         // Appel API SMS
-        $apiUrl = 'http:/164.68.103.147:8085/api.php/sendBulk';
+        $apiUrl = 'http://164.68.103.147:8085/api.php/sendBulk';
         $data = [
             'text' => $message,
             'recipients' => $recipients,
@@ -140,9 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         
-        // ============================================
-        // PRÉPARER LES DONNÉES POUR L'HISTORIQUE
-        // ============================================
+        // Préparer les données pour l'historique
         $destinatairesJson = json_encode($destinatairesNoms);
         $titre = "SMS - " . date('d/m/Y H:i');
         if (!empty($message)) {
@@ -155,6 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ENREGISTREMENT SUCCÈS
             $campagneData = [
                 'id_compte' => $idCompte,
+                'id_campagne_config' => $campagneConfigId,
                 'type_campagne' => 'sms',
                 'titre' => $titre,
                 'message' => $message,
@@ -168,12 +194,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'created_at' => date('Y-m-d H:i:s')
             ];
             
+            // Mettre à jour le statut de la campagne config
+            $db->update('campagne_config', [
+                'statut' => 'envoyee',
+                'sent_at' => date('Y-m-d H:i:s')
+            ], ['id_campagne_config' => $campagneConfigId]);
+            
         } else {
             $error = "Erreur d'envoi: " . $response;
             
             // ENREGISTREMENT ÉCHEC
             $campagneData = [
                 'id_compte' => $idCompte,
+                'id_campagne_config' => $campagneConfigId,
                 'type_campagne' => 'sms',
                 'titre' => $titre,
                 'message' => $message,
@@ -262,7 +295,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transform: translateY(-2px);
         }
         
-        /* Animation de chargement du bouton */
         .btn-loading {
             opacity: 0.7;
             cursor: not-allowed;
@@ -279,7 +311,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             to { transform: rotate(360deg); }
         }
         
-        /* Overlay de chargement global */
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -348,6 +379,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             50% { width: 70%; }
             100% { width: 100%; }
         }
+        
+        /* Informations campagne */
+        .campagne-info {
+            background: #f3e8ff;
+            border: 1px solid #d8b4fe;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+        }
+        .campagne-info-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #6b21a5;
+            margin-bottom: 8px;
+        }
+        .campagne-info-text {
+            font-size: 13px;
+            color: #4a1d6d;
+        }
     </style>
 </head>
 <body>
@@ -378,6 +428,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     
     <div class="bg-white rounded-lg shadow p-6">
+        <!-- Affichage des informations de la campagne -->
+        <div class="campagne-info">
+            <div class="campagne-info-title">
+                <i class="fas fa-bullhorn mr-2"></i>
+                Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
+            </div>
+            <?php if ($campagne['objet']): ?>
+                <div class="campagne-info-text">
+                    <strong>Objet :</strong> <?= htmlspecialchars($campagne['objet']) ?>
+                </div>
+            <?php endif; ?>
+            <?php if ($campagne['date_planification']): ?>
+                <div class="campagne-info-text">
+                    <strong>Planifiée le :</strong> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        
         <div class="bg-blue-50 p-3 rounded mb-4">
             <p class="text-sm text-blue-700">
                 <i class="fas fa-mobile-alt mr-1"></i> Appareil: <strong><?= htmlspecialchars($device_name) ?></strong>
@@ -394,6 +462,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
         
         <form method="POST" id="smsForm">
+            <!-- Champ caché pour l'ID de campagne -->
+            <input type="hidden" name="campagne_config_id" value="<?= $campagneConfigId ?>">
+            
             <!-- Type d'envoi -->
             <div class="mb-6">
                 <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -439,7 +510,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                     <option value="">-- Sélectionnez une liste --</option>
                     <?php foreach ($listes as $liste): ?>
-                        <option value="<?= $liste['id_liste'] ?>" <?= (isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) ? 'selected' : '' ?>>
+                        <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) || ($defaultListeId == $liste['id_liste'])) ? 'selected' : '' ?>>
                             <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -454,7 +525,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </label>
                 <textarea name="message" id="message" rows="5" required
                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
-                          placeholder="Votre message..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : '' ?></textarea>
+                          placeholder="Votre message..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : htmlspecialchars($defaultMessage) ?></textarea>
                 <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
             </div>
             
@@ -557,39 +628,27 @@ $('#liste_id').on('change', function() {
     }
 });
 
-// Fonction pour activer le mode chargement
 function setLoading(loading) {
     if (loading) {
-        // Désactiver le bouton et changer son apparence
         submitBtn.classList.add('btn-loading');
         submitBtn.disabled = true;
         
-        // Sauvegarder le contenu original
         const originalContent = submitBtn.innerHTML;
         submitBtn.setAttribute('data-original-content', originalContent);
-        
-        // Modifier le bouton
         submitBtn.innerHTML = '<i class="fas fa-circle-notch mr-2"></i>Envoi en cours...';
-        
-        // Afficher l'overlay
         loadingOverlay.classList.add('active');
     } else {
-        // Réactiver le bouton
         submitBtn.classList.remove('btn-loading');
         submitBtn.disabled = false;
         
-        // Restaurer le contenu original
         const originalContent = submitBtn.getAttribute('data-original-content');
         if (originalContent) {
             submitBtn.innerHTML = originalContent;
         }
-        
-        // Cacher l'overlay
         loadingOverlay.classList.remove('active');
     }
 }
 
-// Gestion de la soumission du formulaire avec indicateur de chargement
 smsForm.addEventListener('submit', function(e) {
     const type_envoi = document.getElementById('type_envoi').value;
     const message = document.getElementById('message').value.trim();
@@ -614,11 +673,7 @@ smsForm.addEventListener('submit', function(e) {
         return false;
     }
     
-    // Si tout est valide, on active le mode chargement
     setLoading(true);
-    
-    // Le formulaire va se soumettre normalement ici
-    // Note: On ne désactive pas les champs Select2 pour éviter les problèmes de valeur
 });
 
 function showToast(message, type = 'success') {
@@ -632,9 +687,7 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// Si la page se recharge avec un succès ou une erreur, on cache le loading
 if (performance.navigation.type === 1) {
-    // Page rechargée (après soumission)
     setLoading(false);
 }
 </script>
