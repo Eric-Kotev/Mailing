@@ -220,7 +220,7 @@ $hasSmsAppareils = !empty($smsAppareils);
 
 <div class="max-w-3xl mx-auto py-8 px-4">
     <div class="flex items-center mb-6">
-        <a href="index.php?page=campagnes/index" class="text-blue-600 hover:text-blue-800 mr-4">
+        <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 mr-4">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
         <div class="bg-purple-100 p-3 rounded-full mr-4">
