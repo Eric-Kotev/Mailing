@@ -79,7 +79,7 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-plus-circle w-5 mr-3 text-green-400"></i>
-            <span class="menu-text">Mes campagne</span>
+            <span class="menu-text">Mes campagnes</span>
         </a>
 
         <!-- Contacts -->
