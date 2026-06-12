@@ -92,7 +92,7 @@ foreach ($envois as $e) {
     <!-- En-tête -->
     <div class="flex items-center justify-between mb-6">
         <div class="flex items-center">
-            <a href="index.php?page=campagnes/index" class="text-blue-600 hover:text-blue-800 mr-4">
+            <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 mr-4">
                 <i class="fas fa-arrow-left"></i> Retour
             </a>
             <div class="bg-purple-100 p-3 rounded-full mr-4">
@@ -121,12 +121,6 @@ foreach ($envois as $e) {
                 <div>
                     <label class="text-xs text-gray-500 uppercase">Planifiée le</label>
                     <div class="mt-1 font-medium"><?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?></div>
-                </div>
-            <?php endif; ?>
-            <?php if ($campagne['objet']): ?>
-                <div>
-                    <label class="text-xs text-gray-500 uppercase">Objet</label>
-                    <div class="mt-1 font-medium"><?= htmlspecialchars($campagne['objet']) ?></div>
                 </div>
             <?php endif; ?>
         </div>

@@ -91,19 +91,68 @@ foreach ($listesBrutes as $liste) {
     ];
 }
 
-// Utiliser le message de la campagne config comme valeur par défaut
-$defaultMessage = $campagne['message'];
-$defaultListeId = $campagne['id_liste'];
 
 $error = '';
 $success = '';
 $resultats = [];
 
+// Fonction pour formater correctement un numéro WhatsApp
+function formatWhatsAppNumber($telephone) {
+    if (empty($telephone)) {
+        return null;
+    }
+    
+    // Nettoyer le numéro (garder uniquement les chiffres)
+    $telephone = preg_replace('/[^0-9]/', '', $telephone);
+    
+    // Format pour Madagascar (9 chiffres)
+    if (strlen($telephone) == 9) {
+        $telephone = '261' . $telephone;
+    }
+    // Format pour France (10 chiffres commençant par 0)
+    elseif (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
+        $telephone = '33' . substr($telephone, 1);
+    }
+    // Format international sans l'indicatif
+    elseif (strlen($telephone) == 9 && substr($telephone, 0, 1) != '0') {
+        $telephone = '261' . $telephone;
+    }
+    
+    // Vérifier que le numéro a le bon format international
+    if (strlen($telephone) < 10 || strlen($telephone) > 15) {
+        return null;
+    }
+    
+    return $telephone . '@c.us';
+}
+
+// Fonction pour vérifier le statut de la session WhatsApp
+function checkWhatsAppSession($whatsappSession, $apiUrl, $apiKey) {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $apiUrl . '/sessions/' . $whatsappSession . '/status');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'X-Controller-Key: ' . $apiKey
+    ]);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($httpCode !== 200) {
+        return false;
+    }
+    
+    $result = json_decode($response, true);
+    $status = $result['status'] ?? $result['state'] ?? '';
+    return ($status === 'WORKING' || $status === 'connected');
+}
+
 // Fonction pour envoyer un message WhatsApp
-function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom, $campagneConfigId = null) {
+function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom, $apiUrl, $apiKey, $campagneConfigId = null) {
     global $db, $idCompte;
     
-    $apiUrl = 'http://164.68.103.147:8081/api/controller.php';
     $endpoint = '/messages/send-text';
     $data = [];
     
@@ -207,14 +256,25 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
-        'X-Controller-Key: ' . (defined('WHATSAPP_API_KEY') ? WHATSAPP_API_KEY : '29f51fbe00e64ac5a5e3ce6eefbb79b5')
+        'X-Controller-Key: ' . $apiKey
     ]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
+    
+    // Log pour debug
+    error_log("=== WhatsApp Envoi ===");
+    error_log("URL: " . $fullUrl);
+    error_log("Session: " . $whatsappSession);
+    error_log("ChatId: " . $chatId);
+    error_log("HTTP Code: " . $httpCode);
+    error_log("Response: " . $response);
+    if ($curlError) error_log("Curl Error: " . $curlError);
     
     // Préparer les données pour l'historique
     $destinatairesNoms = [$contactNom . ' (' . $chatId . ')'];
@@ -225,7 +285,10 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
         $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
     }
     
-    if ($httpCode === 200 || $httpCode === 201) {
+    $responseData = json_decode($response, true);
+    $isSuccess = ($httpCode === 200 || $httpCode === 201) && isset($responseData['ok']) && $responseData['ok'] === true;
+    
+    if ($isSuccess) {
         $campagneData = [
             'id_compte' => $idCompte,
             'id_campagne_config' => $campagneConfigId,
@@ -250,6 +313,8 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
         
         return ['success' => true, 'message' => 'Message envoyé avec succès !'];
     } else {
+        $errorMsg = $responseData['error'] ?? substr($response, 0, 200);
+        
         $campagneData = [
             'id_compte' => $idCompte,
             'id_campagne_config' => $campagneConfigId,
@@ -263,7 +328,7 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
             'nb_erreurs' => 1,
             'appareil_utilise' => $whatsappSession,
             'statut' => 'echoue',
-            'erreur' => substr($response, 0, 500),
+            'erreur' => $errorMsg,
             'created_at' => date('Y-m-d H:i:s')
         ];
         
@@ -273,14 +338,23 @@ function envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsap
             error_log("Erreur insertion historique WhatsApp: " . $e->getMessage());
         }
         
-        return ['success' => false, 'error' => "Échec de l'envoi: " . substr($response, 0, 200)];
+        return ['success' => false, 'error' => "Échec de l'envoi: " . $errorMsg];
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Configuration API
+$apiUrl = 'http://164.68.103.147:8081/api/controller.php';
+$apiKey = defined('WHATSAPP_API_KEY') ? WHATSAPP_API_KEY : '29f51fbe00e64ac5a5e3ce6eefbb79b5';
+
+// Vérifier le statut de la session avant l'envoi
+$sessionConnected = checkWhatsAppSession($whatsappSession, $apiUrl, $apiKey);
+if (!$sessionConnected && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $error = "La session WhatsApp n'est pas connectée. Veuillez vous reconnecter.";
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
     $type_envoi = $_POST['type_envoi'] ?? 'simple';
-    $message = $_POST['message'] ?? $defaultMessage;
-    
+    $message = $_POST['message'] ;
     $audioData = $_POST['audio_data'] ?? '';
     $hasAudio = !empty($audioData) && strpos($audioData, 'base64,') !== false;
     $hasFile = isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK;
@@ -297,19 +371,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($contacts as $contact) {
                 $telephone = $contact['telephone'] ?? '';
                 if (!empty($telephone)) {
-                    $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
-                    if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
-                        $telephoneClean = '33' . substr($telephoneClean, 1);
-                    }
-                    $whatsappNumberTest = $telephoneClean . '@c.us';
-                    if ($whatsappNumberTest === $chatId) {
+                    $formattedNumber = formatWhatsAppNumber($telephone);
+                    if ($formattedNumber === $chatId) {
                         $contactNom = $contact['prenom'] . ' ' . $contact['nom'];
                         break;
                     }
                 }
             }
             
-            $resultat = envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom, $campagneConfigId);
+            $resultat = envoyerMessageWhatsApp($chatId, $message, $hasFile, $hasAudio, $whatsappSession, $contactNom, $apiUrl, $apiKey, $campagneConfigId);
             
             if ($resultat['success']) {
                 $success = $resultat['message'];
@@ -323,7 +393,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } else {
-        $liste_id = $_POST['liste_id'] ?? $defaultListeId;
         
         if (empty($liste_id)) {
             $error = "Veuillez sélectionner une liste";
@@ -340,15 +409,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $contact = $contact[0];
                         $telephone = $contact['telephone'] ?? '';
                         if (!empty($telephone)) {
-                            $telephoneClean = preg_replace('/[^0-9]/', '', $telephone);
-                            if (strlen($telephoneClean) == 10 && substr($telephoneClean, 0, 1) == '0') {
-                                $telephoneClean = '33' . substr($telephoneClean, 1);
+                            $whatsappNumber = formatWhatsAppNumber($telephone);
+                            if ($whatsappNumber) {
+                                $destinataires[] = [
+                                    'chat_id' => $whatsappNumber,
+                                    'nom' => $contact['prenom'] . ' ' . $contact['nom']
+                                ];
                             }
-                            $whatsappNumber = $telephoneClean . '@c.us';
-                            $destinataires[] = [
-                                'chat_id' => $whatsappNumber,
-                                'nom' => $contact['prenom'] . ' ' . $contact['nom']
-                            ];
                         }
                     }
                 }
@@ -363,7 +430,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $resultats = [];
                 
                 foreach ($destinataires as $index => $dest) {
-                    $resultat = envoyerMessageWhatsApp($dest['chat_id'], $message, $hasFile, $hasAudio, $whatsappSession, $dest['nom'], $campagneConfigId);
+                    $resultat = envoyerMessageWhatsApp($dest['chat_id'], $message, $hasFile, $hasAudio, $whatsappSession, $dest['nom'], $apiUrl, $apiKey, $campagneConfigId);
                     
                     if ($resultat['success']) {
                         $envoyes++;
@@ -381,6 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
                     }
                     
+                    // Délai entre les messages (2-5 minutes = 120-300 secondes)
                     if ($index < $total - 1) {
                         $delai = rand(120, 300);
                         sleep($delai);
@@ -629,16 +697,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="fas fa-bullhorn mr-2"></i>
                 Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
             </div>
-            <?php if ($campagne['objet']): ?>
-                <div class="campagne-info-text">
-                    <strong>Objet :</strong> <?= htmlspecialchars($campagne['objet']) ?>
-                </div>
-            <?php endif; ?>
-            <?php if ($campagne['date_planification']): ?>
-                <div class="campagne-info-text">
-                    <strong>Planifiée le :</strong> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
-                </div>
-            <?php endif; ?>
         </div>
         
         <div class="bg-green-50 p-3 rounded mb-4">
@@ -710,15 +768,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="">Tapez le nom, prénom ou numéro...</option>
                         <?php foreach ($contacts as $contact): 
                             $telephone = $contact['telephone'] ?? '';
-                            $whatsappNumber = '';
-                            
-                            if (!empty($telephone)) {
-                                $telephone = preg_replace('/[^0-9]/', '', $telephone);
-                                if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
-                                    $telephone = '33' . substr($telephone, 1);
-                                }
-                                $whatsappNumber = $telephone . '@c.us';
-                            }
+                            $whatsappNumber = !empty($telephone) ? formatWhatsAppNumber($telephone) : '';
                         ?>
                             <option value="<?= htmlspecialchars($whatsappNumber) ?>" <?= empty($whatsappNumber) ? 'disabled' : '' ?>>
                                 <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?>
@@ -743,7 +793,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                         <option value="">-- Sélectionnez une liste --</option>
                         <?php foreach ($listes as $liste): ?>
-                            <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) || ($defaultListeId == $liste['id_liste'])) ? 'selected' : '' ?>>
+                            <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste'])) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
                             </option>
                         <?php endforeach; ?>
@@ -757,7 +807,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="block text-sm font-medium text-gray-700 mb-1">Message <span id="messageRequired" class="text-gray-400 text-xs">(optionnel si fichier/audio)</span></label>
                     <textarea name="message" id="message" rows="4" 
                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500"
-                              placeholder="Votre message..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : htmlspecialchars($defaultMessage) ?></textarea>
+                              ></textarea>
                     <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
                 </div>
                 
@@ -889,7 +939,7 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// ENREGISTREMENT AUDIO (code identique à avant)
+// ENREGISTREMENT AUDIO
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingTimer = null;
@@ -1192,8 +1242,6 @@ whatsappForm.addEventListener('submit', function(e) {
     }
     
     setLoading(true, totalMessages);
-    
-    // Le formulaire va se soumettre normalement ici
 });
 
 function escapeHtml(text) {

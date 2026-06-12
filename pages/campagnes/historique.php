@@ -11,9 +11,7 @@ if (!empty($searchTerm)) {
     $allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC');
     $campagnes = [];
     foreach ($allCampagnes as $c) {
-        if (stripos($c['nom_campagne'], $searchTerm) !== false || 
-            stripos($c['objet'] ?? '', $searchTerm) !== false ||
-            stripos($c['message'], $searchTerm) !== false) {
+        if (stripos($c['nom_campagne'], $searchTerm) !== false) {
             $campagnes[] = $c;
         }
     }
@@ -126,14 +124,11 @@ if ($campagneId) {
                         ?>
                     </span>
                 </div>
-                <?php if ($campagneSelectionnee['objet']): ?>
+                <?php if (!empty($campagneSelectionnee['date_planification'])): ?>
                     <div class="mt-2 text-sm text-gray-600">
-                        <strong>Objet :</strong> <?= htmlspecialchars($campagneSelectionnee['objet']) ?>
+                        <strong>Planifiée le :</strong> <?= date('d/m/Y H:i', strtotime($campagneSelectionnee['date_planification'])) ?>
                     </div>
                 <?php endif; ?>
-                <div class="mt-1 text-sm text-gray-600">
-                    <strong>Message :</strong> <?= htmlspecialchars(substr($campagneSelectionnee['message'], 0, 100)) ?>...
-                </div>
             </div>
             
             <!-- Liste des envois de cette campagne -->
@@ -238,7 +233,7 @@ if ($campagneId) {
                 <div class="relative">
                     <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
                     <input type="text" name="search" value="<?= htmlspecialchars($searchTerm) ?>" 
-                           placeholder="Rechercher par nom, objet ou message..." 
+                           placeholder="Rechercher par nom de campagne..." 
                            class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
                     <?php if (!empty($searchTerm)): ?>
                         <a href="index.php?page=campagnes/historique" class="search-clear">
@@ -270,90 +265,74 @@ if ($campagneId) {
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Canal</th>
                             <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Envois</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
                             <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($campagnes)): ?>
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                                <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
+                                <?php if (!empty($searchTerm)): ?>
+                                    Aucune campagne ne correspond à "<strong><?= htmlspecialchars($searchTerm) ?></strong>".
+                                <?php else: ?>
+                                    Aucune campagne pour le moment.
+                                    <a href="index.php?page=campagnes/creer" class="text-purple-600 block mt-2">Créer votre première campagne →</a>
+                                <?php endif; ?>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($campagnes)): ?>
-                            <tr>
-                                <td colspan="6" class="px-6 py-8 text-center text-gray-500">
-                                    <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
-                                    <?php if (!empty($searchTerm)): ?>
-                                        Aucune campagne ne correspond à "<strong><?= htmlspecialchars($searchTerm) ?></strong>".
-                                    <?php else: ?>
-                                        Aucune campagne pour le moment.
-                                        <a href="index.php?page=campagnes/creer" class="text-purple-600 block mt-2">Créer votre première campagne →</a>
+                    <?php else: ?>
+                        <?php foreach ($campagnes as $campagne): ?>
+                            <tr class="campagne-row hover:bg-gray-50" 
+                                onclick="window.location.href='index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>'">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center">
+                                        <div class="bg-purple-100 rounded-full p-2 mr-3">
+                                            <i class="fas fa-bullhorn text-purple-600 text-sm"></i>
+                                        </div>
+                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <span class="font-semibold text-blue-600"><?= $campagne['nb_envois'] ?></span>
+                                    <span class="text-xs text-gray-500"> envoi(s)</span>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="status-badge status-<?= $campagne['statut'] ?>">
+                                        <?php
+                                        $statusText = [
+                                            'brouillon' => 'Brouillon',
+                                            'planifiee' => 'Planifiée',
+                                            'envoyee' => 'Envoyée',
+                                            'annulee' => 'Annulée'
+                                        ];
+                                        echo $statusText[$campagne['statut']] ?? $campagne['statut'];
+                                        ?>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-500">
+                                    <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
+                                </td>
+                                <td class="px-6 py-4 text-center whitespace-nowrap" onclick="event.stopPropagation()">
+                                    <?php if ($campagne['statut'] == 'brouillon'): ?>
+                                        <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                           class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Envoyer">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </a>
                                     <?php endif; ?>
+                                    <a href="index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                       class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les envois">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
                                 </td>
                             </tr>
-                        <?php else: ?>
-                            <?php foreach ($campagnes as $campagne): ?>
-                                <tr class="campagne-row hover:bg-gray-50" 
-                                    onclick="window.location.href='index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>'">
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center">
-                                            <div class="bg-purple-100 rounded-full p-2 mr-3">
-                                                <i class="fas fa-bullhorn text-purple-600 text-sm"></i>
-                                            </div>
-                                            <div>
-                                                <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
-                                                <?php if ($campagne['objet']): ?>
-                                                    <div class="text-xs text-gray-500"><?= htmlspecialchars(substr($campagne['objet'], 0, 40)) ?></div>
-                                                <?php endif; ?>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <?php if ($campagne['id_canal'] == 'sms'): ?>
-                                            <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">SMS</span>
-                                        <?php elseif ($campagne['id_canal'] == 'whatsapp'): ?>
-                                            <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">WhatsApp</span>
-                                        <?php else: ?>
-                                            <span class="bg-gray-100 text-gray-500 px-2 py-1 rounded-full text-xs">Non défini</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="px-6 py-4 text-center">
-                                        <span class="font-semibold text-blue-600"><?= $campagne['nb_envois'] ?></span>
-                                        <span class="text-xs text-gray-500"> envoi(s)</span>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <span class="status-badge status-<?= $campagne['statut'] ?>">
-                                            <?php
-                                            $statusText = [
-                                                'brouillon' => 'Brouillon',
-                                                'planifiee' => 'Planifiée',
-                                                'envoyee' => 'Envoyée',
-                                                'annulee' => 'Annulée'
-                                            ];
-                                            echo $statusText[$campagne['statut']] ?? $campagne['statut'];
-                                            ?>
-                                        </span>
-                                    </td>
-                                    <td class="px-6 py-4 text-sm text-gray-500">
-                                        <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
-                                    </td>
-                                    <td class="px-6 py-4 text-center whitespace-nowrap" onclick="event.stopPropagation()">
-                                        <?php if ($campagne['statut'] == 'brouillon'): ?>
-                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                               class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Envoyer">
-                                                <i class="fas fa-paper-plane"></i>
-                                            </a>
-                                        <?php endif; ?>
-                                        <a href="index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                           class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les envois">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
         </div>
     <?php endif; ?>
 </div>

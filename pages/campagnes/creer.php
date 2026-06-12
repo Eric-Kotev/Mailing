@@ -5,7 +5,7 @@ $idCompte = $_SESSION['user_id'];
 
 // Pagination
 $page = isset($_GET['page_num']) ? max(1, intval($_GET['page_num'])) : 1;
-$limit = 10; // Nombre de campagnes par page
+$limit = 10;
 $offset = ($page - 1) * $limit;
 
 // Compter le total des campagnes
@@ -21,59 +21,48 @@ foreach ($campagnes as $key => $campagne) {
     $campagnes[$key]['nb_envois'] = count($envois);
 }
 
-// Récupérer les listes pour le modal de création
-$listes = $db->select('liste', ['id_compte' => $idCompte], '*', 'nom_liste ASC');
-
 // Traitement de la création d'une nouvelle campagne (AJAX)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
     header('Content-Type: application/json');
     
     $nom_campagne = trim($_POST['nom_campagne'] ?? '');
-    $id_liste = !empty($_POST['id_liste']) ? $_POST['id_liste'] : null;
-    $objet = trim($_POST['objet'] ?? '');
-    $message = trim($_POST['message'] ?? '');
-    $date_planification = !empty($_POST['date_planification']) ? $_POST['date_planification'] : null;
     
     if (empty($nom_campagne)) {
         echo json_encode(['success' => false, 'error' => 'Veuillez saisir un nom de campagne']);
-        exit;
-    }
-    if (empty($message)) {
-        echo json_encode(['success' => false, 'error' => 'Veuillez saisir un message']);
         exit;
     }
     
     $data = [
         'id_compte' => $idCompte,
         'nom_campagne' => $nom_campagne,
-        'id_liste' => $id_liste,
-        'objet' => $objet,
-        'message' => $message,
-        'date_planification' => $date_planification,
-        'statut' => $date_planification ? 'planifiee' : 'brouillon',
+        'statut' => 'brouillon',
         'created_at' => date('Y-m-d H:i:s')
     ];
     
     try {
+        // 1. Insérer la campagne
         $db->insert('campagne_config', $data);
-        echo json_encode(['success' => true, 'message' => 'Campagne créée avec succès']);
+        
+        // 2. Récupérer la campagne qui vient d'être créée
+        $nouvelleCampagne = $db->select('campagne_config', [
+            'id_compte' => $idCompte,
+            'nom_campagne' => $nom_campagne
+        ], '*', 'created_at DESC', 1);
+        
+        if (!empty($nouvelleCampagne)) {
+            $id_campagne = $nouvelleCampagne[0]['id_campagne_config'];
+            
+            echo json_encode([
+                'success' => true, 
+                'message' => 'Campagne créée avec succès', 
+                'id_campagne' => $id_campagne
+            ]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Impossible de récupérer la campagne créée']);
+        }
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
-    exit;
-}
-
-// Suppression d'une campagne
-if (isset($_GET['delete'])) {
-    $id = $_GET['delete'];
-    $campagne = $db->select('campagne_config', ['id_campagne_config' => $id, 'id_compte' => $idCompte]);
-    if ($campagne && $campagne[0]['statut'] == 'brouillon') {
-        $db->delete('campagne_config', $id, 'id_campagne_config');
-        $_SESSION['flash_message'] = "Campagne supprimée avec succès";
-    } else {
-        $_SESSION['flash_error'] = "Impossible de supprimer cette campagne";
-    }
-    header('Location: index.php?page=campagnes/index');
     exit;
 }
 
@@ -81,6 +70,15 @@ $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] :
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
 unset($_SESSION['flash_message']);
 unset($_SESSION['flash_error']);
+
+$allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte]);
+$activeCount = 0;
+$totalEnvois = 0;
+foreach ($allCampagnes as $c) {
+    if ($c['statut'] == 'brouillon' || $c['statut'] == 'planifiee') $activeCount++;
+    $envoisCount = $db->select('campagne', ['id_campagne_config' => $c['id_campagne_config']]);
+    $totalEnvois += count($envoisCount);
+}
 ?>
 
 <!DOCTYPE html>
@@ -89,7 +87,6 @@ unset($_SESSION['flash_error']);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mes campagnes - <?= APP_NAME ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
         .toast-notification {
             position: fixed;
@@ -112,6 +109,7 @@ unset($_SESSION['flash_error']);
         }
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
         
         .modal-show {
             opacity: 1 !important;
@@ -146,7 +144,6 @@ unset($_SESSION['flash_error']);
             background-color: #f9fafb;
         }
         
-        /* Pagination */
         .pagination {
             display: flex;
             justify-content: center;
@@ -212,16 +209,7 @@ unset($_SESSION['flash_error']);
             <div class="flex justify-between items-center">
                 <div>
                     <span class="text-gray-500">Campagnes actives</span>
-                    <span class="text-2xl font-bold text-green-600 ml-2">
-                        <?php 
-                        $activeCount = 0;
-                        $allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte]);
-                        foreach ($allCampagnes as $c) {
-                            if ($c['statut'] == 'brouillon' || $c['statut'] == 'planifiee') $activeCount++;
-                        }
-                        echo $activeCount;
-                        ?>
-                    </span>
+                    <span class="text-2xl font-bold text-green-600 ml-2"><?= $activeCount ?></span>
                 </div>
                 <div class="text-green-400"><i class="fas fa-play-circle text-2xl"></i></div>
             </div>
@@ -230,16 +218,7 @@ unset($_SESSION['flash_error']);
             <div class="flex justify-between items-center">
                 <div>
                     <span class="text-gray-500">Messages envoyés</span>
-                    <span class="text-2xl font-bold text-blue-600 ml-2">
-                        <?php 
-                        $totalEnvois = 0;
-                        foreach ($allCampagnes as $c) { 
-                            $envoisCount = $db->select('campagne', ['id_campagne_config' => $c['id_campagne_config']]);
-                            $totalEnvois += count($envoisCount);
-                        }
-                        echo $totalEnvois;
-                        ?>
-                    </span>
+                    <span class="text-2xl font-bold text-blue-600 ml-2"><?= $totalEnvois ?></span>
                 </div>
                 <div class="text-blue-400"><i class="fas fa-envelope text-2xl"></i></div>
             </div>
@@ -265,7 +244,6 @@ unset($_SESSION['flash_error']);
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Messages</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
@@ -275,7 +253,7 @@ unset($_SESSION['flash_error']);
                 <tbody id="campagnesTableBody">
                     <?php if (empty($campagnes)): ?>
                         <tr>
-                            <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                            <td colspan="5" class="px-6 py-8 text-center text-gray-500">
                                 <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
                                 Aucune campagne pour le moment.
                                 <button onclick="openAddCampagneModal()" class="text-purple-600 block mt-2">Créer votre première campagne →</button>
@@ -291,22 +269,7 @@ unset($_SESSION['flash_error']);
                                         <div class="bg-purple-100 rounded-full p-2 mr-3">
                                             <i class="fas fa-bullhorn text-purple-600 text-sm"></i>
                                         </div>
-                                        <div>
-                                            <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
-                                            <?php if ($campagne['id_liste']): ?>
-                                                <div class="text-xs text-gray-400">
-                                                    <i class="fas fa-list mr-1"></i> Liste associée
-                                                </div>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <div class="text-sm text-gray-600 max-w-xs truncate" title="<?= htmlspecialchars($campagne['objet'] ?? '') ?>">
-                                        <?= htmlspecialchars($campagne['objet'] ?? '-') ?>
-                                    </div>
-                                    <div class="text-xs text-gray-400 truncate max-w-xs" title="<?= htmlspecialchars($campagne['message']) ?>">
-                                        <?= htmlspecialchars(substr($campagne['message'], 0, 40)) ?>...
+                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 text-center">
@@ -329,15 +292,12 @@ unset($_SESSION['flash_error']);
                                     <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
                                 </td>
                                 <td class="px-6 py-4 text-center whitespace-nowrap">
-                                    <?php if ($campagne['statut'] == 'brouillon'): ?>
-                                        <a href="index.php?page=campagnes/index&delete=<?= $campagne['id_campagne_config'] ?>" 
-                                           onclick="event.stopPropagation(); return confirm('Supprimer cette campagne ?')"
-                                           class="text-red-600 hover:text-red-800 inline-flex items-center mx-1" title="Supprimer">
-                                            <i class="fas fa-trash-alt"></i>
-                                        </a>
-                                    <?php endif; ?>
+                                    <button onclick="event.stopPropagation(); window.location.href='index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>'" 
+                                            class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Nouveau message">
+                                        <i class="fas fa-plus-circle"></i>
+                                    </button>
                                     <button onclick="event.stopPropagation(); window.location.href='index.php?page=campagnes/details&id=<?= $campagne['id_campagne_config'] ?>'" 
-                                            class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir détails">
+                                            class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les détails">
                                         <i class="fas fa-eye"></i>
                                     </button>
                                 </td>
@@ -375,9 +335,9 @@ unset($_SESSION['flash_error']);
     <?php endif; ?>
 </div>
 
-<!-- MODALE D'AJOUT DE CAMPAGNE -->
+<!-- MODALE D'AJOUT DE CAMPAGNE SIMPLIFIÉE -->
 <div id="addCampagneModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-campagne">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-campagne">
         <div class="p-6">
             <div class="flex justify-between items-center mb-4">
                 <div class="flex items-center">
@@ -394,58 +354,14 @@ unset($_SESSION['flash_error']);
             <form id="addCampagneForm" method="POST">
                 <input type="hidden" name="action_creer_campagne" value="1">
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Nom de la campagne * <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" name="nom_campagne" id="nom_campagne" required 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
-                               placeholder="Ex: Newsletter Juin 2026">
-                    </div>
-
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Liste de diffusion
-                        </label>
-                        <select name="id_liste" id="liste_id" class="w-full">
-                            <option value="">-- Sélectionnez une liste --</option>
-                            <?php foreach ($listes as $liste): ?>
-                                <option value="<?= $liste['id_liste'] ?>">
-                                    <?= htmlspecialchars($liste['nom_liste']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <p class="text-xs text-gray-500 mt-1">Optionnel. Vous pourrez choisir les destinataires à l'envoi.</p>
-                    </div>
-
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Objet
-                        </label>
-                        <input type="text" name="objet" id="objet" 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
-                               placeholder="Objet du message (optionnel)">
-                    </div>
-
-                    <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Message * <span class="text-red-500">*</span>
-                        </label>
-                        <textarea name="message" id="message" rows="4" required 
-                                  class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
-                                  placeholder="Votre message..."></textarea>
-                        <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Date de planification
-                        </label>
-                        <input type="datetime-local" name="date_planification" id="date_planification" 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500">
-                        <p class="text-xs text-gray-500 mt-1">Laissez vide pour un envoi immédiat</p>
-                    </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Nom de la campagne * <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" name="nom_campagne" id="nom_campagne" required 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
+                           placeholder="Ex: Newsletter Juin 2026">
+                    <p class="text-xs text-gray-500 mt-1">Vous pourrez configurer le message, les destinataires et le canal après la création.</p>
                 </div>
                 
                 <div class="mt-6 flex justify-end space-x-2">
@@ -463,23 +379,28 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
-$(document).ready(function() {
-    $('#liste_id').select2({
-        placeholder: "-- Sélectionnez une liste --",
-        allowClear: true,
-        width: '100%',
-        language: 'fr'
-    });
-});
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
+function showToast(message, type = 'success') {
+    const existingToasts = document.querySelectorAll('.toast-notification');
+    existingToasts.forEach(toast => toast.remove());
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    const colors = { success: '#10b981', error: '#ef4444', warning: '#f59e0b' };
+    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
 
+// ============================================
+// MODAL D'AJOUT DE CAMPAGNE
+// ============================================
 function openAddCampagneModal() {
     const modal = document.getElementById('addCampagneModal');
     const modalContent = modal.querySelector('.modal-campagne');
     document.getElementById('addCampagneForm').reset();
-    $('#liste_id').val(null).trigger('change');
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
@@ -491,8 +412,18 @@ function closeAddCampagneModal() {
     setTimeout(() => modal.style.display = 'none', 200);
 }
 
+// ============================================
+// AJOUT DE CAMPAGNE AJAX
+// ============================================
 document.getElementById('addCampagneForm').addEventListener('submit', async function(e) {
     e.preventDefault();
+    
+    const nomCampagne = document.getElementById('nom_campagne').value.trim();
+    
+    if (!nomCampagne) {
+        showToast('Veuillez saisir un nom de campagne', 'warning');
+        return;
+    }
     
     const formData = new FormData(this);
     const submitBtn = document.getElementById('submitBtn');
@@ -506,12 +437,25 @@ document.getElementById('addCampagneForm').addEventListener('submit', async func
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             body: formData
         });
-        const result = await response.json();
+        
+        const text = await response.text();
+        let result;
+        try {
+            result = JSON.parse(text);
+        } catch (e) {
+            showToast('Erreur serveur: réponse invalide', 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+            return;
+        }
         
         if (result.success) {
             showToast(result.message, 'success');
             closeAddCampagneModal();
-            setTimeout(() => window.location.reload(), 1500);
+            
+            setTimeout(() => {
+                window.location.href = 'index.php?page=campagnes/choix&campagne_id=' + result.id_campagne;
+            }, 1000);
         } else {
             showToast(result.error, 'error');
             submitBtn.innerHTML = originalText;
@@ -524,26 +468,9 @@ document.getElementById('addCampagneForm').addEventListener('submit', async func
     }
 });
 
-function showToast(message, type = 'success') {
-    const existingToasts = document.querySelectorAll('.toast-notification');
-    existingToasts.forEach(toast => toast.remove());
-    const toast = document.createElement('div');
-    toast.className = `toast-notification ${type}`;
-    const colors = { success: '#10b981', error: '#ef4444' };
-    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
-
-const messageTextarea = document.getElementById('message');
-if (messageTextarea) {
-    messageTextarea.addEventListener('input', function() {
-        const countSpan = document.getElementById('charCount');
-        if (countSpan) countSpan.textContent = this.value.length + ' caractères';
-    });
-}
-
-// Recherche sur la page courante
+// ============================================
+// RECHERCHE
+// ============================================
 const searchInput = document.getElementById('searchInput');
 const campagneRows = document.querySelectorAll('.campagne-row');
 const filteredCountSpan = document.getElementById('filteredCount');
@@ -574,6 +501,7 @@ if (searchInput) {
     }
 }
 
+// Fermeture des modales
 document.getElementById('addCampagneModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeAddCampagneModal();
 });

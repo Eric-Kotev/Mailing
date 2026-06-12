@@ -3,19 +3,35 @@ global $db;
 
 $idCompte = $_SESSION['user_id'];
 
+
+// DEBUG - Afficher l'URL complète
+echo "<!-- URL: " . $_SERVER['REQUEST_URI'] . " -->";
+echo "<!-- GET: " . print_r($_GET, true) . " -->";
+
+$idCompte = $_SESSION['user_id'];
+
+// Récupérer l'ID depuis l'URL
+$campagneConfigId = $_GET['campagne_id'] ?? null;
+
+echo "<!-- campagneConfigId: " . $campagneConfigId . " -->";
+
 // ============================================
 // RÉCUPÉRATION DE LA CAMPAGNE CONFIG
 // ============================================
-// Récupérer l'ID depuis l'URL (GET) ou la session
-$campagneConfigId = $_GET['campagne_id'] ?? $_SESSION['campagne_config_id'] ?? null;
+// Nettoyer l'ancien ID de session
+unset($_SESSION['campagne_config_id']);
+
+// Récupérer l'ID uniquement depuis l'URL (GET)
+$campagneConfigId = $_GET['campagne_id'] ?? null;
+
+// Debug - Afficher l'ID reçu (à supprimer après test)
+error_log("=== choix.php ===");
+error_log("campagne_id reçu: " . ($campagneConfigId ?? 'NULL'));
 
 if (!$campagneConfigId) {
     header('Location: index.php?page=campagnes/index');
     exit;
 }
-
-// Stocker en session pour la suite
-$_SESSION['campagne_config_id'] = $campagneConfigId;
 
 // Récupérer les infos de la campagne config
 $campagneConfig = $db->select('campagne_config', [
@@ -24,12 +40,15 @@ $campagneConfig = $db->select('campagne_config', [
 ]);
 
 if (empty($campagneConfig)) {
+    error_log("Campagne non trouvée pour ID: " . $campagneConfigId);
     $_SESSION['flash_error'] = "Campagne non trouvée";
     header('Location: index.php?page=campagnes/index');
     exit;
 }
 
 $campagne = $campagneConfig[0];
+
+error_log("Campagne trouvée: " . $campagne['nom_campagne'] . " (ID: " . $campagne['id_campagne_config'] . ")");
 
 // Récupérer toutes les sessions WhatsApp de l'utilisateur
 $sessions = $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
@@ -61,33 +80,7 @@ $hasSmsAppareils = !empty($smsAppareils);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Choisir un canal - <?= APP_NAME ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
-        .select2-container--default .select2-selection--single {
-            height: 42px;
-            border: 1px solid #d1d5db;
-            border-radius: 0.5rem;
-            padding: 4px;
-        }
-        .select2-container--default .select2-selection--single .select2-selection__rendered {
-            line-height: 32px;
-            color: #1f2937;
-        }
-        .select2-container--default .select2-selection--single .select2-selection__arrow {
-            height: 40px;
-        }
-        .select2-dropdown {
-            border-radius: 0.5rem;
-            border-color: #d1d5db;
-        }
-        .select2-search__field {
-            border-radius: 0.5rem !important;
-            border: 1px solid #d1d5db !important;
-            padding: 6px !important;
-        }
-        .select2-results__option--highlighted {
-            background-color: #22c55e !important;
-        }
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -119,36 +112,6 @@ $hasSmsAppareils = !empty($smsAppareils);
             transform: translateY(-2px);
         }
         
-        .recording-active {
-            animation: pulse 1s infinite;
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.7; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        #fileUploadArea {
-            transition: all 0.2s ease;
-            cursor: pointer;
-        }
-        
-        .btn-loading {
-            opacity: 0.7;
-            cursor: not-allowed;
-            position: relative;
-            pointer-events: none;
-        }
-        
-        .btn-loading i {
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-        
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -176,7 +139,7 @@ $hasSmsAppareils = !empty($smsAppareils);
             border-radius: 12px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
             text-align: center;
-            min-width: 400px;
+            min-width: 350px;
         }
         
         .loading-spinner i {
@@ -210,15 +173,8 @@ $hasSmsAppareils = !empty($smsAppareils);
             background: #22c55e;
             width: 0%;
             transition: width 0.3s ease;
-            animation: loading 2s infinite;
         }
         
-        @keyframes loading {
-            0% { width: 0%; }
-            50% { width: 70%; }
-            100% { width: 100%; }
-        }
-
         .modal-show {
             opacity: 1 !important;
             transform: scale(1) !important;
@@ -236,10 +192,6 @@ $hasSmsAppareils = !empty($smsAppareils);
             font-weight: 600;
             color: #6b21a5;
             margin-bottom: 8px;
-        }
-        .campagne-info-text {
-            font-size: 13px;
-            color: #4a1d6d;
         }
         
         .password-container {
@@ -262,47 +214,13 @@ $hasSmsAppareils = !empty($smsAppareils);
         .toggle-password:hover {
             color: #3b82f6;
         }
-        
-        .resultats-detail {
-            max-height: 300px;
-            overflow-y: auto;
-            text-align: left;
-            margin-top: 15px;
-            font-size: 12px;
-        }
-        
-        .resultat-succes {
-            color: #10b981;
-            padding: 5px 0;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        
-        .resultat-erreur {
-            color: #ef4444;
-            padding: 5px 0;
-            border-bottom: 1px solid #e5e7eb;
-        }
     </style>
 </head>
 <body>
 
-<!-- Overlay de chargement global -->
-<div id="loadingOverlay" class="loading-overlay">
-    <div class="loading-spinner">
-        <i class="fab fa-whatsapp"></i>
-        <p id="loadingMessage">Envoi du message en cours...</p>
-        <div class="progress-bar-container">
-            <div class="progress-bar">
-                <div class="progress-bar-fill" id="progressBarFill"></div>
-            </div>
-        </div>
-        <div id="resultatsDetail" class="resultats-detail" style="display: none;"></div>
-    </div>
-</div>
-
 <div class="max-w-3xl mx-auto py-8 px-4">
     <div class="flex items-center mb-6">
-        <a href="index.php?page=campagnes/details&id=<?= $campagneConfigId ?>" class="text-blue-600 hover:text-blue-800 mr-4">
+        <a href="index.php?page=campagnes/index" class="text-blue-600 hover:text-blue-800 mr-4">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
         <div class="bg-purple-100 p-3 rounded-full mr-4">
@@ -319,19 +237,6 @@ $hasSmsAppareils = !empty($smsAppareils);
         <div class="campagne-info-title">
             <i class="fas fa-bullhorn mr-2"></i>
             Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
-        </div>
-        <?php if ($campagne['objet']): ?>
-            <div class="campagne-info-text">
-                <strong>Objet :</strong> <?= htmlspecialchars($campagne['objet']) ?>
-            </div>
-        <?php endif; ?>
-        <?php if ($campagne['date_planification']): ?>
-            <div class="campagne-info-text">
-                <strong>Planifiée le :</strong> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
-            </div>
-        <?php endif; ?>
-        <div class="campagne-info-text mt-2">
-            <strong>Message :</strong> <?= htmlspecialchars(substr($campagne['message'], 0, 100)) ?>...
         </div>
     </div>
 
@@ -666,45 +571,36 @@ $hasSmsAppareils = !empty($smsAppareils);
     <input type="hidden" name="campagne_config_id" id="campagne_config_id" value="<?= $campagneConfigId ?>">
 </form>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/fr.js"></script>
-
 <script>
-// Initialisation Select2
-$(document).ready(function() {
-    $('#contact_search').select2({
-        placeholder: "Tapez le nom, prénom ou numéro...",
-        allowClear: true,
-        width: '100%',
-        language: 'fr'
-    });
-    
-    $('#liste_id').select2({
-        placeholder: "-- Sélectionnez une liste --",
-        allowClear: true,
-        width: '100%',
-        language: 'fr'
-    });
-});
-
-const API_BASE_URL = 'http://72.62.26.166:8081/api/controller.php';
+// Configuration
+const API_BASE_URL = 'http://164.68.103.147:8081/api/controller.php';
 const API_KEY = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
 const SMS_API_URL = 'http://72.62.26.166:8085';
 
 let currentSession = '';
 let statusInterval = null;
-let whatsappSession = '<?= $whatsappSession ?>';
-let hasSessions = <?= $hasWhatsAppConfig ? 'true' : 'false' ?>;
 let currentApiUsername = '';
 let currentApiPassword = '';
 let campagneConfigId = '<?= $campagneConfigId ?>';
 
-// Fonction pour afficher/masquer le mot de passe
+// Log de l'ID côté JavaScript
+console.log("campagneConfigId JS = " + campagneConfigId);
+
+function showToast(message, type = 'success') {
+    const existingToasts = document.querySelectorAll('.toast-notification');
+    existingToasts.forEach(toast => toast.remove());
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    const colors = { success: '#10b981', error: '#ef4444', info: '#3b82f6', warning: '#f59e0b' };
+    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
 function togglePassword(inputId, buttonElement) {
     const passwordInput = document.getElementById(inputId);
     const icon = buttonElement.querySelector('i');
-    
     if (passwordInput.type === 'password') {
         passwordInput.type = 'text';
         icon.classList.remove('fa-eye');
@@ -716,34 +612,11 @@ function togglePassword(inputId, buttonElement) {
     }
 }
 
-function showToast(message, type = 'warning') {
-    const existingToasts = document.querySelectorAll('.toast-notification');
-    existingToasts.forEach(toast => toast.remove());
-    
-    const toast = document.createElement('div');
-    toast.className = 'toast-notification';
-    
-    let bgColor = '#f59e0b';
-    
-    const types = {
-        success: { color: '#10b981' },
-        error: { color: '#ef4444' },
-        info: { color: '#3b82f6' },
-        warning: { color: '#f59e0b' }
-    };
-    
-    if (types[type]) {
-        bgColor = types[type].color;
-    }
-    
-    toast.innerHTML = `<div class="toast-content" style="background: ${bgColor};"><span>${message}</span></div>`;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
-
-// ============================================
-// MODAL DE CONFIRMATION DYNAMIQUE
-// ============================================
 
 function showConfirmModal(itemName, onConfirm) {
     const existingModal = document.getElementById('dynamicConfirmModal');
@@ -801,57 +674,7 @@ function closeDynamicConfirmModal() {
     }
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// ============================================
-// GESTION WHATSAPP
-// ============================================
-
-async function deleteSession(sessionId, sessionName) {
-    showConfirmModal(sessionName, async () => {
-        showToast('Suppression en cours...', 'info');
-        
-        try {
-            const wahaUrl = `http://164.68.103.147:8081/api/controller.php/sessions/${encodeURIComponent(sessionName)}`;
-            
-            const wahaResponse = await fetch(wahaUrl, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-Controller-Key': API_KEY
-                }
-            });
-            
-            if (wahaResponse.ok) {
-                console.log(`Session "${sessionName}" supprimée dans Waha`);
-            }
-            
-            const dbResponse = await fetch('/delete_session.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `session_id=${encodeURIComponent(sessionId)}&session_name=${encodeURIComponent(sessionName)}`
-            });
-            
-            const dbResult = await dbResponse.json();
-            
-            if (dbResult.success) {
-                showToast(`Session "${sessionName}" supprimée avec succès`, 'success');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                showToast(dbResult.error || 'Erreur lors de la suppression en base', 'error');
-            }
-        } catch (error) {
-            console.error('Erreur détaillée:', error);
-            showToast('Erreur réseau: ' + error.message, 'error');
-        }
-    });
-}
-
+// Gestion WhatsApp
 function handleWhatsAppClick() {
     openSessionModal();
 }
@@ -878,16 +701,16 @@ function closeSessionModal() {
     }, 200);
 }
 
+function openNewSessionModal() {
+    closeSessionModal();
+    openWhatsAppModal();
+}
+
 function goToSendPage() {
     const form = document.getElementById('campagneForm');
     document.getElementById('campagne_config_id').value = campagneConfigId;
     form.action = 'index.php?page=campagnes/envoyer_whatsapp';
     form.submit();
-}
-
-function openNewSessionModal() {
-    closeSessionModal();
-    openWhatsAppModal();
 }
 
 async function selectSession(sessionName, sessionId, campagneId) {
@@ -912,6 +735,33 @@ async function selectSession(sessionName, sessionId, campagneId) {
     } catch (error) {
         showToast('Erreur: ' + error.message, 'error');
     }
+}
+
+async function deleteSession(sessionId, sessionName) {
+    showConfirmModal(sessionName, async () => {
+        showToast('Suppression en cours...', 'info');
+        
+        try {
+            const wahaUrl = `http://164.68.103.147:8081/api/controller.php/sessions/${encodeURIComponent(sessionName)}`;
+            await fetch(wahaUrl, { method: 'DELETE', headers: { 'X-Controller-Key': API_KEY } });
+            
+            const dbResponse = await fetch('/delete_session.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `session_id=${encodeURIComponent(sessionId)}&session_name=${encodeURIComponent(sessionName)}`
+            });
+            const dbResult = await dbResponse.json();
+            
+            if (dbResult.success) {
+                showToast(`Session "${sessionName}" supprimée`, 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast(dbResult.error || 'Erreur', 'error');
+            }
+        } catch (error) {
+            showToast('Erreur: ' + error.message, 'error');
+        }
+    });
 }
 
 function openWhatsAppModal() {
@@ -951,41 +801,32 @@ async function createAndStartSession() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Connexion...';
     btn.disabled = true;
     try {
-        const listResponse = await fetch(`${API_BASE_URL}/sessions`, {
-            method: 'GET',
-            headers: { 'X-Controller-Key': API_KEY }
-        });
+        const listResponse = await fetch(`${API_BASE_URL}/sessions`, { headers: { 'X-Controller-Key': API_KEY } });
         const listResult = await listResponse.json();
         const sessionsExistantes = listResult.sessions || [];
-        const sessionExiste = sessionsExistantes.includes(sessionName);
-        if (!sessionExiste) {
-            const createResponse = await fetch(`${API_BASE_URL}/sessions`, {
+        
+        if (!sessionsExistantes.includes(sessionName)) {
+            await fetch(`${API_BASE_URL}/sessions`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Controller-Key': API_KEY },
+                headers: { 'Content-Type': 'application/json', 'X-Controller-Key': API_KEY },
                 body: JSON.stringify({ name: sessionName })
             });
-            const createResult = await createResponse.json();
-            if (!createResponse.ok || createResult.ok === false) {
-                throw new Error(createResult.error || 'Création échouée');
-            }
         }
-        const startResponse = await fetch(`${API_BASE_URL}/sessions/${sessionName}/start`, {
+        
+        await fetch(`${API_BASE_URL}/sessions/${sessionName}/start`, {
             method: 'POST',
-            headers: { 'Accept': 'application/json', 'X-Controller-Key': API_KEY }
+            headers: { 'X-Controller-Key': API_KEY }
         });
-        const startResult = await startResponse.json();
-        if (!startResponse.ok || startResult.ok === false) {
-            throw new Error(startResult.error || 'Démarrage échoué');
-        }
+        
         const saveResponse = await fetch('/save_session.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `nom_session=${encodeURIComponent(sessionName)}&compte_id=<?= $_SESSION['user_id'] ?>`
         });
         const saveResult = await saveResponse.json();
-        if (!saveResult.success) {
-            throw new Error(saveResult.error || 'Erreur sauvegarde');
-        }
+        
+        if (!saveResult.success) throw new Error(saveResult.error);
+        
         showToast('Session WhatsApp créée !', 'success');
         document.getElementById('step1').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
@@ -1006,26 +847,16 @@ async function loadQRCode(sessionName) {
     qrError.style.display = 'none';
     try {
         const response = await fetch(`${API_BASE_URL}/sessions/${sessionName}/qr`, {
-            headers: { 'Accept': 'application/json', 'X-Controller-Key': API_KEY }
+            headers: { 'X-Controller-Key': API_KEY }
         });
         const data = await response.json();
-        if (!response.ok || data.ok === false) {
-            throw new Error(data.error || 'Impossible de récupérer le QR code');
-        }
+        if (!response.ok || data.ok === false) throw new Error(data.error);
+        
         let qrBase64 = data.qr_base64 || data.qr || data.qr_code || data.image;
         if (qrBase64) {
-            if (!qrBase64.startsWith('data:image')) {
-                qrBase64 = 'data:image/png;base64,' + qrBase64;
-            }
-            qrImage.onload = () => {
-                qrSpinner.style.display = 'none';
-                qrImage.style.display = 'block';
-            };
-            qrImage.onerror = () => {
-                qrSpinner.style.display = 'none';
-                qrError.style.display = 'block';
-                qrError.innerHTML = 'Erreur chargement QR code';
-            };
+            if (!qrBase64.startsWith('data:image')) qrBase64 = 'data:image/png;base64,' + qrBase64;
+            qrImage.onload = () => { qrSpinner.style.display = 'none'; qrImage.style.display = 'block'; };
+            qrImage.onerror = () => { qrSpinner.style.display = 'none'; qrError.style.display = 'block'; qrError.innerHTML = 'Erreur chargement QR code'; };
             qrImage.src = qrBase64;
         }
         checkSessionStatus(sessionName);
@@ -1045,8 +876,7 @@ async function checkSessionStatus(sessionName) {
         attempts++;
         try {
             const response = await fetch(`${API_BASE_URL}/sessions/${sessionName}/status`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json', 'X-Controller-Key': API_KEY }
+                headers: { 'X-Controller-Key': API_KEY }
             });
             if (!response.ok) return;
             const data = await response.json();
@@ -1076,10 +906,7 @@ async function checkSessionStatus(sessionName) {
     }, 3000);
 }
 
-// ============================================
-// GESTION SMS
-// ============================================
-
+// Gestion SMS
 function openSmsModal() {
     const modal = document.getElementById('smsModal');
     const modalContent = document.getElementById('smsModalContent');
@@ -1104,13 +931,6 @@ function openNewAppareilModal() {
     const modalContent = document.getElementById('newAppareilContent');
     document.getElementById('api_username').value = '';
     document.getElementById('api_password').value = '';
-    const pwdInput = document.getElementById('api_password');
-    if (pwdInput) pwdInput.type = 'password';
-    const toggleBtn = document.querySelector('#newAppareilModal .toggle-password i');
-    if (toggleBtn) {
-        toggleBtn.classList.remove('fa-eye-slash');
-        toggleBtn.classList.add('fa-eye');
-    }
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
@@ -1171,7 +991,7 @@ async function selectExistingAppareil(deviceId, deviceName, apiUsername, apiPass
     }
 }
 
-document.getElementById('smsLoginForm').addEventListener('submit', async (e) => {
+document.getElementById('smsLoginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const api_username = document.getElementById('api_username').value.trim();
     const api_password = document.getElementById('api_password').value.trim();
@@ -1189,18 +1009,17 @@ document.getElementById('smsLoginForm').addEventListener('submit', async (e) => 
         const response = await fetch(`${SMS_API_URL}/devices.php`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_username: api_username, api_password: api_password })
+            body: JSON.stringify({ api_username, api_password })
         });
         const result = await response.json();
-        if (result.status === 'ok' && result.devices && result.devices.length > 0) {
+        if (result.status === 'ok' && result.devices?.length > 0) {
             closeNewAppareilModal();
             displayDevices(result.devices);
         } else {
-            showToast('Aucun appareil trouvé ou identifiants incorrects', 'error');
+            showToast('Aucun appareil trouvé', 'error');
         }
     } catch (error) {
-        console.error('Erreur:', error);
-        showToast('Erreur de connexion à l\'API', 'error');
+        showToast('Erreur de connexion', 'error');
     } finally {
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
@@ -1246,7 +1065,7 @@ async function saveAndSelectDevice(deviceId, deviceName) {
         });
         const result = await response.json();
         if (result.success) {
-            showToast(`Appareil "${deviceName}" enregistré et activé`, 'success');
+            showToast(`Appareil "${deviceName}" enregistré`, 'success');
             closeDeviceModal();
             setTimeout(() => {
                 const form = document.getElementById('campagneForm');
@@ -1266,7 +1085,6 @@ function deleteSmsAppareil(appareilId, appareilName) {
     closeSmsModal();
     setTimeout(() => {
         showConfirmModal(appareilName, async () => {
-            showToast('Suppression en cours...', 'info');
             try {
                 const response = await fetch('/delete_sms_appareil.php', {
                     method: 'POST',
@@ -1287,10 +1105,7 @@ function deleteSmsAppareil(appareilId, appareilName) {
     }, 250);
 }
 
-// ============================================
-// Événements de fermeture
-// ============================================
-
+// Fermeture des modales
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeWhatsAppModal();
