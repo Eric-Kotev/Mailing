@@ -81,16 +81,12 @@ foreach ($listesBrutes as $liste) {
     ];
 }
 
-// Utiliser le message de la campagne config comme valeur par défaut
-$defaultMessage = $campagne['message'];
-$defaultObjet = $campagne['objet'];
-$defaultListeId = $campagne['id_liste'];
 
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $message = $_POST['message'] ?? $defaultMessage;
+    $message = $_POST['message'];
     $type_envoi = $_POST['type_envoi'] ?? 'simple';
     
     $recipients = [];
@@ -116,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         // Envoi à une liste
-        $liste_id = $_POST['liste_id'] ?? $defaultListeId;
+        $liste_id = $_POST['liste_id'];
         if (!empty($liste_id)) {
             $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
             foreach ($listeContacts as $lc) {
@@ -434,16 +430,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="fas fa-bullhorn mr-2"></i>
                 Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
             </div>
-            <?php if ($campagne['objet']): ?>
-                <div class="campagne-info-text">
-                    <strong>Objet :</strong> <?= htmlspecialchars($campagne['objet']) ?>
-                </div>
-            <?php endif; ?>
-            <?php if ($campagne['date_planification']): ?>
-                <div class="campagne-info-text">
-                    <strong>Planifiée le :</strong> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
-                </div>
-            <?php endif; ?>
+           
         </div>
         
         <div class="bg-blue-50 p-3 rounded mb-4">
@@ -510,7 +497,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                     <option value="">-- Sélectionnez une liste --</option>
                     <?php foreach ($listes as $liste): ?>
-                        <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) || ($defaultListeId == $liste['id_liste'])) ? 'selected' : '' ?>>
+                        <option value="<?= $liste['id_liste'] ?>" <?= ((isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste'])) ? 'selected' : '' ?>>
                             <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -524,8 +511,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <i class="fas fa-comment mr-1"></i> Message *
                 </label>
                 <textarea name="message" id="message" rows="5" required
-                          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
-                          placeholder="Votre message..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : htmlspecialchars($defaultMessage) ?></textarea>
+                          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"></textarea>
                 <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
             </div>
             
