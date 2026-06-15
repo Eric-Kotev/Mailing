@@ -4,7 +4,7 @@ global $db;
 $idCompte = $_SESSION['user_id'];
 
 // Récupérer tous les contacts
-$contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'date_inscription=order.desc');
+$contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'date_inscription DESC');
 
 // Récupérer les IDs des contacts blacklistés et leurs détails
 $blacklistItems = $db->select('blacklist', [], '*');
@@ -26,6 +26,26 @@ foreach ($contacts as $contact) {
 
 $totalContacts = count($contacts);
 
+// Fonction pour formater le numéro de téléphone
+function formatPhoneNumber($telephone) {
+    if (empty($telephone)) {
+        return '';
+    }
+    // Enlever tous les caractères non numériques
+    $telephone = preg_replace('/[^0-9]/', '', $telephone);
+    
+    // Supprimer le premier 0 si présent (pour la France)
+    if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
+        $telephone = '33' . substr($telephone, 1);
+    }
+    // Pour Madagascar (9 chiffres)
+    elseif (strlen($telephone) == 9) {
+        $telephone = '261' . $telephone;
+    }
+    
+    return $telephone;
+}
+
 // ============================================
 // TRAITEMENT DE L'AJOUT DE CONTACT (AJAX)
 // ============================================
@@ -34,18 +54,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
     
     $prenom = trim($_POST['prenom'] ?? '');
     $nom = trim($_POST['nom'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $telephone = trim($_POST['telephone'] ?? '');
     
-    if (empty($prenom) || empty($nom)) {
-        echo json_encode(['success' => false, 'error' => 'Le prénom et le nom sont requis']);
+    // Validation
+    $errors = [];
+    if (empty($prenom)) {
+        $errors[] = 'Le prénom est requis';
+    }
+    if (empty($nom)) {
+        $errors[] = 'Le nom est requis';
+    }
+    if (empty($email)) {
+        $errors[] = "L'email est requis";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = "L'email n'est pas valide";
+    }
+    
+    // Vérifier si l'email existe déjà
+    if (!empty($email)) {
+        $existingContact = $db->select('contact', ['id_compte' => $idCompte, 'email' => $email]);
+        if (!empty($existingContact)) {
+            $errors[] = "Cet email est déjà utilisé par un autre contact";
+        }
+    }
+    
+    if (!empty($errors)) {
+        echo json_encode(['success' => false, 'error' => implode(', ', $errors)]);
         exit;
     }
+    
+    // Formater le téléphone
+    $telephoneFormatted = !empty($telephone) ? formatPhoneNumber($telephone) : null;
     
     $data = [
         'id_compte' => $idCompte,
         'prenom' => $prenom,
         'nom' => $nom,
-        'email' => !empty($_POST['email']) ? $_POST['email'] : null,
-        'telephone' => !empty($_POST['telephone']) ? $_POST['telephone'] : null,
+        'email' => $email,
+        'telephone' => $telephoneFormatted,
         'date_naissance' => !empty($_POST['date_naissance']) ? $_POST['date_naissance'] : null,
         'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
         'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
@@ -81,11 +128,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_contact']
         exit;
     }
     
+    $prenom = trim($_POST['prenom'] ?? '');
+    $nom = trim($_POST['nom'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $telephone = trim($_POST['telephone'] ?? '');
+    
+    // Validation
+    $errors = [];
+    if (empty($prenom)) {
+        $errors[] = 'Le prénom est requis';
+    }
+    if (empty($nom)) {
+        $errors[] = 'Le nom est requis';
+    }
+    if (empty($email)) {
+        $errors[] = "L'email est requis";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = "L'email n'est pas valide";
+    }
+    
+    // Vérifier si l'email existe déjà (pour un autre contact)
+    if (!empty($email)) {
+        $existingContact = $db->select('contact', ['id_compte' => $idCompte, 'email' => $email]);
+        if (!empty($existingContact) && $existingContact[0]['id_contact'] != $id) {
+            $errors[] = "Cet email est déjà utilisé par un autre contact";
+        }
+    }
+    
+    if (!empty($errors)) {
+        echo json_encode(['success' => false, 'error' => implode(', ', $errors)]);
+        exit;
+    }
+    
+    // Formater le téléphone
+    $telephoneFormatted = !empty($telephone) ? formatPhoneNumber($telephone) : null;
+    
     $data = [
-        'prenom' => trim($_POST['prenom'] ?? ''),
-        'nom' => trim($_POST['nom'] ?? ''),
-        'email' => !empty($_POST['email']) ? $_POST['email'] : null,
-        'telephone' => !empty($_POST['telephone']) ? $_POST['telephone'] : null,
+        'prenom' => $prenom,
+        'nom' => $nom,
+        'email' => $email,
+        'telephone' => $telephoneFormatted,
         'date_naissance' => !empty($_POST['date_naissance']) ? $_POST['date_naissance'] : null,
         'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
         'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
@@ -160,40 +242,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
     
     $importedCount = 0;
     $existingCount = 0;
+    $errorCount = 0;
     
     while (($row = fgetcsv($handle, 0, $separator)) !== false) {
         $prenom = $mapping['prenom'] !== false ? trim($row[$mapping['prenom']] ?? '') : '';
         $nom = $mapping['nom'] !== false ? trim($row[$mapping['nom']] ?? '') : '';
-        $email = $mapping['email'] !== false ? trim($row[$mapping['email']] ?? '') : null;
-        $telephone = $mapping['telephone'] !== false ? trim($row[$mapping['telephone']] ?? '') : null;
+        $email = $mapping['email'] !== false ? trim($row[$mapping['email']] ?? '') : '';
+        $telephone = $mapping['telephone'] !== false ? trim($row[$mapping['telephone']] ?? '') : '';
         
-        if (empty($prenom) || empty($nom)) {
+        if (empty($prenom) || empty($nom) || empty($email)) {
+            $errorCount++;
             continue;
         }
         
-        $contactExists = false;
-        
-        if (!empty($email)) {
-            $existing = $db->select('contact', ['id_compte' => $idCompte, 'email' => $email]);
-            if (!empty($existing)) $contactExists = true;
-        }
-        
-        if (!$contactExists && !empty($telephone)) {
-            $existing = $db->select('contact', ['id_compte' => $idCompte, 'nom' => $nom, 'prenom' => $prenom, 'telephone' => $telephone]);
-            if (!empty($existing)) $contactExists = true;
-        }
-        
-        if ($contactExists) {
+        // Vérifier si l'email existe déjà
+        $existing = $db->select('contact', ['id_compte' => $idCompte, 'email' => $email]);
+        if (!empty($existing)) {
             $existingCount++;
             continue;
         }
+        
+        // Formater le téléphone
+        $telephoneFormatted = !empty($telephone) ? formatPhoneNumber($telephone) : null;
         
         $data = [
             'id_compte' => $idCompte,
             'prenom' => $prenom,
             'nom' => $nom,
             'email' => $email,
-            'telephone' => $telephone,
+            'telephone' => $telephoneFormatted,
             'ville' => $mapping['ville'] !== false ? trim($row[$mapping['ville']] ?? '') : null,
             'adresse' => $mapping['adresse'] !== false ? trim($row[$mapping['adresse']] ?? '') : null,
             'code_postal' => $mapping['code_postal'] !== false ? trim($row[$mapping['code_postal']] ?? '') : null,
@@ -205,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
             $db->insert('contact', $data);
             $importedCount++;
         } catch (Exception $e) {
-            // Silencieux
+            $errorCount++;
         }
     }
     fclose($handle);
@@ -213,13 +290,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
     if ($importedCount > 0) {
         $message = "$importedCount contact(s) importé(s) avec succès.";
         if ($existingCount > 0) $message .= " $existingCount contact(s) existant(s) ignoré(s).";
+        if ($errorCount > 0) $message .= " $errorCount ligne(s) en erreur (email manquant ou invalide).";
         echo json_encode(['success' => true, 'message' => $message]);
     } else {
-        if ($existingCount > 0) {
-            echo json_encode(['success' => false, 'error' => "Aucun nouveau contact importé. $existingCount contact(s) existant(s) ignoré(s)."]);
-        } else {
-            echo json_encode(['success' => false, 'error' => 'Aucun contact importé. Vérifiez le format de votre fichier.']);
-        }
+        echo json_encode(['success' => false, 'error' => "Aucun contact importé. Vérifiez que vos données ont un email valide."]);
     }
     exit;
 }
@@ -287,6 +361,11 @@ unset($_SESSION['flash_error']);
         .custom-field-badge strong {
             font-weight: 600;
             color: #4b5563;
+        }
+        .phone-hint {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 2px;
         }
     </style>
 </head>
@@ -430,8 +509,12 @@ unset($_SESSION['flash_error']);
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="add_email" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label><input type="tel" name="telephone" id="add_telephone" placeholder="33612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" name="email" id="add_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
+                        <input type="tel" name="telephone" id="add_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
+                    </div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label><input type="date" name="date_naissance" id="add_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="add_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="add_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
@@ -499,8 +582,12 @@ unset($_SESSION['flash_error']);
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="edit_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="edit_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label><input type="email" name="email" id="edit_email" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label><input type="tel" name="telephone" id="edit_telephone" placeholder="33612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" name="email" id="edit_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
+                        <input type="tel" name="telephone" id="edit_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
+                    </div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label><input type="date" name="date_naissance" id="edit_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="edit_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="edit_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
@@ -534,10 +621,10 @@ unset($_SESSION['flash_error']);
             <div class="bg-blue-50 p-4 rounded mb-4">
                 <h4 class="font-medium text-blue-800 mb-2">Format du fichier</h4>
                 <ul class="text-sm text-blue-700 space-y-1">
-                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom</strong></li>
-                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : email, telephone, ville, adresse, code_postal, pays, date_naissance</li>
+                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom, email</strong></li>
+                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : telephone, ville, adresse, code_postal, pays, date_naissance</li>
                     <li><i class="fas fa-check-circle mr-2"></i> Séparateur : point-virgule (;) ou virgule (,)</li>
-                    <li><i class="fas fa-info-circle mr-2"></i> Les contacts déjà existants sont ignorés</li>
+                    <li><i class="fas fa-info-circle mr-2"></i> Les contacts déjà existants (même email) sont ignorés</li>
                 </ul>
             </div>
             <form id="importForm" method="POST" enctype="multipart/form-data">

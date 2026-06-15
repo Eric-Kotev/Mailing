@@ -4,10 +4,10 @@ global $db;
 $idCompte = $_SESSION['user_id'];
 $campagneId = $_GET['campagne_id'] ?? null;
 $searchTerm = $_GET['search'] ?? '';
+$export = $_GET['export'] ?? null;
 
 // Récupérer les campagnes config
 if (!empty($searchTerm)) {
-    // Récupérer toutes les campagnes puis filtrer
     $allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC');
     $campagnes = [];
     foreach ($allCampagnes as $c) {
@@ -37,6 +37,104 @@ if ($campagneId) {
         $campagneSelectionnee = $campagneSelectionnee[0];
         $envoisListe = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
     }
+}
+
+// ============================================
+// EXPORT CSV
+// ============================================
+if ($export === 'csv' && $campagneId && !empty($envoisListe)) {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="campagne_' . $campagneId . '_' . date('Y-m-d') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Ajouter BOM UTF-8 pour gérer les accents correctement dans Excel
+    fwrite($output, "\xEF\xBB\xBF");
+    
+    // En-têtes CSV
+    fputcsv($output, [
+        'Date d\'envoi',
+        'Type',
+        'Message',
+        'Nombre de destinataires',
+        'Succès',
+        'Échecs',
+        'Appareil utilisé',
+        'Statut',
+        'Destinataires'
+    ]);
+    
+    // Données
+    foreach ($envoisListe as $envoi) {
+        // Décoder les destinataires
+        $destinataires = json_decode($envoi['destinataires'], true);
+        $destinatairesTexte = is_array($destinataires) ? implode('; ', $destinataires) : $envoi['destinataires'];
+        
+        // Traduire le type
+        $typeTexte = $envoi['type_campagne'] == 'whatsapp' ? 'WhatsApp' : 'SMS';
+        
+        // Traduire le statut
+        $statutTexte = $envoi['statut'] == 'envoye' ? 'Envoyé' : 'Échoué';
+        
+        fputcsv($output, [
+            date('d/m/Y H:i', strtotime($envoi['created_at'])),
+            $typeTexte,
+            $envoi['message'],
+            $envoi['nb_destinataires'],
+            $envoi['nb_succes'],
+            $envoi['nb_erreurs'],
+            $envoi['appareil_utilise'] ?? '-',
+            $statutTexte,
+            $destinatairesTexte
+        ]);
+    }
+    
+    fclose($output);
+    exit;
+}
+
+// Export de toutes les campagnes
+if ($export === 'all_csv' && empty($campagneId)) {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="toutes_campagnes_' . date('Y-m-d') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Ajouter BOM UTF-8 pour gérer les accents correctement dans Excel
+    fwrite($output, "\xEF\xBB\xBF");
+    
+    // En-têtes CSV
+    fputcsv($output, [
+        'ID',
+        'Nom de la campagne',
+        'Nombre d\'envois',
+        'Statut',
+        'Date de création'
+    ]);
+    
+    // Données
+    foreach ($campagnes as $campagne) {
+        // Traduire le statut
+        $statutTexte = '';
+        switch ($campagne['statut']) {
+            case 'brouillon': $statutTexte = 'Brouillon'; break;
+            case 'planifiee': $statutTexte = 'Planifiée'; break;
+            case 'envoyee': $statutTexte = 'Envoyée'; break;
+            case 'annulee': $statutTexte = 'Annulée'; break;
+            default: $statutTexte = $campagne['statut'];
+        }
+        
+        fputcsv($output, [
+            $campagne['id_campagne_config'],
+            $campagne['nom_campagne'],
+            $campagne['nb_envois'],
+            $statutTexte,
+            date('d/m/Y H:i', strtotime($campagne['created_at']))
+        ]);
+    }
+    
+    fclose($output);
+    exit;
 }
 ?>
 
@@ -81,6 +179,21 @@ if ($campagneId) {
         .search-clear:hover {
             color: #ef4444;
         }
+        
+        .btn-export {
+            background-color: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-export:hover {
+            background-color: #059669;
+        }
     </style>
 </head>
 <body>
@@ -91,11 +204,25 @@ if ($campagneId) {
             <h1 class="text-2xl font-bold text-gray-800">Historique des campagnes</h1>
             <p class="text-gray-500">Consultez toutes vos campagnes et leurs envois</p>
         </div>
-        <?php if ($campagneId): ?>
-            <a href="index.php?page=campagnes/historique" class="text-blue-600 hover:text-blue-800">
-                <i class="fas fa-arrow-left mr-1"></i> Voir toutes les campagnes
-            </a>
-        <?php endif; ?>
+        <div class="flex gap-2">
+            <?php if ($campagneId && !empty($envoisListe)): ?>
+                <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv" 
+                   class="btn-export">
+                    <i class="fas fa-download"></i> Exporter cette campagne (CSV)
+                </a>
+            <?php elseif (empty($campagneId) && !empty($campagnes)): ?>
+                <a href="?page=campagnes/historique&export=all_csv" 
+                   class="btn-export">
+                    <i class="fas fa-download"></i> Exporter toutes les campagnes (CSV)
+                </a>
+            <?php endif; ?>
+            
+            <?php if ($campagneId): ?>
+                <a href="index.php?page=campagnes/historique" class="text-blue-600 hover:text-blue-800">
+                    <i class="fas fa-arrow-left mr-1"></i> Voir toutes les campagnes
+                </a>
+            <?php endif; ?>
+        </div>
     </div>
 
     <?php if ($campagneId && $campagneSelectionnee): ?>
@@ -133,10 +260,18 @@ if ($campagneId) {
             
             <!-- Liste des envois de cette campagne -->
             <div class="p-4">
-                <h3 class="font-semibold text-gray-700 mb-3">
-                    <i class="fas fa-envelope mr-2"></i>
-                    Envois réalisés (<?= count($envoisListe) ?>)
-                </h3>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-semibold text-gray-700">
+                        <i class="fas fa-envelope mr-2"></i>
+                        Envois réalisés (<?= count($envoisListe) ?>)
+                    </h3>
+                    <?php if (!empty($envoisListe)): ?>
+                        <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv" 
+                           class="text-sm text-green-600 hover:text-green-800">
+                            <i class="fas fa-file-csv mr-1"></i> Exporter en CSV
+                        </a>
+                    <?php endif; ?>
+                </div>
                 
                 <?php if (empty($envoisListe)): ?>
                     <div class="text-center py-8 text-gray-500">
@@ -222,40 +357,42 @@ if ($campagneId) {
         </div>
         
         <a href="javascript:history.back()" class="inline-block text-blue-600 hover:text-blue-800 mt-2">
-            <i class="fas fa-arrow-left mr-1"></i> Retour à la liste des campagnes
+            <i class="fas fa-arrow-left mr-1"></i> Retour
         </a>
         
     <?php else: ?>
         <!-- Barre de recherche -->
         <div class="bg-white rounded-lg shadow p-4">
-            <form method="GET" action="" class="relative">
-                <input type="hidden" name="page" value="campagnes/historique">
-                <div class="relative">
-                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                    <input type="text" name="search" value="<?= htmlspecialchars($searchTerm) ?>" 
-                           placeholder="Rechercher par nom de campagne..." 
-                           class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
-                    <?php if (!empty($searchTerm)): ?>
-                        <a href="index.php?page=campagnes/historique" class="search-clear">
-                            <i class="fas fa-times-circle"></i>
-                        </a>
-                    <?php endif; ?>
-                </div>
-                <div class="mt-2 flex justify-between items-center">
-                    <span class="text-xs text-gray-500">
+            <div class="flex justify-between items-center mb-3">
+                <form method="GET" action="" class="flex-1">
+                    <input type="hidden" name="page" value="campagnes/historique">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        <input type="text" name="search" value="<?= htmlspecialchars($searchTerm) ?>" 
+                               placeholder="Rechercher par nom de campagne..." 
+                               class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
                         <?php if (!empty($searchTerm)): ?>
-                            <?= count($campagnes) ?> résultat(s) pour "<strong><?= htmlspecialchars($searchTerm) ?></strong>"
-                        <?php else: ?>
-                            <?= count($campagnes) ?> campagne(s) au total
+                            <a href="index.php?page=campagnes/historique" class="search-clear">
+                                <i class="fas fa-times-circle"></i>
+                            </a>
                         <?php endif; ?>
-                    </span>
-                    <?php if (!empty($searchTerm)): ?>
-                        <a href="index.php?page=campagnes/historique" class="text-sm text-blue-600 hover:text-blue-800">
-                            Effacer la recherche
-                        </a>
-                    <?php endif; ?>
-                </div>
-            </form>
+                    </div>
+                    <div class="mt-2 flex justify-between items-center">
+                        <span class="text-xs text-gray-500">
+                            <?php if (!empty($searchTerm)): ?>
+                                <?= count($campagnes) ?> résultat(s) pour "<strong><?= htmlspecialchars($searchTerm) ?></strong>"
+                            <?php else: ?>
+                                <?= count($campagnes) ?> campagne(s) au total
+                            <?php endif; ?>
+                        </span>
+                        <?php if (!empty($searchTerm)): ?>
+                            <a href="index.php?page=campagnes/historique" class="text-sm text-blue-600 hover:text-blue-800">
+                                Effacer la recherche
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </form>
+            </div>
         </div>
 
         <!-- Liste des campagnes (cliquables) -->

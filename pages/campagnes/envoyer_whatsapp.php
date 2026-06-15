@@ -132,15 +132,30 @@ function getFileType($mimeType) {
 }
 
 // Fonction pour envoyer des messages WhatsApp en masse
-function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $whatsappSession, $apiUrl, $apiKey, $minDelay, $maxDelay, $campagneConfigId = null) {
+function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $minDelay, $maxDelay, $campagneConfigId = null) {
     global $db, $idCompte;
     
     $endpoint = '/messages/send-bulk';
     $type = 'text';
     $payload = [];
     
-    // Gestion des fichiers
-    if ($hasFile && isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK) {
+    // Gestion de l'audio enregistré
+    if ($hasAudio) {
+        $audioData = $_POST['audio_data'] ?? '';
+        $base64Data = preg_replace('#^data:audio/[^;]+;base64,#', '', $audioData);
+        $fileData = $base64Data;
+        $originalName = 'audio_enregistre_' . date('Ymd_His') . '.webm';
+        
+        $type = 'voice';
+        $payload = [
+            'data' => $fileData,
+            'mimetype' => 'audio/webm',
+            'filename' => $originalName
+        ];
+        // PAS DE CAPTION POUR L'AUDIO
+    }
+    // Gestion des fichiers uploadés
+    elseif ($hasFile && isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK) {
         $file = $_FILES['fichier'];
         $uploadDir = '/tmp/whatsapp_uploads/';
         
@@ -164,7 +179,7 @@ function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $whatsappSess
                 'filename' => $originalName
             ];
             
-            // Ajouter la légende si message non vide (sauf pour voice où caption n'est pas supporté)
+            // Ajouter la légende si message non vide (sauf pour voice)
             if (!empty($message) && $type !== 'voice') {
                 $payload['caption'] = $message;
             }
@@ -229,8 +244,10 @@ function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $whatsappSess
     $destinatairesJson = json_encode($destinatairesNoms);
     
     $titre = "WhatsApp - " . date('d/m/Y H:i');
-    if (!empty($message)) {
+    if (!empty($message) && $type !== 'voice') {
         $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
+    } elseif ($hasAudio) {
+        $titre = "WhatsApp: Message vocal";
     } elseif ($hasFile) {
         $titre = "WhatsApp: Fichier envoyé";
     }
@@ -302,9 +319,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $min_delay = intval($_POST['min_delay'] ?? 60);
     $max_delay = intval($_POST['max_delay'] ?? 180);
     $hasFile = isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK;
+    $audioData = $_POST['audio_data'] ?? '';
+    $hasAudio = !empty($audioData) && strpos($audioData, 'base64,') !== false;
     
-    if (empty($message) && !$hasFile) {
-        $error = "Veuillez saisir un message ou joindre un fichier";
+    if (empty($message) && !$hasFile && !$hasAudio) {
+        $error = "Veuillez saisir un message ou joindre un fichier/audio";
     } elseif ($type_envoi === 'simple') {
         $chatId = $_POST['chat_id'] ?? '';
         
@@ -313,7 +332,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $phoneNumber = str_replace('@c.us', '', $chatId);
             
-            $resultat = envoyerMessageWhatsAppBulk([$phoneNumber], $message, $hasFile, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
+            $resultat = envoyerMessageWhatsAppBulk([$phoneNumber], $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
             
             if ($resultat['success']) {
                 $success = $resultat['message'];
@@ -353,7 +372,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($destinataires)) {
                 $error = "Aucun destinataire valide dans cette liste";
             } else {
-                $resultat = envoyerMessageWhatsAppBulk($destinataires, $message, $hasFile, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
+                $resultat = envoyerMessageWhatsAppBulk($destinataires, $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
                 
                 if ($resultat['success']) {
                     $success = $resultat['message'];
@@ -431,6 +450,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         .type-envoi-option:hover {
             transform: translateY(-2px);
+        }
+        
+        .recording-active {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
         }
         
         .btn-loading {
@@ -551,7 +579,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: center;
         }
         
-        #fileUploadArea {
+        #fileUploadArea, #audioRecordArea {
             transition: all 0.2s ease;
             cursor: pointer;
         }
@@ -689,19 +717,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 <!-- Message -->
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Message <span id="messageRequired" class="text-gray-400 text-xs">(optionnel si fichier)</span></label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message <span id="messageRequired" class="text-gray-400 text-xs">(optionnel si fichier/audio)</span></label>
                     <textarea name="message" id="message" rows="4" 
                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500"
                               placeholder="Votre message..."></textarea>
                     <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
                 </div>
                 
-                <!-- Fichier -->
+                <!-- Options de pièce jointe -->
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-paperclip mr-1"></i> Pièce jointe (optionnel)
-                    </label>
-                    <div id="fileUploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-green-500 transition">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Pièce jointe (optionnel)</label>
+                    
+                    <div class="flex space-x-2 mb-3">
+                        <button type="button" id="uploadFileBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition">
+                            <i class="fas fa-upload mr-2"></i>Fichier
+                        </button>
+                        <button type="button" id="recordAudioBtn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition">
+                            <i class="fas fa-microphone mr-2"></i>Enregistrer audio
+                        </button>
+                    </div>
+                    
+                    <div id="fileUploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hidden">
                         <input type="file" name="fichier" id="fichier" class="hidden">
                         <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-2"></i>
                         <p class="text-gray-500">Cliquez ou glissez un fichier ici</p>
@@ -710,6 +746,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <i class="fas fa-file mr-1"></i> <span id="fileName"></span>
                             <button type="button" id="removeFileBtn" class="text-red-500 ml-2 hover:text-red-700">Supprimer</button>
                         </div>
+                    </div>
+                    
+                    <div id="audioRecordArea" class="border-2 border-gray-300 rounded-lg p-6 text-center hidden">
+                        <div class="mb-3">
+                            <div id="recordingTimer" class="text-2xl font-mono text-gray-700 mb-2">00:00</div>
+                        </div>
+                        <div class="flex justify-center space-x-3">
+                            <button type="button" id="startRecordBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition">
+                                <i class="fas fa-circle mr-2"></i>Commencer
+                            </button>
+                            <button type="button" id="stopRecordBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition hidden">
+                                <i class="fas fa-stop mr-2"></i>Arrêter
+                            </button>
+                        </div>
+                        <div id="audioPreview" class="mt-3 hidden">
+                            <audio controls class="w-full"></audio>
+                            <button type="button" id="removeAudioBtn" class="text-red-500 text-sm mt-2">Supprimer l'audio</button>
+                        </div>
+                        <input type="hidden" name="audio_data" id="audioData">
                     </div>
                 </div>
                 
@@ -732,7 +787,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <span class="text-sm text-gray-500">sec</span>
                         </div>
                     </div>
-                
                 </div>
                 
                 <div class="flex justify-end mt-6">
@@ -819,17 +873,53 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// Gestion du fichier
+// ============================================
+// GESTION DU FICHIER
+// ============================================
+const uploadFileBtn = document.getElementById('uploadFileBtn');
+const recordAudioBtn = document.getElementById('recordAudioBtn');
 const fileUploadArea = document.getElementById('fileUploadArea');
+const audioRecordArea = document.getElementById('audioRecordArea');
 const fichierInput = document.getElementById('fichier');
 const fileInfo = document.getElementById('fileInfo');
 const fileNameSpan = document.getElementById('fileName');
 const removeFileBtn = document.getElementById('removeFileBtn');
 const messageRequired = document.getElementById('messageRequired');
-let selectedFile = null;
 
-fileUploadArea.addEventListener('click', () => {
-    fichierInput.click();
+uploadFileBtn.addEventListener('click', () => {
+    fileUploadArea.classList.remove('hidden');
+    audioRecordArea.classList.add('hidden');
+    resetRecording();
+});
+
+recordAudioBtn.addEventListener('click', () => {
+    audioRecordArea.classList.remove('hidden');
+    fileUploadArea.classList.add('hidden');
+    resetFileUpload();
+});
+
+function handleFile(file) {
+    const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+    
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('Le fichier est trop volumineux. Maximum 10 Mo.', 'error');
+        resetFileUpload();
+        return;
+    }
+    
+    fileNameSpan.textContent = `${file.name} (${sizeMB} Mo)`;
+    fileInfo.classList.remove('hidden');
+    messageRequired.innerHTML = '<span class="text-green-600">(optionnel)</span>';
+    
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    fichierInput.files = dataTransfer.files;
+}
+
+fileUploadArea.addEventListener('click', (e) => {
+    if (e.target !== removeFileBtn && !removeFileBtn.contains(e.target)) {
+        fichierInput.click();
+    }
 });
 
 fichierInput.addEventListener('change', (e) => {
@@ -852,36 +942,129 @@ fileUploadArea.addEventListener('dragleave', (e) => {
 fileUploadArea.addEventListener('drop', (e) => {
     e.preventDefault();
     fileUploadArea.classList.remove('drag-over');
-    
     if (e.dataTransfer.files.length > 0) {
         handleFile(e.dataTransfer.files[0]);
     }
 });
 
-function handleFile(file) {
-    const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-    
-    if (file.size > 10 * 1024 * 1024) {
-        showToast('Le fichier est trop volumineux. Maximum 10 Mo.', 'error');
-        return;
-    }
-    
-    selectedFile = file;
-    fileNameSpan.textContent = `${file.name} (${sizeMB} Mo)`;
-    fileInfo.classList.remove('hidden');
-    messageRequired.innerHTML = '<span class="text-green-600">(optionnel)</span>';
-    
-    // Créer un FileList simulé pour l'envoi
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    fichierInput.files = dataTransfer.files;
-}
-
 removeFileBtn.addEventListener('click', () => {
-    selectedFile = null;
+    resetFileUpload();
+});
+
+function resetFileUpload() {
     fichierInput.value = '';
     fileInfo.classList.add('hidden');
-    messageRequired.innerHTML = '<span class="text-gray-400 text-xs">(optionnel si fichier)</span>';
+    if (!audioDataInput.value) {
+        messageRequired.innerHTML = '<span class="text-gray-400 text-xs">(optionnel si fichier/audio)</span>';
+    }
+}
+
+// ============================================
+// ENREGISTREMENT AUDIO
+// ============================================
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingTimer = null;
+let recordingSeconds = 0;
+let stream = null;
+
+const startRecordBtn = document.getElementById('startRecordBtn');
+const stopRecordBtn = document.getElementById('stopRecordBtn');
+const recordingTimerSpan = document.getElementById('recordingTimer');
+const audioPreview = document.getElementById('audioPreview');
+const audioDataInput = document.getElementById('audioData');
+const removeAudioBtn = document.getElementById('removeAudioBtn');
+
+async function startRecording() {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audioElement = audioPreview.querySelector('audio');
+            audioElement.src = audioUrl;
+            
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                audioDataInput.value = reader.result;
+                messageRequired.innerHTML = '<span class="text-green-600">(optionnel)</span>';
+            };
+            reader.readAsDataURL(audioBlob);
+            
+            audioPreview.classList.remove('hidden');
+            startRecordBtn.classList.remove('hidden');
+            stopRecordBtn.classList.add('hidden');
+            startRecordBtn.classList.remove('recording-active');
+        };
+        
+        mediaRecorder.start();
+        startRecordBtn.classList.add('hidden');
+        stopRecordBtn.classList.remove('hidden');
+        startRecordBtn.classList.add('recording-active');
+        
+        recordingSeconds = 0;
+        updateTimerDisplay();
+        recordingTimer = setInterval(() => {
+            recordingSeconds++;
+            updateTimerDisplay();
+        }, 1000);
+        
+    } catch (err) {
+        showToast('Impossible d\'accéder au microphone: ' + err.message, 'error');
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        clearInterval(recordingTimer);
+    }
+}
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(recordingSeconds / 60);
+    const seconds = recordingSeconds % 60;
+    recordingTimerSpan.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function resetRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+    clearInterval(recordingTimer);
+    audioChunks = [];
+    recordingSeconds = 0;
+    updateTimerDisplay();
+    audioPreview.classList.add('hidden');
+    audioDataInput.value = '';
+    startRecordBtn.classList.remove('hidden');
+    stopRecordBtn.classList.add('hidden');
+    startRecordBtn.classList.remove('recording-active');
+}
+
+startRecordBtn.addEventListener('click', startRecording);
+stopRecordBtn.addEventListener('click', stopRecording);
+
+removeAudioBtn.addEventListener('click', () => {
+    resetRecording();
+    if (!fichierInput.files.length && !document.getElementById('message').value.trim()) {
+        messageRequired.innerHTML = '<span class="text-gray-400 text-xs">(optionnel si fichier/audio)</span>';
+    }
 });
 
 // Compteur de caractères
@@ -891,7 +1074,9 @@ if (messageTextarea) {
         const countSpan = document.getElementById('charCount');
         if (countSpan) countSpan.textContent = this.value.length + ' caractères';
         if (this.value.trim() === '') {
-            messageRequired.innerHTML = '<span class="text-gray-400 text-xs">(optionnel si fichier)</span>';
+            if (!fichierInput.files.length && !audioDataInput.value) {
+                messageRequired.innerHTML = '<span class="text-gray-400 text-xs">(optionnel si fichier/audio)</span>';
+            }
         } else {
             messageRequired.innerHTML = '<span class="text-green-600">(optionnel)</span>';
         }
@@ -931,6 +1116,7 @@ whatsappForm.addEventListener('submit', function(e) {
     const type_envoi = document.getElementById('type_envoi').value;
     const message = messageTextarea?.value.trim() || '';
     const hasFile = fichierInput.files.length > 0;
+    const hasAudio = audioDataInput.value !== '';
     let hasRecipients = false;
     
     if (type_envoi === 'simple') {
@@ -947,13 +1133,12 @@ whatsappForm.addEventListener('submit', function(e) {
         return false;
     }
     
-    if (!message && !hasFile) {
+    if (!message && !hasFile && !hasAudio) {
         e.preventDefault();
-        showToast('Veuillez saisir un message ou joindre un fichier', 'error');
+        showToast('Veuillez saisir un message ou joindre un fichier/audio', 'error');
         return false;
     }
     
-    // Vérifier les délais
     const minDelay = parseInt(document.getElementById('min_delay').value);
     const maxDelay = parseInt(document.getElementById('max_delay').value);
     
