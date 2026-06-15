@@ -3,6 +3,37 @@ global $db;
 
 $idCompte = $_SESSION['user_id'];
 
+// ============================================
+// VÉRIFICATION DES CAMPAGNES PLANIFIÉES À ENVOYER
+// ============================================
+$campagnesAAlerter = [];
+if (isset($_SESSION['user_id'])) {
+    $idCompte = $_SESSION['user_id'];
+    $now = date('Y-m-d H:i:s');
+    
+    // Initialiser la session pour les notifications si pas existante
+    if (!isset($_SESSION['campagnes_notifiees'])) {
+        $_SESSION['campagnes_notifiees'] = [];
+    }
+    
+    // Récupérer TOUTES les campagnes planifiées
+    $campagnesPlanifiees = $db->select('campagne_config', [
+        'id_compte' => $idCompte,
+        'statut' => 'planifiee'
+    ]);
+    
+    foreach ($campagnesPlanifiees as $campagne) {
+        // Vérifier si la date de planification est passée
+        if (!empty($campagne['date_planification']) && 
+            strtotime($campagne['date_planification']) <= strtotime($now) &&
+            !in_array($campagne['id_campagne_config'], $_SESSION['campagnes_notifiees'])) {
+            
+            $_SESSION['campagnes_notifiees'][] = $campagne['id_campagne_config'];
+            $campagnesAAlerter[] = $campagne;
+        }
+    }
+}
+
 // Pagination
 $page = isset($_GET['page_num']) ? max(1, intval($_GET['page_num'])) : 1;
 $limit = 10;
@@ -26,24 +57,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
     header('Content-Type: application/json');
     
     $nom_campagne = trim($_POST['nom_campagne'] ?? '');
+    $date_planification = !empty($_POST['date_planification']) ? $_POST['date_planification'] : null;
     
     if (empty($nom_campagne)) {
         echo json_encode(['success' => false, 'error' => 'Veuillez saisir un nom de campagne']);
         exit;
     }
     
+    $statut = $date_planification ? 'planifiee' : 'brouillon';
+    
     $data = [
         'id_compte' => $idCompte,
         'nom_campagne' => $nom_campagne,
-        'statut' => 'brouillon',
+        'date_planification' => $date_planification,
+        'statut' => $statut,
         'created_at' => date('Y-m-d H:i:s')
     ];
     
     try {
-        // 1. Insérer la campagne
         $db->insert('campagne_config', $data);
         
-        // 2. Récupérer la campagne qui vient d'être créée
         $nouvelleCampagne = $db->select('campagne_config', [
             'id_compte' => $idCompte,
             'nom_campagne' => $nom_campagne
@@ -66,6 +99,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
     exit;
 }
 
+// Traitement pour supprimer une campagne planifiée
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_supprimer_campagne'])) {
+    $id_campagne = $_POST['id_campagne'];
+    
+    try {
+        $campagne = $db->select('campagne_config', ['id_campagne_config' => $id_campagne, 'id_compte' => $idCompte]);
+        if (!empty($campagne) && $campagne[0]['statut'] == 'planifiee') {
+            $db->delete('campagne_config', $id_campagne, 'id_campagne_config');
+            $_SESSION['flash_message'] = "Campagne planifiée supprimée avec succès";
+        } else {
+            $_SESSION['flash_error'] = "Impossible de supprimer cette campagne";
+        }
+    } catch (Exception $e) {
+        $_SESSION['flash_error'] = "Erreur lors de la suppression";
+    }
+    
+    header('Location: index.php?page=campagnes/index');
+    exit;
+}
+
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
 unset($_SESSION['flash_message']);
@@ -73,9 +126,14 @@ unset($_SESSION['flash_error']);
 
 $allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte]);
 $activeCount = 0;
+$planifieesCount = 0;
 $totalEnvois = 0;
 foreach ($allCampagnes as $c) {
-    if ($c['statut'] == 'brouillon' || $c['statut'] == 'planifiee') $activeCount++;
+    if ($c['statut'] == 'brouillon') $activeCount++;
+    if ($c['statut'] == 'planifiee') {
+        $activeCount++;
+        $planifieesCount++;
+    }
     $envoisCount = $db->select('campagne', ['id_campagne_config' => $c['id_campagne_config']]);
     $totalEnvois += count($envoisCount);
 }
@@ -171,9 +229,284 @@ foreach ($allCampagnes as $c) {
             color: #cbd5e1;
             cursor: not-allowed;
         }
+        
+        .datetime-input {
+            font-family: inherit;
+        }
+        
+        .btn-annuler {
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-annuler:hover {
+            transform: scale(1.1);
+        }
+        
+        /* MODAL DE CONFIRMATION PERSONNALISÉ */
+        .confirm-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 10001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        .confirm-modal.show {
+            visibility: visible;
+            opacity: 1;
+        }
+        .confirm-modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 450px;
+            width: 90%;
+            overflow: hidden;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+        .confirm-modal.show .confirm-modal-content {
+            transform: scale(1);
+        }
+        .confirm-modal-header {
+            padding: 20px 24px;
+            background: #fef3c7;
+            border-bottom: 1px solid #fde68a;
+        }
+        .confirm-modal-header h3 {
+            font-size: 18px;
+            font-weight: bold;
+            color: #92400e;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .confirm-modal-header h3 i {
+            font-size: 24px;
+        }
+        .confirm-modal-body {
+            padding: 24px;
+        }
+        .confirm-modal-body p {
+            margin: 0 0 10px 0;
+            color: #374151;
+            line-height: 1.5;
+        }
+        .confirm-modal-body .warning-text {
+            color: #dc2626;
+            font-size: 13px;
+            margin-top: 12px;
+            padding: 10px;
+            background: #fee2e2;
+            border-radius: 8px;
+        }
+        .confirm-modal-footer {
+            padding: 16px 24px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .confirm-modal-footer button {
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-confirm-cancel {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        .btn-confirm-cancel:hover {
+            background: #d1d5db;
+        }
+        .btn-confirm-delete {
+            background: #dc2626;
+            color: white;
+        }
+        .btn-confirm-delete:hover {
+            background: #b91c1c;
+        }
+        
+        /* Styles pour le tableau */
+        .table-container {
+            overflow-x: auto;
+        }
+        .campagne-table {
+            min-width: 800px;
+            width: 100%;
+        }
+        .campagne-table th,
+        .campagne-table td {
+            padding: 12px 16px;
+            vertical-align: middle;
+        }
+        .campagne-table th {
+            background-color: #f9fafb;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            color: #6b7280;
+        }
+        .campagne-table td {
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .campagne-row:last-child td {
+            border-bottom: none;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            padding: 6px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .action-btn:hover {
+            transform: scale(1.1);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .badge-brouillon { background: #f3f4f6; color: #4b5563; }
+        .badge-planifiee { background: #fef3c7; color: #92400e; }
+        .badge-envoyee { background: #dcfce7; color: #166534; }
+        .planification-date {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        .planification-date i {
+            margin-right: 4px;
+            color: #f59e0b;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .text-left {
+            text-align: left;
+        }
+        .font-medium {
+            font-weight: 500;
+        }
+        .text-gray-800 {
+            color: #1f2937;
+        }
+        .text-gray-500 {
+            color: #6b7280;
+        }
+        .text-blue-600 {
+            color: #2563eb;
+        }
+        .text-green-600 {
+            color: #16a34a;
+        }
+        .text-orange-600 {
+            color: #ea580c;
+        }
+        .text-red-600 {
+            color: #dc2626;
+        }
+        .hover\:text-blue-800:hover {
+            color: #1e40af;
+        }
+        .hover\:text-green-800:hover {
+            color: #15803d;
+        }
+        .hover\:text-orange-800:hover {
+            color: #c2410c;
+        }
+        .hover\:text-red-800:hover {
+            color: #b91c1c;
+        }
+        .bg-purple-100 {
+            background-color: #f3e8ff;
+        }
+        .text-purple-600 {
+            color: #9333ea;
+        }
+        .rounded-full {
+            border-radius: 9999px;
+        }
+        .p-2 {
+            padding: 8px;
+        }
+        .mr-3 {
+            margin-right: 12px;
+        }
+        .flex {
+            display: flex;
+        }
+        .items-center {
+            align-items: center;
+        }
+        .gap-2 {
+            gap: 8px;
+        }
+        .mx-1 {
+            margin-left: 4px;
+            margin-right: 4px;
+        }
+        .inline-flex {
+            display: inline-flex;
+        }
+        
+        
     </style>
 </head>
 <body>
+
+<!-- MODAL DE CONFIRMATION PERSONNALISÉ -->
+<div id="confirmDeleteModal" class="confirm-modal">
+    <div class="confirm-modal-content">
+        <div class="confirm-modal-header">
+            <h3>
+                <i class="fas fa-exclamation-triangle"></i>
+                Confirmer la suppression
+            </h3>
+        </div>
+        <div class="confirm-modal-body">
+            <p>Êtes-vous sûr de vouloir supprimer la campagne planifiée <strong id="confirmCampagneNom"></strong> ?</p>
+            <p>Cette action est irréversible et supprimera définitivement la campagne.</p>
+            <div class="warning-text">
+                <i class="fas fa-info-circle mr-1"></i>
+                Les messages déjà envoyés ne seront pas affectés.
+            </div>
+        </div>
+        <div class="confirm-modal-footer">
+            <button class="btn-confirm-cancel" id="confirmCancelBtn">
+                <i class="fas fa-times mr-1"></i>Annuler
+            </button>
+            <button class="btn-confirm-delete" id="confirmDeleteBtn">
+                <i class="fas fa-trash-alt mr-1"></i>Supprimer
+            </button>
+        </div>
+    </div>
+</div>
 
 <div class="space-y-6">
     <div class="flex justify-between items-center">
@@ -188,14 +521,14 @@ foreach ($allCampagnes as $c) {
     </div>
 
     <?php if ($flashMessage): ?>
-        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= $flashMessage ?></div>
+        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= htmlspecialchars($flashMessage) ?></div>
     <?php endif; ?>
     <?php if ($flashError): ?>
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= $flashError ?></div>
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= htmlspecialchars($flashError) ?></div>
     <?php endif; ?>
 
     <!-- Statistiques -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white rounded-lg shadow p-4">
             <div class="flex justify-between items-center">
                 <div>
@@ -212,6 +545,15 @@ foreach ($allCampagnes as $c) {
                     <span class="text-2xl font-bold text-green-600 ml-2"><?= $activeCount ?></span>
                 </div>
                 <div class="text-green-400"><i class="fas fa-play-circle text-2xl"></i></div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <span class="text-gray-500">Planifiées</span>
+                    <span class="text-2xl font-bold text-yellow-600 ml-2"><?= $planifieesCount ?></span>
+                </div>
+                <div class="text-yellow-400"><i class="fas fa-calendar-alt text-2xl"></i></div>
             </div>
         </div>
         <div class="bg-white rounded-lg shadow p-4">
@@ -239,21 +581,22 @@ foreach ($allCampagnes as $c) {
 
     <!-- Tableau des campagnes -->
     <div class="bg-white rounded-lg shadow overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
+        <div class="table-container">
+            <table class="campagne-table">
+                <thead>
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Messages</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        <th class="text-left">Nom</th>
+                        <th class="text-center">Messages</th>
+                        <th class="text-left">Statut</th>
+                        <th class="text-left">Date planification</th>
+                        <th class="text-left">Date création</th>
+                        <th class="text-center">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="campagnesTableBody">
+                <tbody>
                     <?php if (empty($campagnes)): ?>
                         <tr>
-                            <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                            <td colspan="6" class="text-center py-8 text-gray-500">
                                 <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
                                 Aucune campagne pour le moment.
                                 <button onclick="openAddCampagneModal()" class="text-purple-600 block mt-2">Créer votre première campagne →</button>
@@ -261,10 +604,10 @@ foreach ($allCampagnes as $c) {
                         </tr>
                     <?php else: ?>
                         <?php foreach ($campagnes as $campagne): ?>
-                            <tr class="campagne-row hover:bg-gray-50" 
+                            <tr class="campagne-row" 
                                 data-name="<?= strtolower(htmlspecialchars($campagne['nom_campagne'])) ?>"
                                 onclick="window.location.href='index.php?page=campagnes/details&id=<?= $campagne['id_campagne_config'] ?>'">
-                                <td class="px-6 py-4">
+                                <td>
                                     <div class="flex items-center">
                                         <div class="bg-purple-100 rounded-full p-2 mr-3">
                                             <i class="fas fa-bullhorn text-purple-600 text-sm"></i>
@@ -272,34 +615,69 @@ foreach ($allCampagnes as $c) {
                                         <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-center">
-                                    <span class="font-semibold text-blue-600"><?= $campagne['nb_envois'] ?></span>
-                                    <span class="text-xs text-gray-500"> envoi(s)</span>
+                                <td class="text-center">
+                                    <span class="font-medium text-blue-600"><?= $campagne['nb_envois'] ?></span>
+                                    <span class="text-gray-500 text-xs"> envoi(s)</span>
                                 </td>
-                                <td class="px-6 py-4">
-                                    <span class="status-badge status-<?= $campagne['statut'] ?>">
-                                        <?php
-                                        $statusText = [
-                                            'brouillon' => 'Brouillon',
-                                            'planifiee' => 'Planifiée',
-                                            'envoyee' => 'Envoyée'
-                                        ];
-                                        echo $statusText[$campagne['statut']] ?? $campagne['statut'];
-                                        ?>
-                                    </span>
+                                <td>
+                                    <?php
+                                    $badgeClass = '';
+                                    $statusLabel = '';
+                                    if ($campagne['statut'] == 'brouillon') {
+                                        $badgeClass = 'badge-brouillon';
+                                        $statusLabel = 'Brouillon';
+                                    } elseif ($campagne['statut'] == 'planifiee') {
+                                        $badgeClass = 'badge-planifiee';
+                                        $statusLabel = 'Planifiée';
+                                    } else {
+                                        $badgeClass = 'badge-envoyee';
+                                        $statusLabel = 'Envoyée';
+                                    }
+                                    ?>
+                                    <span class="badge <?= $badgeClass ?>"><?= $statusLabel ?></span>
+                                    <?php if ($campagne['statut'] == 'planifiee' && !empty($campagne['date_planification'])): ?>
+                                        <div class="planification-date">
+                                            <i class="fas fa-calendar-alt"></i> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-500">
+                                <td>
+                                    <?php if (!empty($campagne['date_planification'])): ?>
+                                        <div class="planification-date">
+                                            <i class="fas fa-calendar-alt"></i> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <span class="text-gray-400">-</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-gray-500 text-sm">
                                     <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
                                 </td>
-                                <td class="px-6 py-4 text-center whitespace-nowrap">
-                                    <button onclick="event.stopPropagation(); window.location.href='index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>'" 
-                                            class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Nouveau message">
-                                        <i class="fas fa-plus-circle"></i>
-                                    </button>
-                                    <button onclick="event.stopPropagation(); window.location.href='index.php?page=campagnes/details&id=<?= $campagne['id_campagne_config'] ?>'" 
-                                            class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les détails">
-                                        <i class="fas fa-eye"></i>
-                                    </button>
+                                <td class="text-center">
+                                    <div class="action-buttons" onclick="event.stopPropagation()">
+                                        <?php if ($campagne['statut'] == 'brouillon'): ?>
+                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                               class="action-btn text-green-600 hover:text-green-800" title="Envoyer maintenant">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if ($campagne['statut'] == 'planifiee'): ?>
+                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                               class="action-btn text-orange-600 hover:text-orange-800" title="Envoyer (forcer)">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <a href="index.php?page=campagnes/details&id=<?= $campagne['id_campagne_config'] ?>" 
+                                           class="action-btn text-blue-600 hover:text-blue-800" title="Voir les détails">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <?php if ($campagne['statut'] == 'planifiee'): ?>
+                                            <button onclick="openConfirmDeleteModal('<?= $campagne['id_campagne_config'] ?>', '<?= addslashes($campagne['nom_campagne']) ?>')" 
+                                                    class="action-btn text-red-600 hover:text-red-800" title="Supprimer la campagne">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -335,7 +713,7 @@ foreach ($allCampagnes as $c) {
     <?php endif; ?>
 </div>
 
-<!-- MODALE D'AJOUT DE CAMPAGNE SIMPLIFIÉE -->
+<!-- MODALE D'AJOUT DE CAMPAGNE AVEC DATE DE PLANIFICATION OPTIONNELLE -->
 <div id="addCampagneModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-campagne">
         <div class="p-6">
@@ -361,7 +739,23 @@ foreach ($allCampagnes as $c) {
                     <input type="text" name="nom_campagne" id="nom_campagne" required 
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
                            placeholder="Ex: Newsletter Juin 2026">
-                    <p class="text-xs text-gray-500 mt-1">Vous pourrez configurer le message, les destinataires et le canal après la création.</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Date de planification (optionnelle)
+                    </label>
+                    <input type="datetime-local" name="date_planification" id="date_planification" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 datetime-input">
+                    <p class="text-xs text-gray-500 mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Laissez vide pour une création immédiate (brouillon). Remplissez pour planifier l'envoi automatique.
+                    </p>
+                </div>
+                
+                <div class="bg-yellow-50 p-3 rounded-lg mb-4 text-sm text-yellow-700">
+                    <i class="fas fa-clock mr-2"></i>
+                    <strong>Note :</strong> Si vous définissez une date de planification, la campagne sera envoyée automatiquement à cette date.
                 </div>
                 
                 <div class="mt-6 flex justify-end space-x-2">
@@ -395,12 +789,67 @@ function showToast(message, type = 'success') {
 }
 
 // ============================================
+// MODAL DE CONFIRMATION POUR SUPPRESSION
+// ============================================
+let campagneToDelete = null;
+
+function openConfirmDeleteModal(id, nom) {
+    campagneToDelete = id;
+    document.getElementById('confirmCampagneNom').innerHTML = nom;
+    const modal = document.getElementById('confirmDeleteModal');
+    modal.classList.add('show');
+}
+
+function closeConfirmDeleteModal() {
+    const modal = document.getElementById('confirmDeleteModal');
+    modal.classList.remove('show');
+    campagneToDelete = null;
+}
+
+function confirmDelete() {
+    if (campagneToDelete) {
+        const formData = new FormData();
+        formData.append('action_supprimer_campagne', '1');
+        formData.append('id_campagne', campagneToDelete);
+        
+        fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.ok) {
+                showToast('Campagne supprimée avec succès', 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast('Erreur lors de la suppression', 'error');
+            }
+        })
+        .catch(() => showToast('Erreur réseau', 'error'))
+        .finally(() => {
+            closeConfirmDeleteModal();
+        });
+    }
+}
+
+// Écouteurs des boutons du modal
+document.getElementById('confirmCancelBtn').addEventListener('click', closeConfirmDeleteModal);
+document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
+
+// Fermer le modal en cliquant en dehors
+document.getElementById('confirmDeleteModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeConfirmDeleteModal();
+    }
+});
+
+// ============================================
 // MODAL D'AJOUT DE CAMPAGNE
 // ============================================
 function openAddCampagneModal() {
     const modal = document.getElementById('addCampagneModal');
     const modalContent = modal.querySelector('.modal-campagne');
     document.getElementById('addCampagneForm').reset();
+    document.getElementById('date_planification').value = '';
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
@@ -419,6 +868,7 @@ document.getElementById('addCampagneForm').addEventListener('submit', async func
     e.preventDefault();
     
     const nomCampagne = document.getElementById('nom_campagne').value.trim();
+    const datePlanification = document.getElementById('date_planification').value;
     
     if (!nomCampagne) {
         showToast('Veuillez saisir un nom de campagne', 'warning');
@@ -450,12 +900,16 @@ document.getElementById('addCampagneForm').addEventListener('submit', async func
         }
         
         if (result.success) {
-            showToast(result.message, 'success');
+            let message = result.message;
+            if (datePlanification) {
+                const dateFormatted = new Date(datePlanification).toLocaleString('fr-FR');
+                message = `Campagne créée et planifiée pour le ${dateFormatted}`;
+                showToast(message, 'success');
+            } else {
+                showToast(result.message, 'success');
+            }
             closeAddCampagneModal();
-            
-            setTimeout(() => {
-                window.location.href = 'index.php?page=campagnes/choix&campagne_id=' + result.id_campagne;
-            }, 1000);
+            setTimeout(() => window.location.reload(), 1000);
         } else {
             showToast(result.error, 'error');
             submitBtn.innerHTML = originalText;
@@ -501,13 +955,30 @@ if (searchInput) {
     }
 }
 
+// ============================================
+// AFFICHER LES ALERTES DE CAMPAGNES PLANIFIÉES
+// ============================================
+<?php if (!empty($campagnesAAlerter)): ?>
+    console.log("Campagnes à alerter: <?= count($campagnesAAlerter) ?>");
+    <?php foreach ($campagnesAAlerter as $campagne): ?>
+        setTimeout(function() {
+            showToast('📅 La campagne "<?= addslashes($campagne['nom_campagne']) ?>" est prête à être envoyée !', 'warning');
+        }, 1000);
+    <?php endforeach; ?>
+<?php else: ?>
+    console.log("Aucune campagne à alerter");
+<?php endif; ?>
+
 // Fermeture des modales
 document.getElementById('addCampagneModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeAddCampagneModal();
 });
 
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeAddCampagneModal();
+    if (e.key === 'Escape') {
+        closeAddCampagneModal();
+        closeConfirmDeleteModal();
+    }
 });
 </script>
 

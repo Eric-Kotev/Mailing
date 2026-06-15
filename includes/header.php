@@ -11,7 +11,6 @@ $prenom = $_SESSION['user_prenom'] ?? '';
 $nom = $_SESSION['user_nom'] ?? '';
 $userName = $_SESSION['user_name'] ?? '';
 
-// Si on a le prénom et nom séparément, on les utilise, sinon on utilise user_name
 if (!empty($prenom) && !empty($nom)) {
     $displayName = $prenom . ' ' . $nom;
 } else {
@@ -27,6 +26,44 @@ if ($userId) {
         $userLogo = $userInfo[0]['logo_url'];
     }
 }
+
+// ============================================
+// VÉRIFICATION DES CAMPAGNES PLANIFIÉES À ENVOYER
+// ============================================
+$campagnesAAlerter = [];
+if (isset($_SESSION['user_id'])) {
+    $idCompte = $_SESSION['user_id'];
+    $now = date('Y-m-d H:i:s');
+    
+    // Initialiser la session pour les notifications si pas existante
+    if (!isset($_SESSION['campagnes_notifiees'])) {
+        $_SESSION['campagnes_notifiees'] = [];
+    }
+    
+    // Récupérer les campagnes planifiées
+    $campagnesPlanifiees = $db->select('campagne_config', [
+        'id_compte' => $idCompte,
+        'statut' => 'planifiee'
+    ]);
+    
+    foreach ($campagnesPlanifiees as $campagne) {
+        // Vérifier si la date de planification est passée ou dans les 5 minutes
+        $datePlanif = strtotime($campagne['date_planification']);
+        $dateNow = time();
+        
+        // Si la date est passée (ou dans les 5 minutes)
+        if (!empty($campagne['date_planification']) && $datePlanif <= $dateNow) {
+            // Vérifier si déjà notifiée
+            if (!in_array($campagne['id_campagne_config'], $_SESSION['campagnes_notifiees'])) {
+                $_SESSION['campagnes_notifiees'][] = $campagne['id_campagne_config'];
+                $campagnesAAlerter[] = $campagne;
+                
+                // Mettre à jour le statut pour ne plus alerter
+                $db->update('campagne_config', ['statut' => 'a_envoyer'], ['id_campagne_config' => $campagne['id_campagne_config']]);
+            }
+        }
+    }
+}
 ?>
 
 <header class="bg-white shadow-sm">
@@ -38,8 +75,6 @@ if ($userId) {
         </div>
         
         <div class="flex items-center space-x-4">
-            
-            <!-- Info utilisateur avec "Bonjour" -->
             <div class="text-right">
                 <div class="text-xl font-semibold text-gray-800">
                     Bonjour, <?= htmlspecialchars($displayName) ?>
@@ -49,13 +84,11 @@ if ($userId) {
                 </div>
             </div>
             
-            <!-- Crédits -->
             <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full">
                 <i class="fas fa-coins mr-1"></i>
                 <?= number_format($credits, 2) ?> €
             </div>
 
-            <!-- Avatar / Logo -->
             <?php if (!empty($userLogo)): ?>
                 <img src="<?= htmlspecialchars($userLogo) . '?t=' . time() ?>" 
                      alt="Logo <?= htmlspecialchars($displayName) ?>"
@@ -70,7 +103,6 @@ if ($userId) {
                 </div>
             <?php endif; ?>
             
-            <!-- Déconnexion -->
             <a href="logout.php" class="text-gray-500 hover:text-red-600 transition" title="Déconnexion">
                 <i class="fas fa-sign-out-alt text-xl"></i>
             </a>
@@ -82,4 +114,139 @@ if ($userId) {
     .object-cover {
         object-fit: cover;
     }
+    
+    .toast-container {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .toast-notification {
+        min-width: 300px;
+        max-width: 400px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        animation: slideInRight 0.3s ease-out;
+        overflow: hidden;
+    }
+    
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    .toast-notification .toast-content {
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .toast-notification.success .toast-content { background: #10b981; color: white; }
+    .toast-notification.error .toast-content { background: #ef4444; color: white; }
+    .toast-notification.warning .toast-content { background: #f59e0b; color: white; }
+    .toast-notification.info .toast-content { background: #3b82f6; color: white; }
+    
+    .toast-notification .toast-icon {
+        font-size: 1.25rem;
+    }
+    
+    .toast-notification .toast-message {
+        flex: 1;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    
+    .toast-notification .toast-close {
+        cursor: pointer;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+    }
+    
+    .toast-notification .toast-close:hover {
+        opacity: 1;
+    }
+    
+    .toast-notification.fade-out {
+        animation: fadeOut 0.3s ease forwards;
+    }
+    
+    @keyframes fadeOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
 </style>
+
+<script>
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toastContainer') || (() => {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'toastContainer';
+        newContainer.className = 'toast-container';
+        document.body.appendChild(newContainer);
+        return newContainer;
+    })();
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    
+    let icon = '';
+    switch(type) {
+        case 'success': icon = '<i class="fas fa-check-circle"></i>'; break;
+        case 'error': icon = '<i class="fas fa-exclamation-circle"></i>'; break;
+        case 'warning': icon = '<i class="fas fa-exclamation-triangle"></i>'; break;
+        case 'info': icon = '<i class="fas fa-info-circle"></i>'; break;
+        default: icon = '<i class="fas fa-bell"></i>';
+    }
+    
+    toast.innerHTML = `
+        <div class="toast-content">
+            <div class="toast-icon">${icon}</div>
+            <div class="toast-message">${escapeHtml(message)}</div>
+            <div class="toast-close"><i class="fas fa-times"></i></div>
+        </div>
+    `;
+    
+    container.appendChild(toast);
+    
+    const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+    });
+    
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.classList.add('fade-out');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 5000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ============================================
+// AFFICHER LES ALERTES AU CHARGEMENT
+// ============================================
+<?php foreach ($campagnesAAlerter as $campagne): ?>
+    setTimeout(function() {
+        showToast('📅 La campagne "<?= addslashes($campagne['nom_campagne']) ?>" est prête à être envoyée !', 'warning');
+    }, 1000);
+<?php endforeach; ?>
+</script>

@@ -40,8 +40,33 @@ $device_name = $_SESSION['sms_device_name'] ?? 'Appareil SMS';
 $api_username = $_SESSION['sms_api_username'];
 $api_password = $_SESSION['sms_api_password'];
 
-// Récupérer les contacts (en excluant la blacklist)
-$blacklist = $db->select('blacklist');
+// ============================================
+// RÉCUPÉRATION DE L'ID DU TYPE MESSAGE SMS
+// ============================================
+$smsTypeId = null;
+
+// Recherche par libelle_type (SMS, whatsapp, email)
+$typeMessageSms = $db->select('type_message', ['libelle_type' => 'SMS']);
+
+if (!empty($typeMessageSms)) {
+    $smsTypeId = $typeMessageSms[0]['id_type_message'];
+} else {
+    // Si 'SMS' n'existe pas, essayer avec 'sms' (minuscule)
+    $typeMessageSms = $db->select('type_message', ['libelle_type' => 'sms']);
+    if (!empty($typeMessageSms)) {
+        $smsTypeId = $typeMessageSms[0]['id_type_message'];
+    } else {
+        // Si toujours pas trouvé, afficher une erreur claire
+        die("Erreur: Le type de message 'SMS' n'existe pas dans la base de données. 
+             Veuillez exécuter la requête SQL suivante:<br>
+             INSERT INTO type_message (libelle_type) VALUES ('SMS'), ('whatsapp'), ('email');");
+    }
+}
+
+// ============================================
+// RÉCUPÉRATION DE LA BLACKLIST POUR SMS UNIQUEMENT
+// ============================================
+$blacklist = $db->select('blacklist', ['id_type_message' => $smsTypeId]);
 $blacklistIds = [];
 foreach ($blacklist as $b) {
     if (!empty($b['id_contact'])) {
@@ -52,7 +77,7 @@ foreach ($blacklist as $b) {
 // Récupérer tous les contacts du compte
 $tousContacts = $db->select('contact', ['id_compte' => $idCompte]);
 
-// Filtrer les contacts non blacklistés
+// Filtrer les contacts non blacklistés pour SMS
 $contacts = [];
 foreach ($tousContacts as $contact) {
     if (!in_array($contact['id_contact'], $blacklistIds)) {
@@ -60,7 +85,7 @@ foreach ($tousContacts as $contact) {
     }
 }
 
-// Récupérer les listes avec le nombre de contacts
+// Récupérer les listes avec le nombre de contacts (excluant blacklist SMS)
 $listesBrutes = $db->select('liste', ['id_compte' => $idCompte]);
 $listes = [];
 
@@ -84,28 +109,52 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-   $message = trim($_POST['message'] ?? '');
+    $message = trim($_POST['message'] ?? '');
     $type_envoi = $_POST['type_envoi'] ?? 'simple';
+    
+    // Re-récupérer l'ID du type SMS
+    $typeMessageSms = $db->select('type_message', ['libelle_type' => 'SMS']);
+    if (empty($typeMessageSms)) {
+        $typeMessageSms = $db->select('type_message', ['libelle_type' => 'sms']);
+    }
+    $smsTypeId = !empty($typeMessageSms) ? $typeMessageSms[0]['id_type_message'] : null;
+    
+    // Re-récupérer la blacklist SMS pour l'envoi
+    $blacklistSmsIds = [];
+    if ($smsTypeId) {
+        $blacklistSms = $db->select('blacklist', ['id_type_message' => $smsTypeId]);
+        foreach ($blacklistSms as $b) {
+            if (!empty($b['id_contact'])) {
+                $blacklistSmsIds[] = $b['id_contact'];
+            }
+        }
+    }
     
     $recipients = [];
     $destinatairesNoms = [];
+    $contactsBlacklistes = [];
     
     if ($type_envoi === 'simple') {
         // Envoi à un seul destinataire
         $contact_id = $_POST['contact_unique'] ?? '';
         if (!empty($contact_id)) {
-            $contact = $db->select('contact', ['id_contact' => $contact_id]);
-            if (!empty($contact) && !in_array($contact_id, $blacklistIds)) {
-                $telephone = $contact[0]['telephone'];
-                $telephone = preg_replace('/[^0-9]/', '', $telephone);
-                if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
-                    $telephone = '261' . substr($telephone, 1);
+            // Vérifier si le contact est blacklisté pour SMS
+            if (!in_array($contact_id, $blacklistSmsIds)) {
+                $contact = $db->select('contact', ['id_contact' => $contact_id]);
+                if (!empty($contact)) {
+                    $telephone = $contact[0]['telephone'];
+                    $telephone = preg_replace('/[^0-9]/', '', $telephone);
+                    if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
+                        $telephone = '261' . substr($telephone, 1);
+                    }
+                    if (substr($telephone, 0, 3) != '261') {
+                        $telephone = '261' . $telephone;
+                    }
+                    $recipients[] = '+' . $telephone;
+                    $destinatairesNoms[] = $contact[0]['prenom'] . ' ' . $contact[0]['nom'] . ' (' . $telephone . ')';
                 }
-                if (substr($telephone, 0, 3) != '261') {
-                    $telephone = '261' . $telephone;
-                }
-                $recipients[] = '+' . $telephone;
-                $destinatairesNoms[] = $contact[0]['prenom'] . ' ' . $contact[0]['nom'] . ' (' . $telephone . ')';
+            } else {
+                $error = "Ce contact est blacklisté pour les SMS et ne peut pas recevoir de message.";
             }
         }
     } else {
@@ -114,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($liste_id)) {
             $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
             foreach ($listeContacts as $lc) {
-                if (!in_array($lc['id_contact'], $blacklistIds)) {
+                if (!in_array($lc['id_contact'], $blacklistSmsIds)) {
                     $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
                     if (!empty($contact)) {
                         $telephone = $contact[0]['telephone'];
@@ -128,13 +177,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $recipients[] = '+' . $telephone;
                         $destinatairesNoms[] = $contact[0]['prenom'] . ' ' . $contact[0]['nom'] . ' (' . $telephone . ')';
                     }
+                } else {
+                    $contactBlack = $db->select('contact', ['id_contact' => $lc['id_contact']]);
+                    if (!empty($contactBlack)) {
+                        $contactsBlacklistes[] = $contactBlack[0]['prenom'] . ' ' . $contactBlack[0]['nom'];
+                    }
                 }
             }
         }
     }
     
     if (empty($recipients)) {
-        $error = "Veuillez sélectionner au moins un destinataire";
+        if (!empty($contactsBlacklistes)) {
+            $error = "Aucun destinataire valide. " . count($contactsBlacklistes) . " contact(s) sont blacklistés pour les SMS.";
+        } else {
+            $error = "Veuillez sélectionner au moins un destinataire";
+        }
     } elseif (empty($message)) {
         $error = "Veuillez saisir un message";
     } else {
@@ -169,7 +227,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         if ($httpCode === 200) {
-            $success = "SMS envoyés avec succès à " . count($recipients) . " destinataire(s) !";
+            $successMsg = "SMS envoyés avec succès à " . count($recipients) . " destinataire(s) !";
+            if (!empty($contactsBlacklistes)) {
+                $successMsg .= "<br><small>⚠️ " . count($contactsBlacklistes) . " contact(s) blacklistés ont été exclus.</small>";
+            }
+            $success = $successMsg;
             
             // ENREGISTREMENT SUCCÈS
             $campagneData = [
@@ -226,6 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 
+<!-- Reste du HTML identique à votre code original -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -234,6 +297,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Envoyer SMS - <?= APP_NAME ?></title>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
+        /* Vos styles existants (gardez les mêmes que dans votre code original) */
         .select2-container--default .select2-selection--single {
             border: 1px solid #d1d5db;
             border-radius: 0.5rem;
@@ -347,34 +411,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 14px;
         }
         
-        .progress-bar-container {
-            width: 300px;
-            margin-top: 15px;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #e5e7eb;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-        
-        .progress-bar-fill {
-            height: 100%;
-            background: #3b82f6;
-            width: 0%;
-            transition: width 0.3s ease;
-            animation: loading 2s infinite;
-        }
-        
-        @keyframes loading {
-            0% { width: 0%; }
-            50% { width: 70%; }
-            100% { width: 100%; }
-        }
-        
-        /* Informations campagne */
         .campagne-info {
             background: #f3e8ff;
             border: 1px solid #d8b4fe;
@@ -408,7 +444,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="max-w-3xl mx-auto py-8 px-4">
     <div class="flex items-center mb-6">
-        <a href="index.php?page=campagnes/choix" class="text-blue-600 hover:text-blue-800 mr-4">
+        <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 mr-4">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
         <div class="bg-blue-100 p-3 rounded-full mr-4">
@@ -418,7 +454,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     
     <div class="bg-white rounded-lg shadow p-6">
-        <!-- Affichage des informations de la campagne -->
         <div class="campagne-info">
             <div class="campagne-info-title">
                 <i class="fas fa-bullhorn mr-2"></i>
@@ -442,10 +477,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
         
         <form method="POST" id="smsForm">
-            <!-- Champ caché pour l'ID de campagne -->
             <input type="hidden" name="campagne_config_id" value="<?= $campagneConfigId ?>">
             
-            <!-- Type d'envoi -->
             <div class="mb-6">
                 <label class="block text-sm font-medium text-gray-700 mb-2">
                     <i class="fas fa-envelope mr-1"></i> Type d'envoi *
@@ -467,7 +500,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="hidden" name="type_envoi" id="type_envoi" value="<?= isset($_POST['type_envoi']) ? $_POST['type_envoi'] : 'simple' ?>">
             </div>
             
-            <!-- Zone Envoi unique -->
             <div id="simpleZone" class="mb-4">
                 <label class="block text-sm font-medium text-gray-700 mb-1">
                     <i class="fas fa-user mr-1"></i> Destinataire *
@@ -480,9 +512,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </option>
                     <?php endforeach; ?>
                 </select>
+                <?php if (count($contacts) < count($tousContacts)): ?>
+                    <p class="text-xs text-yellow-600 mt-1">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        <?= (count($tousContacts) - count($contacts)) ?> contact(s) blacklistés pour les SMS ne sont pas affichés.
+                    </p>
+                <?php endif; ?>
             </div>
             
-            <!-- Zone Envoi multiple (Liste uniquement) -->
             <div id="multipleZone" class="mb-4" style="display: none;">
                 <label class="block text-sm font-medium text-gray-700 mb-1">
                     <i class="fas fa-list mr-1"></i> Sélectionner une liste *
@@ -495,10 +532,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </option>
                     <?php endforeach; ?>
                 </select>
-                <p class="text-xs text-gray-500 mt-1">Le message sera envoyé à tous les contacts de cette liste</p>
+                <p class="text-xs text-gray-500 mt-1">Le message sera envoyé à tous les contacts de cette liste (les contacts blacklistés pour les SMS seront automatiquement exclus).</p>
             </div>
             
-            <!-- Message -->
             <div class="mb-4">
                 <label class="block text-sm font-medium text-gray-700 mb-1">
                     <i class="fas fa-comment mr-1"></i> Message *

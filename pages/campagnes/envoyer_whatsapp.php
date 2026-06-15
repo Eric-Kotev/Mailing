@@ -29,6 +29,39 @@ $campagne = $campagneConfig[0];
 // Nettoyer la session
 unset($_SESSION['campagne_config_id']);
 
+// ============================================
+// RÉCUPÉRATION DE L'ID DU TYPE MESSAGE WHATSAPP
+// ============================================
+$whatsappTypeId = null;
+
+// Recherche par libelle_type (WhatsApp, whatsapp, WhatsApp)
+$typeMessageWhatsapp = $db->select('type_message', ['libelle_type' => 'WhatsApp']);
+if (empty($typeMessageWhatsapp)) {
+    $typeMessageWhatsapp = $db->select('type_message', ['libelle_type' => 'whatsapp']);
+}
+if (empty($typeMessageWhatsapp)) {
+    $typeMessageWhatsapp = $db->select('type_message', ['libelle_type' => 'WHATSAPP']);
+}
+
+if (!empty($typeMessageWhatsapp)) {
+    $whatsappTypeId = $typeMessageWhatsapp[0]['id_type_message'];
+} else {
+    die("Erreur: Le type de message 'WhatsApp' n'existe pas dans la base de données. 
+         Veuillez exécuter la requête SQL suivante:<br>
+         INSERT INTO type_message (libelle_type) VALUES ('WhatsApp');");
+}
+
+// ============================================
+// RÉCUPÉRATION DE LA BLACKLIST POUR WHATSAPP UNIQUEMENT
+// ============================================
+$blacklist = $db->select('blacklist', ['id_type_message' => $whatsappTypeId]);
+$blacklistIds = [];
+foreach ($blacklist as $b) {
+    if (!empty($b['id_contact'])) {
+        $blacklistIds[] = $b['id_contact'];
+    }
+}
+
 // Récupérer la session WhatsApp active
 $sessions = $db->select('whatsapp_sessions', [
     'id_compte' => $idCompte,
@@ -51,19 +84,10 @@ if (!$whatsappSession) {
     exit;
 }
 
-// Récupérer les IDs des contacts blacklistés
-$blacklist = $db->select('blacklist');
-$blacklistIds = [];
-foreach ($blacklist as $b) {
-    if (!empty($b['id_contact'])) {
-        $blacklistIds[] = $b['id_contact'];
-    }
-}
-
 // Récupérer tous les contacts du compte
 $tousContacts = $db->select('contact', ['id_compte' => $idCompte]);
 
-// Filtrer les contacts non blacklistés
+// Filtrer les contacts non blacklistés pour WhatsApp
 $contacts = [];
 foreach ($tousContacts as $contact) {
     if (!in_array($contact['id_contact'], $blacklistIds)) {
@@ -71,7 +95,7 @@ foreach ($tousContacts as $contact) {
     }
 }
 
-// Récupérer les listes avec le nombre de contacts
+// Récupérer les listes avec le nombre de contacts (excluant blacklist WhatsApp)
 $listesBrutes = $db->select('liste', ['id_compte' => $idCompte]);
 $listes = [];
 
@@ -152,7 +176,6 @@ function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $hasAudio, $w
             'mimetype' => 'audio/webm',
             'filename' => $originalName
         ];
-        // PAS DE CAPTION POUR L'AUDIO
     }
     // Gestion des fichiers uploadés
     elseif ($hasFile && isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK) {
@@ -322,6 +345,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $audioData = $_POST['audio_data'] ?? '';
     $hasAudio = !empty($audioData) && strpos($audioData, 'base64,') !== false;
     
+    // Re-récupérer l'ID du type WhatsApp
+    $typeMessageWhatsapp = $db->select('type_message', ['libelle_type' => 'WhatsApp']);
+    if (empty($typeMessageWhatsapp)) {
+        $typeMessageWhatsapp = $db->select('type_message', ['libelle_type' => 'whatsapp']);
+    }
+    $whatsappTypeId = !empty($typeMessageWhatsapp) ? $typeMessageWhatsapp[0]['id_type_message'] : null;
+    
+    // Re-récupérer la blacklist WhatsApp pour l'envoi
+    $blacklistWhatsappIds = [];
+    if ($whatsappTypeId) {
+        $blacklistWhatsapp = $db->select('blacklist', ['id_type_message' => $whatsappTypeId]);
+        foreach ($blacklistWhatsapp as $b) {
+            if (!empty($b['id_contact'])) {
+                $blacklistWhatsappIds[] = $b['id_contact'];
+            }
+        }
+    }
+    
     if (empty($message) && !$hasFile && !$hasAudio) {
         $error = "Veuillez saisir un message ou joindre un fichier/audio";
     } elseif ($type_envoi === 'simple') {
@@ -330,18 +371,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($chatId)) {
             $error = "Veuillez sélectionner un destinataire";
         } else {
+            // Extraire le numéro de téléphone du chatId
             $phoneNumber = str_replace('@c.us', '', $chatId);
             
-            $resultat = envoyerMessageWhatsAppBulk([$phoneNumber], $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
-            
-            if ($resultat['success']) {
-                $success = $resultat['message'];
-                $db->update('campagne_config', [
-                    'statut' => 'envoyee',
-                    'sent_at' => date('Y-m-d H:i:s')
-                ], ['id_campagne_config' => $campagneConfigId]);
+            // Vérifier si le contact n'est pas blacklisté
+            // Pour l'envoi unique, on doit trouver l'id_contact correspondant au numéro
+            $contactInfo = $db->select('contact', ['telephone' => $phoneNumber, 'id_compte' => $idCompte]);
+            if (!empty($contactInfo) && in_array($contactInfo[0]['id_contact'], $blacklistWhatsappIds)) {
+                $error = "Ce contact est blacklisté pour WhatsApp et ne peut pas recevoir de message.";
             } else {
-                $error = $resultat['error'];
+                $resultat = envoyerMessageWhatsAppBulk([$phoneNumber], $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
+                
+                if ($resultat['success']) {
+                    $success = $resultat['message'];
+                    $db->update('campagne_config', [
+                        'statut' => 'envoyee',
+                        'sent_at' => date('Y-m-d H:i:s')
+                    ], ['id_campagne_config' => $campagneConfigId]);
+                } else {
+                    $error = $resultat['error'];
+                }
             }
         }
     } else {
@@ -352,9 +401,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
             $destinataires = [];
+            $contactsBlacklistes = [];
             
             foreach ($listeContacts as $lc) {
-                if (!in_array($lc['id_contact'], $blacklistIds)) {
+                // Vérifier si le contact est blacklisté pour WhatsApp
+                if (!in_array($lc['id_contact'], $blacklistWhatsappIds)) {
                     $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
                     if (!empty($contact)) {
                         $contact = $contact[0];
@@ -366,16 +417,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
                     }
+                } else {
+                    $contactBlack = $db->select('contact', ['id_contact' => $lc['id_contact']]);
+                    if (!empty($contactBlack)) {
+                        $contactsBlacklistes[] = $contactBlack[0]['prenom'] . ' ' . $contactBlack[0]['nom'];
+                    }
                 }
             }
             
             if (empty($destinataires)) {
-                $error = "Aucun destinataire valide dans cette liste";
+                if (!empty($contactsBlacklistes)) {
+                    $error = "Aucun destinataire valide. " . count($contactsBlacklistes) . " contact(s) sont blacklistés pour WhatsApp.";
+                } else {
+                    $error = "Aucun destinataire valide dans cette liste";
+                }
             } else {
                 $resultat = envoyerMessageWhatsAppBulk($destinataires, $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
                 
                 if ($resultat['success']) {
-                    $success = $resultat['message'];
+                    $successMsg = $resultat['message'];
+                    if (!empty($contactsBlacklistes)) {
+                        $successMsg .= "<br><small>⚠️ " . count($contactsBlacklistes) . " contact(s) blacklistés pour WhatsApp ont été exclus.</small>";
+                    }
+                    $success = $successMsg;
                     $db->update('campagne_config', [
                         'statut' => 'envoyee',
                         'sent_at' => date('Y-m-d H:i:s')
@@ -588,6 +652,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-color: #22c55e;
             background-color: #f0fdf4;
         }
+        
+        .blacklist-warning {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
     </style>
 </head>
 <body>
@@ -637,6 +709,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <?php if ($error): ?>
             <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded"><?= $error ?></div>
+        <?php endif; ?>
+        
+        <!-- Avertissement blacklist -->
+        <?php if (count($contacts) < count($tousContacts)): ?>
+            <div class="blacklist-warning">
+                <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+                <span class="text-sm text-red-700">
+                    <?= (count($tousContacts) - count($contacts)) ?> contact(s) blacklistés pour WhatsApp ne sont pas affichés.
+                </span>
+            </div>
         <?php endif; ?>
         
         <?php if (empty($contacts)): ?>
@@ -712,6 +794,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </select>
                     <p class="text-xs text-gray-500 mt-1">
                         <i class="fas fa-clock mr-1"></i> Les messages seront envoyés avec un délai aléatoire configuré ci-dessous
+                        <br><i class="fas fa-ban mr-1 text-red-500"></i> Les contacts blacklistés pour WhatsApp seront automatiquement exclus
                     </p>
                 </div>
                 
