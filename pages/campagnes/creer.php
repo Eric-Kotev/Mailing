@@ -962,8 +962,8 @@ if (searchInput) {
     console.log("Campagnes à alerter: <?= count($campagnesAAlerter) ?>");
     <?php foreach ($campagnesAAlerter as $campagne): ?>
         setTimeout(function() {
-            showToast('📅 La campagne "<?= addslashes($campagne['nom_campagne']) ?>" est prête à être envoyée !', 'warning');
-        }, 1000);
+            showToast('📅 La campagne "<?= addslashes($campagne['nom_campagne']) ?>" doit être envoyée !', 'warning');
+        }, 15000);
     <?php endforeach; ?>
 <?php else: ?>
     console.log("Aucune campagne à alerter");
