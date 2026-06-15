@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <div class="max-w-2xl mx-auto">
     <div class="flex items-center mb-6">
-        <a href="index.php?page=listes/index" class="text-blue-600 hover:text-blue-800 mr-4">
+        <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 mr-4">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
         <h1 class="text-2xl font-bold text-gray-800">Créer une nouvelle liste</h1>

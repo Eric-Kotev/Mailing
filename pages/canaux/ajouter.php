@@ -70,7 +70,7 @@ $configFields = [
 
 <div class="max-w-3xl mx-auto">
     <div class="flex items-center mb-6">
-        <a href="index.php?page=canaux/index" class="text-blue-600 hover:text-blue-800 mr-4">
+        <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 mr-4">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
         <h1 class="text-2xl font-bold text-gray-800">Ajouter un canal d'envoi</h1>

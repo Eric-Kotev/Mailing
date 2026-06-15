@@ -199,7 +199,7 @@ unset($_SESSION['flash_error']);
 <div class="space-y-6">
     <div class="flex justify-between items-center">
         <div class="flex items-center">
-            <a href="index.php?page=listes/index" class="text-blue-600 hover:text-blue-800 mr-4">
+            <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800 mr-4">
                 <i class="fas fa-arrow-left"></i> Retour
             </a>
             <h1 class="text-2xl font-bold text-gray-800">Liste : <?= htmlspecialchars($liste['nom_liste']) ?></h1>

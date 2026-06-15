@@ -22,7 +22,7 @@ foreach ($allCampagnes as $c) {
             <h1 class="text-2xl font-bold text-gray-800">Historique des campagnes</h1>
             <p class="text-gray-500">Retrouvez toutes vos campagnes d'envoi (SMS et WhatsApp)</p>
         </div>
-        <a href="index.php?page=campagnes/choix" class="text-blue-600 hover:text-blue-800">
+        <a href="javascript:history.back()" class="text-blue-600 hover:text-blue-800">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
     </div>

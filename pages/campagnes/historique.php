@@ -221,7 +221,7 @@ if ($campagneId) {
             </div>
         </div>
         
-        <a href="index.php?page=campagnes/historique" class="inline-block text-blue-600 hover:text-blue-800 mt-2">
+        <a href="javascript:history.back()" class="inline-block text-blue-600 hover:text-blue-800 mt-2">
             <i class="fas fa-arrow-left mr-1"></i> Retour à la liste des campagnes
         </a>
         
