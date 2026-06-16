@@ -32,20 +32,18 @@ try {
     
     if (!empty($existing)) {
         // Appareil existe déjà → mettre à jour et l'activer
-        // 1. Désactiver tous les appareils du compte
-        $db->update('sms_appareils', ['est_actif' => false], ['id_compte' => $idCompte]);
-        // 2. Activer cet appareil (sans last_used)
+        // On active uniquement cet appareil sans désactiver les autres
         $db->update('sms_appareils', [
             'est_actif' => true,
             'device_name' => $device_name,
             'api_username' => $api_username,
-            'api_password' => $api_password
+            'api_password' => $api_password,
         ], ['id_appareil' => $existing[0]['id_appareil']]);
+        
+        $message = "Appareil existant réactivé";
     } else {
         // Nouvel appareil → l'ajouter et l'activer
-        // 1. Désactiver tous les appareils existants
-        $db->update('sms_appareils', ['est_actif' => false], ['id_compte' => $idCompte]);
-        // 2. Insérer le nouvel appareil actif (sans last_used)
+        // On ne désactive pas les autres appareils
         $data = [
             'id_compte' => $idCompte,
             'device_id' => $device_id,
@@ -53,20 +51,38 @@ try {
             'api_username' => $api_username,
             'api_password' => $api_password,
             'est_actif' => true,
-            'created_at' => date('Y-m-d H:i:s')
+            'created_at' => date('Y-m-d H:i:s'),
         ];
         $db->insert('sms_appareils', $data);
+        $message = "Nouvel appareil ajouté avec succès";
     }
     
-    // Stocker l'appareil actif en session
+    // Stocker l'appareil actif en session (pour l'utilisateur courant)
     $_SESSION['sms_device_id'] = $device_id;
     $_SESSION['sms_device_name'] = $device_name;
     $_SESSION['sms_api_username'] = $api_username;
     $_SESSION['sms_api_password'] = $api_password;
     
-    echo json_encode(['success' => true]);
+    echo json_encode([
+        'success' => true,
+        'message' => $message,
+        'device_id' => $device_id,
+        'device_name' => $device_name,
+        'active_devices' => getActiveDevicesCount($db, $idCompte)
+    ]);
     
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+}
+
+/**
+ * Fonction pour compter les appareils actifs d'un compte
+ */
+function getActiveDevicesCount($db, $idCompte) {
+    $devices = $db->select('sms_appareils', [
+        'id_compte' => $idCompte,
+        'est_actif' => true
+    ]);
+    return count($devices);
 }
 ?>

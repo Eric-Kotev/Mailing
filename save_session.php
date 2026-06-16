@@ -36,15 +36,11 @@ try {
     ]);
     
     if (!empty($existing)) {
-        // Session existe déjà, on l'active (et désactive les autres)
-        $db->update('whatsapp_sessions', ['est_active' => false], ['id_compte' => $idCompte]);
+        // La session existe déjà, on la rend active
         $db->update('whatsapp_sessions', ['est_active' => true], ['id_session' => $existing[0]['id_session']]);
-        echo json_encode(['success' => true, 'session' => $nom_session, 'existing' => true]);
+        echo json_encode(['success' => true, 'session' => $nom_session, 'existing' => true, 'active' => true]);
     } else {
-        // Désactiver toutes les autres sessions
-        $db->update('whatsapp_sessions', ['est_active' => false], ['id_compte' => $idCompte]);
-        
-        // Créer une nouvelle session
+        // Créer une nouvelle session (active)
         $data = [
             'id_compte' => $idCompte,
             'nom_session' => $nom_session,
@@ -52,7 +48,7 @@ try {
             'created_at' => date('Y-m-d H:i:s')
         ];
         $db->insert('whatsapp_sessions', $data);
-        echo json_encode(['success' => true, 'session' => $nom_session, 'existing' => false]);
+        echo json_encode(['success' => true, 'session' => $nom_session, 'existing' => false, 'active' => true]);
     }
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
