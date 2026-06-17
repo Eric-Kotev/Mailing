@@ -34,7 +34,6 @@ unset($_SESSION['campagne_config_id']);
 // ============================================
 $whatsappTypeId = null;
 
-// Recherche par libelle_type (WhatsApp, whatsapp, WhatsApp)
 $typeMessageWhatsapp = $db->select('type_message', ['libelle_type' => 'WhatsApp']);
 if (empty($typeMessageWhatsapp)) {
     $typeMessageWhatsapp = $db->select('type_message', ['libelle_type' => 'whatsapp']);
@@ -46,13 +45,11 @@ if (empty($typeMessageWhatsapp)) {
 if (!empty($typeMessageWhatsapp)) {
     $whatsappTypeId = $typeMessageWhatsapp[0]['id_type_message'];
 } else {
-    die("Erreur: Le type de message 'WhatsApp' n'existe pas dans la base de données. 
-         Veuillez exécuter la requête SQL suivante:<br>
-         INSERT INTO type_message (libelle_type) VALUES ('WhatsApp');");
+    die("Erreur: Le type de message 'WhatsApp' n'existe pas dans la base de données.");
 }
 
 // ============================================
-// RÉCUPÉRATION DE LA BLACKLIST POUR WHATSAPP UNIQUEMENT
+// RÉCUPÉRATION DE LA BLACKLIST POUR WHATSAPP
 // ============================================
 $blacklist = $db->select('blacklist', ['id_type_message' => $whatsappTypeId]);
 $blacklistIds = [];
@@ -155,13 +152,15 @@ function getFileType($mimeType) {
     }
 }
 
-// Fonction pour envoyer des messages WhatsApp en masse
-function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $minDelay, $maxDelay, $campagneConfigId = null) {
+// ============================================
+// FONCTION POUR PRÉPARER LE FICHIER (UNE SEULE FOIS)
+// ============================================
+function preparerFichier($hasFile, $hasAudio) {
     global $db, $idCompte;
     
-    $endpoint = '/messages/send-bulk';
     $type = 'text';
     $payload = [];
+    $fichierPret = false;
     
     // Gestion de l'audio enregistré
     if ($hasAudio) {
@@ -176,6 +175,7 @@ function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $hasAudio, $w
             'mimetype' => 'audio/webm',
             'filename' => $originalName
         ];
+        $fichierPret = true;
     }
     // Gestion des fichiers uploadés
     elseif ($hasFile && isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK) {
@@ -202,34 +202,46 @@ function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $hasAudio, $w
                 'filename' => $originalName
             ];
             
-            // Ajouter la légende si message non vide (sauf pour voice)
-            if (!empty($message) && $type !== 'voice') {
-                $payload['caption'] = $message;
-            }
-            
             unlink($filePath);
+            $fichierPret = true;
         } else {
-            error_log("Erreur: Impossible de déplacer le fichier uploadé");
             return ['success' => false, 'error' => "Erreur lors de l'upload du fichier"];
         }
-    } else {
-        // Message texte simple
-        $type = 'text';
-        $payload = [
-            'text' => $message
-        ];
     }
+    
+    return [
+        'success' => true,
+        'type' => $type,
+        'payload' => $payload,
+        'fichier_pret' => $fichierPret
+    ];
+}
+
+// ============================================
+// FONCTION POUR ENVOYER UN MESSAGE À UN SEUL CONTACT
+// (Reçoit les données du fichier déjà préparées)
+// ============================================
+function envoyerMessageWhatsAppIndividual($contact, $message, $fichierData, $whatsappSession, $apiUrl, $apiKey) {
     
     $data = [
         'session' => $whatsappSession,
-        'type' => $type,
-        'contacts' => $contacts,
-        'payload' => $payload,
-        'min_delay' => (int)$minDelay,
-        'max_delay' => (int)$maxDelay
+        'type' => $fichierData['type'],
+        'contacts' => [$contact],
+        'payload' => $fichierData['payload'],
+        'min_delay' => 0,
+        'max_delay' => 0
     ];
     
-    $fullUrl = $apiUrl . $endpoint;
+    // Si c'est un message texte simple sans fichier
+    if ($fichierData['type'] === 'text' && empty($fichierData['payload']['text'])) {
+        $data['payload']['text'] = $message;
+    }
+    // Si c'est un fichier avec légende
+    elseif ($fichierData['type'] !== 'text' && !empty($message) && $fichierData['type'] !== 'voice') {
+        $data['payload']['caption'] = $message;
+    }
+    
+    $fullUrl = $apiUrl . '/messages/send-bulk';
     
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $fullUrl);
@@ -241,95 +253,39 @@ function envoyerMessageWhatsAppBulk($contacts, $message, $hasFile, $hasAudio, $w
     ));
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
     curl_close($ch);
     
-    // Log pour debug
-    error_log("=== WhatsApp Envoi Bulk ===");
-    error_log("URL: " . $fullUrl);
-    error_log("Session: " . $whatsappSession);
-    error_log("Type: " . $type);
-    error_log("Contacts: " . json_encode($contacts));
-    error_log("Has File: " . ($hasFile ? 'oui' : 'non'));
+    error_log("=== WhatsApp Envoi Individual ===");
+    error_log("Contact: " . $contact);
     error_log("HTTP Code: " . $httpCode);
     error_log("Response: " . $response);
-    if ($curlError) error_log("Curl Error: " . $curlError);
     
-    // Préparer les données pour l'historique
-    $destinatairesNoms = [];
-    foreach ($contacts as $contact) {
-        $destinatairesNoms[] = $contact;
-    }
-    $destinatairesJson = json_encode($destinatairesNoms);
-    
-    $titre = "WhatsApp - " . date('d/m/Y H:i');
-    if (!empty($message) && $type !== 'voice') {
-        $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
-    } elseif ($hasAudio) {
-        $titre = "WhatsApp: Message vocal";
-    } elseif ($hasFile) {
-        $titre = "WhatsApp: Fichier envoyé";
-    }
-    
-    $responseData = json_decode($response, true);
     $isSuccess = ($httpCode === 200 || $httpCode === 201);
+    $responseData = json_decode($response, true);
     
-    if ($isSuccess) {
-        $campagneData = [
-            'id_compte' => $idCompte,
-            'id_campagne_config' => $campagneConfigId,
-            'type_campagne' => 'whatsapp',
-            'titre' => $titre,
-            'message' => $message,
-            'destinataires' => $destinatairesJson,
-            'nb_destinataires' => count($contacts),
-            'nb_envoyes' => count($contacts),
-            'nb_succes' => count($contacts),
-            'nb_erreurs' => 0,
-            'appareil_utilise' => $whatsappSession,
-            'statut' => 'envoye',
-            'created_at' => date('Y-m-d H:i:s')
-        ];
-        
-        try {
-            $db->insert('campagne', $campagneData);
-        } catch (Exception $e) {
-            error_log("Erreur insertion historique WhatsApp: " . $e->getMessage());
+    $errorMsg = null;
+    if (!$isSuccess) {
+        if (isset($responseData['error'])) {
+            $errorMsg = $responseData['error'];
+        } elseif (isset($responseData['data']['failed']) && count($responseData['data']['failed']) > 0) {
+            $errorMsg = $responseData['data']['failed'][0]['error'] ?? 'Erreur inconnue';
+        } else {
+            $errorMsg = substr($response, 0, 200);
         }
-        
-        return ['success' => true, 'message' => 'Messages envoyés avec succès à ' . count($contacts) . ' destinataire(s) !'];
-    } else {
-        $errorMsg = isset($responseData['error']) ? $responseData['error'] : substr($response, 0, 200);
-        
-        $campagneData = [
-            'id_compte' => $idCompte,
-            'id_campagne_config' => $campagneConfigId,
-            'type_campagne' => 'whatsapp',
-            'titre' => $titre,
-            'message' => $message,
-            'destinataires' => $destinatairesJson,
-            'nb_destinataires' => count($contacts),
-            'nb_envoyes' => count($contacts),
-            'nb_succes' => 0,
-            'nb_erreurs' => count($contacts),
-            'appareil_utilise' => $whatsappSession,
-            'statut' => 'echoue',
-            'erreur' => $errorMsg,
-            'created_at' => date('Y-m-d H:i:s')
-        ];
-        
-        try {
-            $db->insert('campagne', $campagneData);
-        } catch (Exception $e) {
-            error_log("Erreur insertion historique WhatsApp: " . $e->getMessage());
-        }
-        
-        return ['success' => false, 'error' => "Échec de l'envoi: " . $errorMsg];
     }
+    
+    return [
+        'success' => $isSuccess,
+        'httpCode' => $httpCode,
+        'response' => $response,
+        'error' => $errorMsg,
+        'responseData' => $responseData
+    ];
 }
 
 // Configuration API
@@ -363,89 +319,259 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
-    if (empty($message) && !$hasFile && !$hasAudio) {
-        $error = "Veuillez saisir un message ou joindre un fichier/audio";
-    } elseif ($type_envoi === 'simple') {
-        $chatId = $_POST['chat_id'] ?? '';
-        
-        if (empty($chatId)) {
-            $error = "Veuillez sélectionner un destinataire";
+    // ============================================
+    // PRÉPARER LE FICHIER UNE SEULE FOIS
+    // ============================================
+    $fichierData = null;
+    if ($hasFile || $hasAudio) {
+        $preparation = preparerFichier($hasFile, $hasAudio);
+        if (!$preparation['success']) {
+            $error = $preparation['error'];
+            // Ne pas continuer si erreur de fichier
         } else {
-            // Extraire le numéro de téléphone du chatId
-            $phoneNumber = str_replace('@c.us', '', $chatId);
+            $fichierData = [
+                'type' => $preparation['type'],
+                'payload' => $preparation['payload'],
+                'fichier_pret' => $preparation['fichier_pret']
+            ];
+        }
+    }
+    
+    // Si pas d'erreur de fichier, continuer
+    if (!isset($error) || empty($error)) {
+        if (empty($message) && !$hasFile && !$hasAudio) {
+            $error = "Veuillez saisir un message ou joindre un fichier/audio";
+        } elseif ($type_envoi === 'simple') {
+            $chatId = $_POST['chat_id'] ?? '';
             
-            // Vérifier si le contact n'est pas blacklisté
-            // Pour l'envoi unique, on doit trouver l'id_contact correspondant au numéro
-            $contactInfo = $db->select('contact', ['telephone' => $phoneNumber, 'id_compte' => $idCompte]);
-            if (!empty($contactInfo) && in_array($contactInfo[0]['id_contact'], $blacklistWhatsappIds)) {
-                $error = "Ce contact est blacklisté pour WhatsApp et ne peut pas recevoir de message.";
+            if (empty($chatId)) {
+                $error = "Veuillez sélectionner un destinataire";
             } else {
-                $resultat = envoyerMessageWhatsAppBulk([$phoneNumber], $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
+                $phoneNumber = str_replace('@c.us', '', $chatId);
                 
-                if ($resultat['success']) {
-                    $success = $resultat['message'];
-                    $db->update('campagne_config', [
-                        'statut' => 'envoyee',
-                        'sent_at' => date('Y-m-d H:i:s')
-                    ], ['id_campagne_config' => $campagneConfigId]);
+                $contactInfo = $db->select('contact', ['telephone' => $phoneNumber, 'id_compte' => $idCompte]);
+                if (!empty($contactInfo) && in_array($contactInfo[0]['id_contact'], $blacklistWhatsappIds)) {
+                    $error = "Ce contact est blacklisté pour WhatsApp et ne peut pas recevoir de message.";
                 } else {
-                    $error = $resultat['error'];
+                    // Préparer les données pour l'envoi
+                    $fichierDataPourEnvoi = $fichierData ?? [
+                        'type' => 'text',
+                        'payload' => ['text' => $message],
+                        'fichier_pret' => false
+                    ];
+                    
+                    $resultat = envoyerMessageWhatsAppIndividual($phoneNumber, $message, $fichierDataPourEnvoi, $whatsappSession, $apiUrl, $apiKey);
+                    
+                    if ($resultat['success']) {
+                        $success = "Message envoyé avec succès à " . $phoneNumber;
+                        $db->update('campagne_config', [
+                            'statut' => 'envoyee',
+                            'sent_at' => date('Y-m-d H:i:s')
+                        ], ['id_campagne_config' => $campagneConfigId]);
+                        
+                        $campagneData = [
+                            'id_compte' => $idCompte,
+                            'id_campagne_config' => $campagneConfigId,
+                            'type_campagne' => 'whatsapp',
+                            'titre' => "WhatsApp: " . substr($message, 0, 40),
+                            'message' => $message,
+                            'destinataires' => json_encode([$phoneNumber]),
+                            'nb_destinataires' => 1,
+                            'nb_envoyes' => 1,
+                            'nb_succes' => 1,
+                            'nb_erreurs' => 0,
+                            'appareil_utilise' => $whatsappSession,
+                            'statut' => 'envoye',
+                            'created_at' => date('Y-m-d H:i:s')
+                        ];
+                        $db->insert('campagne', $campagneData);
+                    } else {
+                        $error = "Échec de l'envoi: " . $resultat['error'];
+                    }
                 }
             }
-        }
-    } else {
-        $liste_id = $_POST['liste_id'] ?? '';
-        
-        if (empty($liste_id)) {
-            $error = "Veuillez sélectionner une liste";
         } else {
-            $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
-            $destinataires = [];
-            $contactsBlacklistes = [];
+            // ============================================
+            // ENVOI MULTIPLE
+            // ============================================
+            $liste_id = $_POST['liste_id'] ?? '';
             
-            foreach ($listeContacts as $lc) {
-                // Vérifier si le contact est blacklisté pour WhatsApp
-                if (!in_array($lc['id_contact'], $blacklistWhatsappIds)) {
-                    $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
-                    if (!empty($contact)) {
-                        $contact = $contact[0];
-                        $telephone = $contact['telephone'] ?? '';
-                        if (!empty($telephone)) {
-                            $phoneNumber = formatWhatsAppNumber($telephone);
-                            if ($phoneNumber) {
-                                $destinataires[] = $phoneNumber;
+            if (empty($liste_id)) {
+                $error = "Veuillez sélectionner une liste";
+            } else {
+                $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
+                $destinataires = [];
+                $contactsInfo = [];
+                $contactsBlacklistes = [];
+                
+                foreach ($listeContacts as $lc) {
+                    if (!in_array($lc['id_contact'], $blacklistWhatsappIds)) {
+                        $contact = $db->select('contact', ['id_contact' => $lc['id_contact']]);
+                        if (!empty($contact)) {
+                            $contact = $contact[0];
+                            $telephone = $contact['telephone'] ?? '';
+                            if (!empty($telephone)) {
+                                $phoneNumber = formatWhatsAppNumber($telephone);
+                                if ($phoneNumber) {
+                                    $destinataires[] = $phoneNumber;
+                                    $contactsInfo[$phoneNumber] = $contact;
+                                }
                             }
                         }
-                    }
-                } else {
-                    $contactBlack = $db->select('contact', ['id_contact' => $lc['id_contact']]);
-                    if (!empty($contactBlack)) {
-                        $contactsBlacklistes[] = $contactBlack[0]['prenom'] . ' ' . $contactBlack[0]['nom'];
+                    } else {
+                        $contactBlack = $db->select('contact', ['id_contact' => $lc['id_contact']]);
+                        if (!empty($contactBlack)) {
+                            $contactsBlacklistes[] = $contactBlack[0]['prenom'] . ' ' . $contactBlack[0]['nom'];
+                        }
                     }
                 }
-            }
-            
-            if (empty($destinataires)) {
-                if (!empty($contactsBlacklistes)) {
-                    $error = "Aucun destinataire valide. " . count($contactsBlacklistes) . " contact(s) sont blacklistés pour WhatsApp.";
-                } else {
-                    $error = "Aucun destinataire valide dans cette liste";
-                }
-            } else {
-                $resultat = envoyerMessageWhatsAppBulk($destinataires, $message, $hasFile, $hasAudio, $whatsappSession, $apiUrl, $apiKey, $min_delay, $max_delay, $campagneConfigId);
                 
-                if ($resultat['success']) {
-                    $successMsg = $resultat['message'];
+                if (empty($destinataires)) {
                     if (!empty($contactsBlacklistes)) {
-                        $successMsg .= "<br><small>⚠️ " . count($contactsBlacklistes) . " contact(s) blacklistés pour WhatsApp ont été exclus.</small>";
+                        $error = "Aucun destinataire valide. " . count($contactsBlacklistes) . " contact(s) sont blacklistés pour WhatsApp.";
+                    } else {
+                        $error = "Aucun destinataire valide dans cette liste";
                     }
-                    $success = $successMsg;
-                    $db->update('campagne_config', [
-                        'statut' => 'envoyee',
-                        'sent_at' => date('Y-m-d H:i:s')
-                    ], ['id_campagne_config' => $campagneConfigId]);
                 } else {
-                    $error = $resultat['error'];
+                    // ============================================
+                    // ENVOI UN PAR UN AVEC LE MÊME FICHIER
+                    // ============================================
+                    $total = count($destinataires);
+                    $succes = 0;
+                    $echecs = 0;
+                    $resultatsDetails = [];
+                    $destinatairesNoms = [];
+                    
+                    // Préparer les données du fichier pour tous les envois
+                    $fichierDataPourEnvoi = $fichierData ?? [
+                        'type' => 'text',
+                        'payload' => ['text' => $message],
+                        'fichier_pret' => false
+                    ];
+                    
+                    // Si c'est un message texte simple
+                    if ($fichierDataPourEnvoi['type'] === 'text' && empty($fichierDataPourEnvoi['payload']['text'])) {
+                        $fichierDataPourEnvoi['payload']['text'] = $message;
+                    }
+                    
+                    foreach ($destinataires as $index => $phoneNumber) {
+                        if ($index > 0) {
+                            $delay = rand($min_delay, $max_delay);
+                            sleep($delay);
+                        }
+                        
+                        $resultat = envoyerMessageWhatsAppIndividual(
+                            $phoneNumber, 
+                            $message, 
+                            $fichierDataPourEnvoi, 
+                            $whatsappSession, 
+                            $apiUrl, 
+                            $apiKey
+                        );
+                        
+                        $nom = isset($contactsInfo[$phoneNumber]) 
+                            ? $contactsInfo[$phoneNumber]['prenom'] . ' ' . $contactsInfo[$phoneNumber]['nom'] 
+                            : $phoneNumber;
+                        
+                        $destinatairesNoms[] = $nom . ' (' . $phoneNumber . ')';
+                        
+                        if ($resultat['success']) {
+                            $succes++;
+                            $resultatsDetails[] = [
+                                'contact' => $nom,
+                                'phone' => $phoneNumber,
+                                'status' => 'success',
+                                'message' => '✅ Envoyé avec succès'
+                            ];
+                        } else {
+                            $echecs++;
+                            $resultatsDetails[] = [
+                                'contact' => $nom,
+                                'phone' => $phoneNumber,
+                                'status' => 'error',
+                                'message' => '❌ Échec: ' . ($resultat['error'] ?? 'Erreur inconnue')
+                            ];
+                        }
+                    }
+                    
+                    // ============================================
+                    // ENREGISTREMENT DANS L'HISTORIQUE
+                    // ============================================
+                    $titre = "WhatsApp - " . date('d/m/Y H:i');
+                    if (!empty($message)) {
+                        $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
+                    } elseif ($hasAudio) {
+                        $titre = "WhatsApp: Message vocal";
+                    } elseif ($hasFile) {
+                        $titre = "WhatsApp: Fichier envoyé";
+                    }
+                    
+                    // Statut : toujours 'envoyee' car la contrainte CHECK n'accepte que ça
+                    $statutGlobal = 'envoyee';
+                    
+                    $campagneData = [
+                        'id_compte' => $idCompte,
+                        'id_campagne_config' => $campagneConfigId,
+                        'type_campagne' => 'whatsapp',
+                        'titre' => $titre,
+                        'message' => $message,
+                        'destinataires' => json_encode($destinatairesNoms),
+                        'nb_destinataires' => $total,
+                        'nb_envoyes' => $total,
+                        'nb_succes' => $succes,
+                        'nb_erreurs' => $echecs,
+                        'appareil_utilise' => $whatsappSession,
+                        'statut' => $statutGlobal,
+                        'created_at' => date('Y-m-d H:i:s')
+                    ];
+                    
+                    if ($echecs > 0) {
+                        $campagneData['erreur'] = json_encode($resultatsDetails);
+                    }
+                    
+                    try {
+                        $db->insert('campagne', $campagneData);
+                    } catch (Exception $e) {
+                        error_log("Erreur insertion historique WhatsApp: " . $e->getMessage());
+                    }
+                    
+                    // Mise à jour du statut de la campagne config
+                    if ($succes > 0) {
+                        $db->update('campagne_config', [
+                            'statut' => 'envoyee',
+                            'sent_at' => date('Y-m-d H:i:s')
+                        ], ['id_campagne_config' => $campagneConfigId]);
+                    }
+                    
+                    // ============================================
+                    // MESSAGE DE RÉSULTAT
+                    // ============================================
+                    $successMsg = " Envoi terminé :<br>";
+                    $successMsg .= " <strong>$succes</strong> message(s) envoyé(s) avec succès<br>";
+                    if ($echecs > 0) {
+                        $successMsg .= " <strong>$echecs</strong> échec(s)<br>";
+                        
+                        $failedDetails = array_filter($resultatsDetails, function($d) {
+                            return $d['status'] === 'error';
+                        });
+                        
+                        if (count($failedDetails) > 0) {
+                            $successMsg .= "<br><details><summary>📋 Voir les détails des échecs (" . count($failedDetails) . ")</summary>";
+                            $successMsg .= "<div style='font-size:13px; margin-top:8px; max-height:300px; overflow-y:auto;'>";
+                            foreach ($failedDetails as $detail) {
+                                $successMsg .= "<div style='color:#ef4444; padding:6px 0; border-bottom:1px solid #f3f4f6;'>";
+                                $successMsg .= "❌ <strong>" . htmlspecialchars($detail['contact']) . "</strong> - " . htmlspecialchars($detail['message']);
+                                $successMsg .= "</div>";
+                            }
+                            $successMsg .= "</div></details>";
+                        }
+                    }
+                    
+                    if (!empty($contactsBlacklistes)) {
+                        $successMsg .= "<br>⚠️ " . count($contactsBlacklistes) . " contact(s) blacklistés exclus";
+                    }
+                    
+                    $success = $successMsg;
                 }
             }
         }
@@ -659,6 +785,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 8px 12px;
             border-radius: 8px;
             margin-bottom: 12px;
+        }
+        
+        .resultat-success {
+            color: #10b981;
+        }
+        .resultat-error {
+            color: #ef4444;
+        }
+        details {
+            cursor: pointer;
+        }
+        details summary {
+            padding: 8px 0;
+            font-weight: 500;
         }
     </style>
 </head>
