@@ -401,6 +401,195 @@ $totalBlacklisted = count($blacklistWithContact);
         }
         
         /* ============================================
+           STYLES DES MODALES DE CONFIRMATION
+        ============================================ */
+        
+        /* MODALE DE CONFIRMATION GÉNÉRIQUE */
+        .confirm-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(4px);
+        }
+        
+        .confirm-modal-overlay.show {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .confirm-modal-box {
+            background: white;
+            border-radius: 20px;
+            max-width: 480px;
+            width: 92%;
+            overflow: hidden;
+            transform: scale(0.9) translateY(20px);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .confirm-modal-overlay.show .confirm-modal-box {
+            transform: scale(1) translateY(0);
+        }
+        
+        /* En-tête de la modale */
+        .confirm-modal-header {
+            padding: 24px 28px 16px 28px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .confirm-modal-header .icon-wrapper {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .confirm-modal-header .icon-wrapper.warning {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        
+        .confirm-modal-header .icon-wrapper.danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        
+        .confirm-modal-header .icon-wrapper.success {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        
+        .confirm-modal-header .icon-wrapper i {
+            font-size: 24px;
+        }
+        
+        .confirm-modal-header .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1f2937;
+            margin: 0;
+        }
+        
+        .confirm-modal-header .modal-subtitle {
+            font-size: 13px;
+            color: #6b7280;
+            margin: 2px 0 0 0;
+        }
+        
+        /* Corps de la modale */
+        .confirm-modal-body {
+            padding: 24px 28px;
+        }
+        
+        .confirm-modal-body .modal-message {
+            font-size: 15px;
+            color: #374151;
+            line-height: 1.6;
+            margin: 0;
+        }
+        
+        .confirm-modal-body .modal-message strong {
+            color: #1f2937;
+        }
+        
+        .confirm-modal-body .modal-warning-text {
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: #fef2f2;
+            border-radius: 10px;
+            font-size: 13px;
+            color: #991b1b;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .confirm-modal-body .modal-warning-text i {
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+        
+        /* Pied de la modale */
+        .confirm-modal-footer {
+            padding: 16px 28px 24px 28px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            border-top: 1px solid #f3f4f6;
+            flex-wrap: wrap;
+        }
+        
+        .confirm-modal-footer .btn {
+            padding: 10px 24px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .confirm-modal-footer .btn:active {
+            transform: scale(0.96);
+        }
+        
+        .confirm-modal-footer .btn-cancel {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+        
+        .confirm-modal-footer .btn-cancel:hover {
+            background: #e5e7eb;
+        }
+        
+        .confirm-modal-footer .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+        
+        .confirm-modal-footer .btn-danger:hover {
+            background: #b91c1c;
+        }
+        
+        .confirm-modal-footer .btn-success {
+            background: #16a34a;
+            color: white;
+        }
+        
+        .confirm-modal-footer .btn-success:hover {
+            background: #15803d;
+        }
+        
+        .confirm-modal-footer .btn-warning {
+            background: #d97706;
+            color: white;
+        }
+        
+        .confirm-modal-footer .btn-warning:hover {
+            background: #b45309;
+        }
+        
+        /* ============================================
            VOS STYLES EXISTANTS
         ============================================ */
         .checkbox-column {
@@ -582,6 +771,69 @@ $totalBlacklisted = count($blacklistWithContact);
 </head>
 <body>
 
+<!-- ============================================
+     MODALE DE CONFIRMATION GÉNÉRIQUE
+============================================ -->
+<div id="confirmModal" class="confirm-modal-overlay">
+    <div class="confirm-modal-box">
+        <div class="confirm-modal-header">
+            <div class="icon-wrapper" id="confirmModalIcon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div>
+                <h3 class="modal-title" id="confirmModalTitle">Confirmation</h3>
+                <p class="modal-subtitle" id="confirmModalSubtitle">Veuillez confirmer votre action</p>
+            </div>
+        </div>
+        <div class="confirm-modal-body">
+            <p class="modal-message" id="confirmModalMessage">Êtes-vous sûr de vouloir effectuer cette action ?</p>
+            <div id="confirmModalWarning" class="modal-warning-text" style="display: none;">
+                <i class="fas fa-info-circle"></i>
+                <span id="confirmModalWarningText">Cette action est irréversible.</span>
+            </div>
+        </div>
+        <div class="confirm-modal-footer">
+            <button class="btn btn-cancel" id="confirmModalCancelBtn">
+                <i class="fas fa-times"></i> Annuler
+            </button>
+            <button class="btn btn-danger" id="confirmModalConfirmBtn">
+                <i class="fas fa-check"></i> Confirmer
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================
+     MODALE POUR RETIRER UN SEUL CONTACT
+============================================ -->
+<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-content-unblacklist">
+        <div class="p-6 text-center">
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <i class="fas fa-unlock-alt text-green-600 text-3xl"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-800 mb-2">Retirer de la blacklist</h3>
+            <p class="text-gray-500 mb-6">
+                Êtes-vous sûr de vouloir retirer <br>
+                <strong id="unblacklistContactName" class="text-gray-700"></strong> de la blacklist ?
+            </p>
+            <div class="flex flex-col gap-3">
+                <button onclick="confirmUnblacklist()" 
+                        class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition">
+                    <i class="fas fa-check mr-2"></i>Retirer
+                </button>
+                <button type="button" onclick="closeUnblacklistModal()" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                    Annuler
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================
+     CONTENU PRINCIPAL
+============================================ -->
 <div class="space-y-6" style="max-width: 1280px; margin: 0 auto; padding: 20px;">
     <!-- En-tête -->
     <div class="flex justify-between items-center flex-wrap gap-4">
@@ -837,48 +1089,158 @@ $totalBlacklisted = count($blacklistWithContact);
     </div>
 </div>
 
-<!-- MODALE POUR RETIRER UN SEUL CONTACT -->
-<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-content-unblacklist">
-        <div class="p-6 text-center">
-            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
-                <i class="fas fa-unlock-alt text-green-600 text-3xl"></i>
-            </div>
-            <h3 class="text-xl font-bold text-gray-800 mb-2">Retirer de la blacklist</h3>
-            <p class="text-gray-500 mb-6">
-                Êtes-vous sûr de vouloir retirer <br>
-                <strong id="unblacklistContactName" class="text-gray-700"></strong> de la blacklist ?
-            </p>
-            <a href="#" id="confirmUnblacklistBtn" 
-               class="w-full inline-block bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition text-center">
-                <i class="fas fa-check mr-2"></i>Retirer
-            </a>
-            <button type="button" onclick="closeUnblacklistModal()" 
-                    class="w-full mt-3 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                Annuler
-            </button>
-        </div>
-    </div>
-</div>
-
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/fr.js"></script>
 <script>
     let blocagesParContact = <?= json_encode($blocagesParContact) ?>;
+    let unblacklistData = null;
 
+    // ============================================
+    // TOAST NOTIFICATIONS
+    // ============================================
     function showToast(message, type = 'success') {
         const existingToasts = document.querySelectorAll('.toast-notification');
         existingToasts.forEach(toast => toast.remove());
         
         const toast = document.createElement('div');
         toast.className = `toast-notification ${type}`;
-        let icon = type === 'success' ? '✅' : (type === 'error' ? '❌' : '⚠️');
-        toast.innerHTML = `<div class="toast-content"><span>${icon}</span><span>${message}</span></div>`;
+        toast.innerHTML = `<div class="toast-content"><span>$</span><span>${message}</span></div>`;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
     }
 
+    // ============================================
+    // MODALE DE CONFIRMATION GÉNÉRIQUE
+    // ============================================
+    let confirmCallback = null;
+
+    function showConfirmModal(options) {
+        const modal = document.getElementById('confirmModal');
+        const iconWrapper = document.getElementById('confirmModalIcon');
+        const title = document.getElementById('confirmModalTitle');
+        const subtitle = document.getElementById('confirmModalSubtitle');
+        const message = document.getElementById('confirmModalMessage');
+        const warning = document.getElementById('confirmModalWarning');
+        const warningText = document.getElementById('confirmModalWarningText');
+        const confirmBtn = document.getElementById('confirmModalConfirmBtn');
+        const cancelBtn = document.getElementById('confirmModalCancelBtn');
+        
+        // Configurer les icônes
+        const iconMap = {
+            warning: { class: 'warning', icon: 'fa-exclamation-triangle' },
+            danger: { class: 'danger', icon: 'fa-exclamation-circle' },
+            success: { class: 'success', icon: 'fa-check-circle' },
+            info: { class: 'warning', icon: 'fa-info-circle' }
+        };
+        
+        const iconConfig = iconMap[options.type] || iconMap.warning;
+        iconWrapper.className = 'icon-wrapper ' + iconConfig.class;
+        iconWrapper.querySelector('i').className = 'fas ' + iconConfig.icon;
+        
+        // Configurer le contenu
+        title.textContent = options.title || 'Confirmation';
+        subtitle.textContent = options.subtitle || 'Veuillez confirmer votre action';
+        message.innerHTML = options.message || 'Êtes-vous sûr de vouloir effectuer cette action ?';
+        
+        // Gérer l'avertissement
+        if (options.warning) {
+            warning.style.display = 'flex';
+            warningText.textContent = options.warning;
+        } else {
+            warning.style.display = 'none';
+        }
+        
+        // Configurer les boutons
+        confirmBtn.textContent = options.confirmText || 'Confirmer';
+        confirmBtn.className = 'btn ' + (options.confirmClass || 'btn-danger');
+        confirmBtn.innerHTML = '<i class="fas fa-check"></i> ' + (options.confirmText || 'Confirmer');
+        
+        cancelBtn.textContent = options.cancelText || 'Annuler';
+        cancelBtn.innerHTML = '<i class="fas fa-times"></i> ' + (options.cancelText || 'Annuler');
+        
+        // Stocker le callback
+        confirmCallback = options.onConfirm || null;
+        
+        // Afficher la modale
+        modal.classList.add('show');
+    }
+
+    function closeConfirmModal() {
+        document.getElementById('confirmModal').classList.remove('show');
+        confirmCallback = null;
+    }
+
+    // Écouteurs de la modale de confirmation
+    document.getElementById('confirmModalConfirmBtn').addEventListener('click', function() {
+        if (typeof confirmCallback === 'function') {
+            confirmCallback();
+        }
+        closeConfirmModal();
+    });
+
+    document.getElementById('confirmModalCancelBtn').addEventListener('click', closeConfirmModal);
+    document.getElementById('confirmModal').addEventListener('click', function(e) {
+        if (e.target === this) closeConfirmModal();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeConfirmModal();
+    });
+
+    // ============================================
+    // MODALE POUR RETIRER UN CONTACT (UNIQUEMENT)
+    // ============================================
+    function openUnblacklistModal(blacklistId, contactName, typeLabel) {
+        unblacklistData = { id: blacklistId, name: contactName, type: typeLabel };
+        const modal = document.getElementById('unblacklistModal');
+        const modalContent = modal.querySelector('.modal-content-unblacklist');
+        
+        document.getElementById('unblacklistContactName').innerHTML = `${contactName} (${typeLabel})`;
+        
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => modalContent.classList.add('modal-show'), 10);
+    }
+
+    function closeUnblacklistModal() {
+        const modal = document.getElementById('unblacklistModal');
+        const modalContent = modal.querySelector('.modal-content-unblacklist');
+        modalContent.classList.remove('modal-show');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            unblacklistData = null;
+        }, 200);
+    }
+
+    function confirmUnblacklist() {
+        if (!unblacklistData) return;
+        
+        showConfirmModal({
+            type: 'success',
+            title: 'Retirer de la blacklist',
+            subtitle: 'Action de retrait',
+            message: `Êtes-vous sûr de vouloir retirer <strong>${unblacklistData.name}</strong> de la blacklist ?`,
+            warning: 'Cette action est réversible. Vous pourrez ajouter ce contact à nouveau si nécessaire.',
+            confirmText: 'Retirer',
+            confirmClass: 'btn-success',
+            cancelText: 'Annuler',
+            onConfirm: function() {
+                // Rediriger vers la page de retrait
+                window.location.href = '?page=blacklist/index&retirer=' + unblacklistData.id;
+            }
+        });
+        
+        closeUnblacklistModal();
+    }
+
+    document.getElementById('unblacklistModal')?.addEventListener('click', function(e) {
+        if (e.target === this) closeUnblacklistModal();
+    });
+
+    // ============================================
+    // INITIALISATION SELECT2
+    // ============================================
     $(document).ready(function() {
         // Initialisation Select2 pour les contacts
         $('#contactsSearch').select2({
@@ -955,7 +1317,9 @@ $totalBlacklisted = count($blacklistWithContact);
         }
     });
 
-    // Effacer la sélection
+    // ============================================
+    // EFFACER LA SÉLECTION
+    // ============================================
     document.getElementById('clearSelectionBtn')?.addEventListener('click', function() {
         $('#contactsSearch').val(null).trigger('change');
         $('#typeMessageSelect').val(null).trigger('change');
@@ -964,7 +1328,9 @@ $totalBlacklisted = count($blacklistWithContact);
         showToast('Sélection effacée', 'info');
     });
 
-    // Gestion des cases à cocher
+    // ============================================
+    // GESTION DES CASES À COCHER
+    // ============================================
     const selectAllHeader = document.getElementById('selectAllHeader');
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     const bulkActionsBar = document.getElementById('bulkActionsBar');
@@ -1013,7 +1379,9 @@ $totalBlacklisted = count($blacklistWithContact);
     
     updateBulkActionsBar();
 
-    // Suppression groupée
+    // ============================================
+    // SUPPRESSION GROUPÉE AVEC MODALE
+    // ============================================
     if (bulkUnblacklistBtn) {
         bulkUnblacklistBtn.addEventListener('click', function() {
             const checked = document.querySelectorAll('.contact-checkbox:checked');
@@ -1022,35 +1390,49 @@ $totalBlacklisted = count($blacklistWithContact);
                 return;
             }
             
-            if (confirm(`Êtes-vous sûr de vouloir retirer ${checked.length} blocage(s) de la blacklist ?`)) {
-                const selectedIds = Array.from(checked).map(cb => cb.value);
-                showToast(`Retrait de ${checked.length} blocage(s) en cours...`, 'info');
-                
-                fetch(window.location.href, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: 'action_bulk_unblacklist=1&selected_ids[]=' + selectedIds.join('&selected_ids[]=')
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showToast(`${data.count} blocage(s) retiré(s) avec succès !`, 'success');
-                        setTimeout(() => window.location.reload(), 1500);
-                    } else {
-                        showToast(data.error || 'Erreur lors du retrait', 'error');
-                    }
-                })
-                .catch(error => {
-                    showToast('Erreur réseau', 'error');
-                });
-            }
+            const count = checked.length;
+            
+            showConfirmModal({
+                type: 'warning',
+                title: 'Retrait groupé de la blacklist',
+                subtitle: `${count} blocage(s) à retirer`,
+                message: `Êtes-vous sûr de vouloir retirer <strong>${count}</strong> blocage(s) de la blacklist ?`,
+                warning: 'Cette action est réversible. Vous pourrez ajouter ces contacts à nouveau si nécessaire.',
+                confirmText: `Retirer ${count} blocage(s)`,
+                confirmClass: 'btn-success',
+                cancelText: 'Annuler',
+                onConfirm: function() {
+                    const selectedIds = Array.from(checked).map(cb => cb.value);
+                    showToast(`Retrait de ${count} blocage(s) en cours...`, 'info');
+                    
+                    fetch(window.location.href, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: 'action_bulk_unblacklist=1&selected_ids[]=' + selectedIds.join('&selected_ids[]=')
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showToast(`${data.count} blocage(s) retiré(s) avec succès !`, 'success');
+                            setTimeout(() => window.location.reload(), 1500);
+                        } else {
+                            showToast(data.error || 'Erreur lors du retrait', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        showToast('Erreur réseau', 'error');
+                    });
+                }
+            });
         });
     }
 
-    // Recherche
+    // ============================================
+    // RECHERCHE
+    // ============================================
     const searchInput = document.getElementById('searchInput');
     const blacklistRows = document.querySelectorAll('.blacklist-row');
     const totalCount = blacklistRows.length;
@@ -1106,36 +1488,15 @@ $totalBlacklisted = count($blacklistWithContact);
     if (searchInput) {
         searchInput.addEventListener('input', filterBlacklist);
     }
-    
-    // Modale
-    function openUnblacklistModal(blacklistId, contactName, typeLabel) {
-        const modal = document.getElementById('unblacklistModal');
-        const modalContent = modal.querySelector('.modal-content-unblacklist');
-        const confirmBtn = document.getElementById('confirmUnblacklistBtn');
-        
-        document.getElementById('unblacklistContactName').innerHTML = `${contactName} (${typeLabel})`;
-        confirmBtn.href = '?page=blacklist/index&retirer=' + blacklistId;
-        
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        setTimeout(() => modalContent.classList.add('modal-show'), 10);
-    }
-    
-    function closeUnblacklistModal() {
-        const modal = document.getElementById('unblacklistModal');
-        const modalContent = modal.querySelector('.modal-content-unblacklist');
-        modalContent.classList.remove('modal-show');
-        setTimeout(() => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }, 200);
-    }
-    
-    document.getElementById('unblacklistModal')?.addEventListener('click', function(e) {
-        if (e.target === this) closeUnblacklistModal();
-    });
+
+    // ============================================
+    // FERMETURE DES MODALES (TOUCHE ESC)
+    // ============================================
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeUnblacklistModal();
+        if (e.key === 'Escape') {
+            closeConfirmModal();
+            closeUnblacklistModal();
+        }
     });
 </script>
 
