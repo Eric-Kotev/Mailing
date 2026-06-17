@@ -805,6 +805,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 8px 0;
             font-weight: 500;
         }
+        
+        .mic-error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            display: none;
+        }
+        .mic-error .icon {
+            color: #dc2626;
+            font-size: 20px;
+            margin-right: 10px;
+        }
+        .mic-error .title {
+            font-weight: 600;
+            color: #991b1b;
+        }
+        .mic-error .description {
+            color: #7f1d1d;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        .mic-error .solutions {
+            margin-top: 8px;
+            padding-left: 20px;
+            color: #7f1d1d;
+            font-size: 13px;
+        }
+        .mic-error .solutions li {
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 <body>
@@ -988,6 +1020,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <i class="fas fa-stop mr-2"></i>Arrêter
                             </button>
                         </div>
+                        
+                        <!-- Message d'erreur microphone -->
+                        <div id="micError" class="mic-error">
+                            <div class="flex items-start">
+                                <i class="fas fa-microphone-slash icon"></i>
+                                <div class="text-left">
+                                    <div class="title">⚠️ Impossible d'accéder au microphone</div>
+                                    <div class="description">
+                                        Pour enregistrer un message vocal, vous devez autoriser l'accès au microphone.
+                                    </div>
+                                    <ul class="solutions">
+                                        <li>🔒 Utilisez une connexion <strong>HTTPS</strong> (ou <strong>localhost</strong> en développement)</li>
+                                        <li>🌐 Vérifiez les autorisations du navigateur (cliquez sur le cadenas dans la barre d'adresse)</li>
+                                        <li>🎤 Assurez-vous qu'aucun autre logiciel n'utilise le microphone</li>
+                                        <li>🔄 Rafraîchissez la page et réessayez</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div id="audioPreview" class="mt-3 hidden">
                             <audio controls class="w-full"></audio>
                             <button type="button" id="removeAudioBtn" class="text-red-500 text-sm mt-2">Supprimer l'audio</button>
@@ -1113,6 +1165,7 @@ const fileInfo = document.getElementById('fileInfo');
 const fileNameSpan = document.getElementById('fileName');
 const removeFileBtn = document.getElementById('removeFileBtn');
 const messageRequired = document.getElementById('messageRequired');
+const micError = document.getElementById('micError');
 
 uploadFileBtn.addEventListener('click', () => {
     fileUploadArea.classList.remove('hidden');
@@ -1124,7 +1177,39 @@ recordAudioBtn.addEventListener('click', () => {
     audioRecordArea.classList.remove('hidden');
     fileUploadArea.classList.add('hidden');
     resetFileUpload();
+    // Vérifier si le navigateur supporte le microphone
+    checkMicrophoneSupport();
 });
+
+async function checkMicrophoneSupport() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        micError.style.display = 'block';
+        return;
+    }
+    
+    // Vérifier si nous sommes en HTTPS ou localhost
+    const isSecure = window.location.protocol === 'https:' || 
+                     window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1';
+    
+    if (!isSecure) {
+        micError.style.display = 'block';
+        micError.querySelector('.description').innerHTML = 
+            '⚠️ Pour des raisons de sécurité, les navigateurs exigent une connexion <strong>HTTPS</strong> pour accéder au microphone.<br>' +
+            'Utilisez un serveur sécurisé ou testez en localhost.';
+        return;
+    }
+    
+    // Tester l'accès au microphone
+    try {
+        const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        testStream.getTracks().forEach(track => track.stop());
+        micError.style.display = 'none';
+    } catch (err) {
+        micError.style.display = 'block';
+        console.error('Erreur microphone:', err);
+    }
+}
 
 function handleFile(file) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(2);
@@ -1203,17 +1288,47 @@ const audioPreview = document.getElementById('audioPreview');
 const audioDataInput = document.getElementById('audioData');
 const removeAudioBtn = document.getElementById('removeAudioBtn');
 
+// Vérifier le support microphone au chargement
+document.addEventListener('DOMContentLoaded', checkMicrophoneSupport);
+
 async function startRecording() {
+    // Vérifier à nouveau avant de démarrer
+    const isSecure = window.location.protocol === 'https:' || 
+                     window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1';
+    
+    if (!isSecure) {
+        micError.style.display = 'block';
+        showToast('Utilisez HTTPS ou localhost pour accéder au microphone', 'error');
+        return;
+    }
+    
     try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            } 
+        });
+        
+        micError.style.display = 'none';
+        
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
         
         mediaRecorder.ondataavailable = (event) => {
-            audioChunks.push(event.data);
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
         };
         
         mediaRecorder.onstop = () => {
+            if (audioChunks.length === 0) {
+                showToast('Aucun audio enregistré', 'error');
+                return;
+            }
+            
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             const audioUrl = URL.createObjectURL(audioBlob);
             const audioElement = audioPreview.querySelector('audio');
@@ -1245,6 +1360,8 @@ async function startRecording() {
         }, 1000);
         
     } catch (err) {
+        micError.style.display = 'block';
+        console.error('Erreur microphone:', err);
         showToast('Impossible d\'accéder au microphone: ' + err.message, 'error');
     }
 }
@@ -1283,6 +1400,10 @@ function resetRecording() {
     startRecordBtn.classList.remove('hidden');
     stopRecordBtn.classList.add('hidden');
     startRecordBtn.classList.remove('recording-active');
+    
+    if (!fichierInput.files.length && !document.getElementById('message').value.trim()) {
+        messageRequired.innerHTML = '<span class="text-gray-400 text-xs">(optionnel si fichier/audio)</span>';
+    }
 }
 
 startRecordBtn.addEventListener('click', startRecording);
