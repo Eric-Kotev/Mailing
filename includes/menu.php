@@ -158,18 +158,9 @@ $isAdmin = isAdminForMenu();
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
                 <i class="fas fa-users-cog w-5 mr-3 text-indigo-400"></i>
-                <span class="menu-text">Gestion des utilisateurs</span>
+                <span class="menu-text">Gestion des comptes</span>
             </a>
 
-            <!-- Ajouter ce lien pour les champs personnalisés -->
-            <a href="index.php?page=admin/custom_fields"
-            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-            <?= $currentPage == 'admin/custom_fields'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <i class="fas fa-tags w-5 mr-3 text-purple-400"></i>
-                <span class="menu-text">Champs personnalisés</span>
-            </a>
         <?php endif; ?>
     </nav>
 

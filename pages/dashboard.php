@@ -7,12 +7,13 @@ $idCompte = $_SESSION['user_id'];
 $totalContacts = count($db->select('contact', ['id_compte' => $idCompte]));
 $totalListes = count($db->select('liste', ['id_compte' => $idCompte]));
 
-// Récupérer les dernières campagnes
+// 🔥 CORRECTION : Récupérer les dernières campagnes avec 'created_at' dans campagne
+// Utiliser 'created_at' si la colonne existe dans campagne, sinon 'date_envoi'
 $campagnes = $db->select('campagne', ['id_compte' => $idCompte], '*', 'created_at DESC');
 $dernieresCampagnes = array_slice($campagnes, 0, 5);
 
-// Derniers contacts ajoutés
-$contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'created_at DESC');
+// 🔥 CORRECTION : Derniers contacts ajoutés avec 'date_inscription'
+$contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'date_inscription DESC');
 $derniersContacts = array_slice($contacts, 0, 5);
 
 // Crédits disponibles
@@ -97,14 +98,16 @@ $credits = $_SESSION['user_credits'] ?? 0;
                             $statutColors = [
                                 'envoye' => 'bg-green-100 text-green-800',
                                 'en_cours' => 'bg-blue-100 text-blue-800',
-                                'echoue' => 'bg-red-100 text-red-800'
+                                'echoue' => 'bg-red-100 text-red-800',
+                                'partiel' => 'bg-yellow-100 text-yellow-800'
                             ];
                             $color = $statutColors[$campagne['statut']] ?? 'bg-gray-100 text-gray-800';
                             
                             $statutText = [
-                                'envoye' => 'Envoyé',
-                                'en_cours' => 'En cours',
-                                'echoue' => 'Échoué'
+                                'envoye' => '✅ Envoyé',
+                                'en_cours' => '⏳ En cours',
+                                'echoue' => '❌ Échoué',
+                                'partiel' => '⚠️ Partiel'
                             ];
                             $statut = $statutText[$campagne['statut']] ?? $campagne['statut'];
                             ?>
@@ -172,7 +175,7 @@ $credits = $_SESSION['user_credits'] ?? 0;
                         <tr>
                             <td colspan="4" class="px-4 py-8 text-center text-gray-500">
                                 Aucun contact. 
-                                <a href="index.php?page=contacts/ajouter" class="text-blue-600">Ajouter un contact →</a>
+                                <a href="index.php?page=contacts/index" class="text-blue-600">Ajouter un contact →</a>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -188,7 +191,11 @@ $credits = $_SESSION['user_credits'] ?? 0;
                                     <?= htmlspecialchars($contact['telephone'] ?? '-') ?>
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                                    <?= date('d/m/Y', strtotime($contact['created_at'] ?? $contact['date_inscription'] ?? 'now')) ?>
+                                    <?php 
+                                    // 🔥 CORRECTION : Utiliser date_inscription
+                                    $date = $contact['date_inscription'] ?? $contact['created_at'] ?? null;
+                                    echo $date ? date('d/m/Y', strtotime($date)) : '-';
+                                    ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

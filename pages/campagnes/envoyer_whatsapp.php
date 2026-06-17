@@ -219,7 +219,6 @@ function preparerFichier($hasFile, $hasAudio) {
 
 // ============================================
 // FONCTION POUR ENVOYER UN MESSAGE À UN SEUL CONTACT
-// (Reçoit les données du fichier déjà préparées)
 // ============================================
 function envoyerMessageWhatsAppIndividual($contact, $message, $fichierData, $whatsappSession, $apiUrl, $apiKey) {
     
@@ -327,7 +326,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $preparation = preparerFichier($hasFile, $hasAudio);
         if (!$preparation['success']) {
             $error = $preparation['error'];
-            // Ne pas continuer si erreur de fichier
         } else {
             $fichierData = [
                 'type' => $preparation['type'],
@@ -506,8 +504,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $titre = "WhatsApp: Fichier envoyé";
                     }
                     
-                    // Statut : toujours 'envoyee' car la contrainte CHECK n'accepte que ça
-                    $statutGlobal = 'envoyee';
+                    // 🔥 CORRECTION : Statut correct pour la table campagne
+                    // envoye si tout est réussi, echoue si tout a échoué
+                    if ($echecs > 0 && $succes > 0) {
+                        $statutGlobal = 'partiel';
+                    } elseif ($echecs > 0 && $succes == 0) {
+                        $statutGlobal = 'echoue';
+                    } else {
+                        $statutGlobal = 'envoye';
+                    }
                     
                     $campagneData = [
                         'id_compte' => $idCompte,
@@ -546,10 +551,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // ============================================
                     // MESSAGE DE RÉSULTAT
                     // ============================================
-                    $successMsg = " Envoi terminé :<br>";
-                    $successMsg .= " <strong>$succes</strong> message(s) envoyé(s) avec succès<br>";
+                    $successMsg = "📊 Envoi terminé :<br>";
+                    $successMsg .= "✅ <strong>$succes</strong> message(s) envoyé(s) avec succès<br>";
                     if ($echecs > 0) {
-                        $successMsg .= " <strong>$echecs</strong> échec(s)<br>";
+                        $successMsg .= "❌ <strong>$echecs</strong> échec(s)<br>";
                         
                         $failedDetails = array_filter($resultatsDetails, function($d) {
                             return $d['status'] === 'error';

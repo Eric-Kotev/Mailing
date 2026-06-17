@@ -34,10 +34,14 @@ class Database {
         $ch = curl_init();
         $url = $this->url . '/rest/v1/' . $endpoint;
         
+        // Nettoyer l'URL pour éviter les problèmes
+        $url = str_replace(' ', '%20', $url);
+        
         $headers = [
             'apikey: ' . $this->apiKey,
             'Authorization: Bearer ' . $this->apiKey,
-            'Content-Type: application/json'
+            'Content-Type: application/json',
+            'Prefer: return=representation'
         ];
         
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -52,15 +56,18 @@ class Database {
         
         if (DEBUG_MODE) {
             error_log("Supabase API Call: " . $method . " " . $url);
+            if ($data) {
+                error_log("Data: " . json_encode($data));
+            }
         }
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         
-        if (curl_error($ch)) {
-            $error = curl_error($ch);
+        if ($curlError) {
             curl_close($ch);
-            throw new Exception("CURL Error: " . $error);
+            throw new Exception("CURL Error: " . $curlError . " - URL: " . $url);
         }
         
         curl_close($ch);
@@ -72,20 +79,73 @@ class Database {
         return json_decode($response, true);
     }
     
-    public function select($table, $conditions = [], $select = '*') {
-        $query = "select=" . $select;
-        
-        foreach ($conditions as $col => $value) {
-            if ($col === 'user') {
-                $query .= '&"user"=eq.' . urlencode($value);
+    public function select($table, $conditions = [], $select = '*', $orderBy = null, $limit = null, $offset = null) {
+    $query = "select=" . $select;
+    
+    // Ajouter les conditions
+    foreach ($conditions as $col => $value) {
+        if ($col === 'user') {
+            $query .= '&"user"=eq.' . urlencode($value);
+        } else {
+            // Gérer les conditions spéciales
+            if (strpos($col, '!=') !== false) {
+                $col = str_replace('!=', '', $col);
+                $query .= "&" . $col . "=neq." . urlencode($value);
+            } elseif (strpos($col, '>=') !== false) {
+                $col = str_replace('>=', '', $col);
+                $query .= "&" . $col . "=gte." . urlencode($value);
+            } elseif (strpos($col, '<=') !== false) {
+                $col = str_replace('<=', '', $col);
+                $query .= "&" . $col . "=lte." . urlencode($value);
+            } elseif (strpos($col, '>') !== false) {
+                $col = str_replace('>', '', $col);
+                $query .= "&" . $col . "=gt." . urlencode($value);
+            } elseif (strpos($col, '<') !== false) {
+                $col = str_replace('<', '', $col);
+                $query .= "&" . $col . "=lt." . urlencode($value);
             } else {
                 $query .= "&" . $col . "=eq." . urlencode($value);
             }
         }
-        
-        $endpoint = $table . '?' . $query;
-        return $this->request('GET', $endpoint);
     }
+    
+    // 🔥 CORRECTION : Ajouter l'ordre correctement
+    if ($orderBy) {
+        // Nettoyer le format
+        $orderBy = trim($orderBy);
+        
+        // Vérifier si le format est déjà "colonne.desc" ou "colonne.asc"
+        if (preg_match('/^[a-zA-Z0-9_]+\.(desc|asc)$/i', $orderBy)) {
+            // Déjà au bon format, l'utiliser tel quel
+            $query .= "&order=" . $orderBy;
+        } else {
+            // Extraire le nom de la colonne et la direction
+            $parts = explode(' ', $orderBy);
+            $column = $parts[0];
+            $direction = isset($parts[1]) ? strtoupper($parts[1]) : 'ASC';
+            
+            // Valider la direction
+            if ($direction !== 'ASC' && $direction !== 'DESC') {
+                $direction = 'ASC';
+            }
+            
+            $query .= "&order=" . $column . "." . strtolower($direction);
+        }
+    }
+    
+    // Ajouter la limite
+    if ($limit) {
+        $query .= "&limit=" . intval($limit);
+    }
+    
+    // Ajouter l'offset
+    if ($offset) {
+        $query .= "&offset=" . intval($offset);
+    }
+    
+    $endpoint = $table . '?' . $query;
+    return $this->request('GET', $endpoint);
+}
     
     public function insert($table, $data) {
         return $this->request('POST', $table, $data);
@@ -108,7 +168,7 @@ class Database {
         }
         
         // Fallback: chercher le dernier enregistrement
-        $lastRecord = $this->select($table, [], '*', 'date_creation.desc');
+        $lastRecord = $this->select($table, [], '*', 'created_at.desc', 1);
         if (!empty($lastRecord) && isset($lastRecord[0][$idField])) {
             return $lastRecord[0][$idField];
         }
@@ -136,11 +196,20 @@ class Database {
         $endpoint = $table . '?' . $idField . '=eq.' . $id;
         return $this->request('DELETE', $endpoint);
     }
+    
+    // 🔥 Méthode utilitaire pour exécuter une requête SQL personnalisée via RPC
+    public function rpc($function, $params = []) {
+        $endpoint = 'rpc/' . $function;
+        return $this->request('POST', $endpoint, $params);
+    }
 }
 
 $db = new Database();
 
-// Fonctions utilitaires
+// ============================================
+// FONCTIONS UTILITAIRES DE BASE
+// ============================================
+
 function getCompteByUser($user) {
     global $db;
     $result = $db->select('compte', ['user' => $user]);
@@ -173,10 +242,10 @@ function getTypesMessage() {
         }
         
         try {
-            $db->insert('type_message', ['id_type_message' => 1, 'libelle_type' => 'SMS']);
-            $db->insert('type_message', ['id_type_message' => 2, 'libelle_type' => 'Email']);
-            $db->insert('type_message', ['id_type_message' => 3, 'libelle_type' => 'WhatsApp']);
-            $db->insert('type_message', ['id_type_message' => 4, 'libelle_type' => 'Audio']);
+            $db->insert('type_message', ['libelle_type' => 'SMS']);
+            $db->insert('type_message', ['libelle_type' => 'Email']);
+            $db->insert('type_message', ['libelle_type' => 'WhatsApp']);
+            $db->insert('type_message', ['libelle_type' => 'Audio']);
             $result = $db->select('type_message');
             return $result;
         } catch (Exception $e) {
@@ -190,7 +259,6 @@ function getTypesMessage() {
     }
 }
 
-// Récupérer la session WhatsApp active de l'utilisateur
 function getWhatsAppSession($idCompte) {
     global $db;
     $result = $db->select('whatsapp_sessions', [
@@ -200,13 +268,11 @@ function getWhatsAppSession($idCompte) {
     return $result ? $result[0]['nom_session'] : null;
 }
 
-// Récupérer toutes les sessions WhatsApp d'un utilisateur
 function getAllWhatsAppSessions($idCompte) {
     global $db;
     return $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
 }
 
-// Activer une session (désactiver les autres)
 function setActiveWhatsAppSession($idCompte, $sessionName) {
     global $db;
     
@@ -219,106 +285,4 @@ function setActiveWhatsAppSession($idCompte, $sessionName) {
         'nom_session' => $sessionName
     ]);
 }
-
-// ============================================
-// FONCTIONS POUR CHAMPS PERSONNALISÉS
-// ============================================
-
-/**
- * Récupère tous les champs personnalisés d'un compte
- */
-function getCustomFields($idCompte, $onlyActive = true) {
-    global $db;
-    
-    $conditions = ['id_compte' => $idCompte];
-    if ($onlyActive) {
-        $conditions['is_active'] = true;
-    }
-    
-    return $db->select('custom_fields', $conditions, '*', 'field_order ASC');
-}
-
-/**
- * Récupère les valeurs des champs personnalisés pour un contact
- */
-function getContactCustomValues($idContact) {
-    global $db;
-    
-    // Récupérer les valeurs
-    $values = $db->select('contact_custom_values', ['id_contact' => $idContact]);
-    
-    if (empty($values)) {
-        return [];
-    }
-    
-    $result = [];
-    foreach ($values as $value) {
-        $field = $db->select('custom_fields', ['id_custom_field' => $value['id_custom_field']]);
-        if (!empty($field)) {
-            $field = $field[0];
-            $result[$field['field_name']] = [
-                'value' => $value['field_value'],
-                'label' => $field['field_label'],
-                'type' => $field['field_type'],
-                'options' => $field['field_options']
-            ];
-        }
-    }
-    
-    return $result;
-}
-
-/**
- * Sauvegarde les valeurs des champs personnalisés pour un contact
- */
-function saveContactCustomValues($idContact, $customValues) {
-    global $db;
-    
-    if (empty($customValues)) {
-        return;
-    }
-    
-    // Récupérer tous les champs personnalisés du compte
-    $allFields = $db->select('custom_fields', ['id_compte' => $_SESSION['user_id']]);
-    $fieldMap = [];
-    foreach ($allFields as $field) {
-        $fieldMap[$field['field_name']] = $field['id_custom_field'];
-    }
-    
-    foreach ($customValues as $fieldName => $value) {
-        if (!isset($fieldMap[$fieldName]) || empty($value)) {
-            continue;
-        }
-        
-        $idField = $fieldMap[$fieldName];
-        
-        // Vérifier si la valeur existe déjà
-        $exists = $db->select('contact_custom_values', [
-            'id_contact' => $idContact,
-            'id_custom_field' => $idField
-        ]);
-        
-        if (!empty($exists)) {
-            // Update
-            $db->update('contact_custom_values', 
-                ['field_value' => $value], 
-                ['id_contact' => $idContact, 'id_custom_field' => $idField]
-            );
-        } else {
-            // Insert
-            $db->insert('contact_custom_values', [
-                'id_contact' => $idContact,
-                'id_custom_field' => $idField,
-                'field_value' => $value
-            ]);
-        }
-    }
-}
-
-/**
- * Supprime toutes les valeurs des champs personnalisés pour un contact
- */
-function deleteContactCustomValues($idContact) {
-    global $db;
-    $db->deleteWithConditions('contact_custom_values', ['id_contact' => $idContact]);
-}
+?>

@@ -1,4 +1,15 @@
 <?php
+require_once __DIR__ . '/../../includes/functions.php';
+require_once __DIR__ . '/../../includes/db.php';
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+
+
+ini_set('log_errors', 1);
+ini_set('error_log', '/var/log/php_errors.log');
+
 // Désactiver le cache pour cette page
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
@@ -12,6 +23,7 @@ $idCompte = $_SESSION['user_id'];
 // TRAITEMENT DE L'AJOUT DE LISTE (AJAX)
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_liste']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    ob_clean();
     header('Content-Type: application/json');
     
     $nom_liste = trim($_POST['nom_liste'] ?? '');
@@ -38,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_liste']) &
 // TRAITEMENT DE L'AJOUT DE CONTACT À UNE LISTE (AJAX)
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contacts_to_list']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+    ob_clean();
     header('Content-Type: application/json');
     
     $id_liste = $_POST['id_liste'] ?? null;
@@ -53,14 +66,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contacts_t
         exit;
     }
     
-    // Vérifier que la liste appartient bien au compte
     $listeExists = $db->select('liste', ['id_liste' => $id_liste, 'id_compte' => $idCompte]);
     if (empty($listeExists)) {
         echo json_encode(['success' => false, 'error' => 'Liste invalide']);
         exit;
     }
     
-    // Récupérer les contacts déjà dans la liste
     $existingContacts = $db->select('liste_contact', ['id_liste' => $id_liste]);
     $existingIds = array_column($existingContacts, 'id_contact');
     
@@ -96,151 +107,301 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contacts_t
 }
 
 // ============================================
-// TRAITEMENT DE L'IMPORT CSV (AJAX)
+// TRAITEMENT DE L'IMPORT CSV (AJAX) - VERSION CORRIGÉE
 // ============================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
+    // Vider le buffer et définir le header JSON
+    ob_clean();
     header('Content-Type: application/json');
     
-    $id_liste = isset($_POST['id_liste']) ? $_POST['id_liste'] : null;
-    $separator = isset($_POST['separator']) ? $_POST['separator'] : ';';
+    // Log pour debug
+    error_log("=== IMPORT CSV DEMARRÉ ===");
+    error_log("POST: " . print_r($_POST, true));
+    error_log("FILES: " . print_r($_FILES, true));
     
-    if (!$id_liste) {
-        echo json_encode(['success' => false, 'error' => 'Veuillez sélectionner une liste']);
-        exit;
-    }
-    
-    $listeExists = $db->select('liste', ['id_liste' => $id_liste, 'id_compte' => $idCompte]);
-    if (empty($listeExists)) {
-        echo json_encode(['success' => false, 'error' => 'Liste invalide']);
-        exit;
-    }
-    
-    $file = $_FILES['csv_file'];
-    
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        echo json_encode(['success' => false, 'error' => 'Erreur lors du téléchargement du fichier']);
-        exit;
-    }
-    
-    $handle = fopen($file['tmp_name'], 'r');
-    if ($handle === false) {
-        echo json_encode(['success' => false, 'error' => 'Impossible d\'ouvrir le fichier']);
-        exit;
-    }
-    
-    $headers = fgetcsv($handle, 1000, $separator);
-    if (!$headers) {
-        echo json_encode(['success' => false, 'error' => 'Format CSV invalide']);
-        exit;
-    }
-    
-    $headers = array_map('trim', $headers);
-    $headers = array_map('strtolower', $headers);
-    
-    $importCount = 0;
-    $createdCount = 0;
-    $existingCount = 0;
-    $errors = [];
-    $rowNumber = 1;
-    
-    while (($data = fgetcsv($handle, 1000, $separator)) !== FALSE) {
-        $rowNumber++;
+    try {
+        $id_liste = isset($_POST['id_liste']) ? $_POST['id_liste'] : null;
+        $separator = isset($_POST['separator']) ? $_POST['separator'] : ';';
         
-        $row = [];
-        foreach ($headers as $index => $header) {
-            $row[$header] = isset($data[$index]) ? trim($data[$index]) : '';
+        if (!$id_liste) {
+            echo json_encode(['success' => false, 'error' => 'Veuillez sélectionner une liste']);
+            exit;
         }
         
-        if (empty($row['email']) && empty($row['nom'])) {
-            $errors[] = "Ligne $rowNumber: email ou nom requis";
-            continue;
+        $listeExists = $db->select('liste', ['id_liste' => $id_liste, 'id_compte' => $idCompte]);
+        if (empty($listeExists)) {
+            echo json_encode(['success' => false, 'error' => 'Liste invalide']);
+            exit;
         }
         
-        $contactId = null;
-        $isExisting = false;
+        // Vérifier le fichier
+        if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
+            $errorCode = $_FILES['csv_file']['error'] ?? 'Aucun fichier';
+            error_log("Erreur upload: code " . $errorCode);
+            echo json_encode(['success' => false, 'error' => 'Erreur lors du téléchargement du fichier (code: ' . $errorCode . ')']);
+            exit;
+        }
         
-        if (!empty($row['email'])) {
-            $existingContacts = $db->select('contact', [
-                'id_compte' => $idCompte,
-                'email' => $row['email']
-            ]);
-            if (!empty($existingContacts)) {
-                $contactId = $existingContacts[0]['id_contact'];
-                $isExisting = true;
+        $file = $_FILES['csv_file'];
+        error_log("Fichier: " . $file['name'] . ", taille: " . $file['size'] . " bytes");
+        
+        // Vérifier la taille (5MB max)
+        $maxSize = 5 * 1024 * 1024;
+        if ($file['size'] > $maxSize) {
+            echo json_encode(['success' => false, 'error' => 'Fichier trop volumineux (max 5MB)']);
+            exit;
+        }
+        
+        // Vérifier l'extension
+        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if ($extension !== 'csv') {
+            echo json_encode(['success' => false, 'error' => 'Format non supporté. Utilisez un fichier CSV']);
+            exit;
+        }
+        
+        $handle = fopen($file['tmp_name'], 'r');
+        if ($handle === false) {
+            echo json_encode(['success' => false, 'error' => 'Impossible d\'ouvrir le fichier']);
+            exit;
+        }
+        
+        // Détection automatique du séparateur
+        $firstLine = fgets($handle);
+        rewind($handle);
+        error_log("Première ligne: " . $firstLine);
+        
+        $separators = [';', ',', "\t", '|'];
+        $separator = ';';
+        $maxCount = 0;
+        
+        foreach ($separators as $testSep) {
+            $count = substr_count($firstLine, $testSep);
+            error_log("Séparateur '$testSep' trouvé $count fois");
+            if ($count > $maxCount) {
+                $maxCount = $count;
+                $separator = $testSep;
             }
         }
+        error_log("Séparateur détecté: '" . $separator . "'");
         
-        if (!$contactId) {
-            $contactData = [
-                'id_compte' => $idCompte,
-                'nom' => $row['nom'] ?? '',
-                'prenom' => $row['prenom'] ?? '',
-                'email' => !empty($row['email']) ? $row['email'] : null,
-                'telephone' => !empty($row['telephone']) ? $row['telephone'] : null,
-                'adresse' => !empty($row['adresse']) ? $row['adresse'] : null,
-                'ville' => !empty($row['ville']) ? $row['ville'] : null,
-                'code_postal' => !empty($row['code_postal']) ? $row['code_postal'] : null,
-                'pays' => !empty($row['pays']) ? $row['pays'] : 'France',
-                'date_inscription' => date('Y-m-d H:i:s')
-            ];
+        // Lire les en-têtes
+        $headers = fgetcsv($handle, 0, $separator);
+        if (!$headers) {
+            echo json_encode(['success' => false, 'error' => 'Format CSV invalide: impossible de lire les en-têtes']);
+            exit;
+        }
+        
+        $headers = array_map('trim', $headers);
+        $headers = array_map('strtolower', $headers);
+        error_log("Headers: " . print_r($headers, true));
+        
+        // Mapping des colonnes
+        $mapping = [
+            'prenom' => array_search('prenom', $headers),
+            'nom' => array_search('nom', $headers),
+            'email' => array_search('email', $headers),
+            'telephone' => array_search('telephone', $headers),
+            'ville' => array_search('ville', $headers),
+            'adresse' => array_search('adresse', $headers),
+            'code_postal' => array_search('code_postal', $headers),
+            'pays' => array_search('pays', $headers),
+            'date_naissance' => array_search('date_naissance', $headers)
+        ];
+        error_log("Mapping: " . print_r($mapping, true));
+        
+        // Vérifier les colonnes requises
+        if ($mapping['nom'] === false && $mapping['prenom'] === false) {
+            echo json_encode(['success' => false, 'error' => 'Colonnes requises manquantes: nom ou prenom']);
+            exit;
+        }
+        
+        $importCount = 0;
+        $createdCount = 0;
+        $existingCount = 0;
+        $errors = [];
+        $rowNumber = 1;
+        
+        while (($data = fgetcsv($handle, 0, $separator)) !== false) {
+            $rowNumber++;
             
-            try {
-                $contactId = $db->insertAndGetId('contact', $contactData);
-                if ($contactId) {
-                    $createdCount++;
-                } else {
-                    $errors[] = "Ligne $rowNumber: impossible de créer le contact";
-                    continue;
-                }
-            } catch (Exception $e) {
-                $errors[] = "Ligne $rowNumber: erreur création";
+            // Nettoyer la ligne
+            $data = array_map('trim', $data);
+            
+            // Extraire les données
+            $prenom = $mapping['prenom'] !== false ? trim($data[$mapping['prenom']] ?? '') : '';
+            $nom = $mapping['nom'] !== false ? trim($data[$mapping['nom']] ?? '') : '';
+            $email = $mapping['email'] !== false ? trim($data[$mapping['email']] ?? '') : '';
+            $telephone = $mapping['telephone'] !== false ? trim($data[$mapping['telephone']] ?? '') : '';
+            $dateNaissance = $mapping['date_naissance'] !== false ? trim($data[$mapping['date_naissance']] ?? '') : '';
+            $ville = $mapping['ville'] !== false ? trim($data[$mapping['ville']] ?? '') : '';
+            $adresse = $mapping['adresse'] !== false ? trim($data[$mapping['adresse']] ?? '') : '';
+            $code_postal = $mapping['code_postal'] !== false ? trim($data[$mapping['code_postal']] ?? '') : '';
+            $pays = $mapping['pays'] !== false ? trim($data[$mapping['pays']] ?? 'France') : 'France';
+            
+            if (empty($nom) && empty($prenom) && empty($email)) {
                 continue;
             }
-        }
-        
-        if ($contactId) {
-            $existingInList = $db->select('liste_contact', [
-                'id_liste' => $id_liste,
-                'id_contact' => $contactId
-            ]);
             
-            if (empty($existingInList)) {
+            // Convertir la date si présente
+            if (!empty($dateNaissance)) {
+                $dateFormats = ['d/m/Y', 'd-m-Y', 'Y-m-d', 'm/d/Y'];
+                $dateConverted = null;
+                
+                foreach ($dateFormats as $format) {
+                    $dateObj = DateTime::createFromFormat($format, $dateNaissance);
+                    if ($dateObj) {
+                        $dateConverted = $dateObj->format('Y-m-d');
+                        break;
+                    }
+                }
+                
+                if ($dateConverted) {
+                    $dateNaissance = $dateConverted;
+                } else {
+                    $timestamp = strtotime($dateNaissance);
+                    if ($timestamp !== false) {
+                        $dateNaissance = date('Y-m-d', $timestamp);
+                    } else {
+                        $dateNaissance = null;
+                    }
+                }
+            }
+            
+            // Vérifier l'âge
+            if (!empty($dateNaissance)) {
+                if (!verifierAge($dateNaissance, 18)) {
+                    $errors[] = "Ligne $rowNumber: Âge minimum 18 ans requis";
+                    continue;
+                }
+            }
+            
+            $contactId = null;
+            $isExisting = false;
+            
+            // Vérifier si le contact existe déjà par email
+            if (!empty($email)) {
+                $existingContacts = $db->select('contact', [
+                    'id_compte' => $idCompte,
+                    'email' => $email
+                ]);
+                if (!empty($existingContacts)) {
+                    $contactId = $existingContacts[0]['id_contact'];
+                    $isExisting = true;
+                }
+            }
+            
+            // Si pas trouvé par email, essayer par nom + prénom
+            if (!$contactId && !empty($nom) && !empty($prenom)) {
+                $existingContacts = $db->select('contact', [
+                    'id_compte' => $idCompte,
+                    'nom' => $nom,
+                    'prenom' => $prenom
+                ]);
+                if (!empty($existingContacts)) {
+                    $contactId = $existingContacts[0]['id_contact'];
+                    $isExisting = true;
+                }
+            }
+            
+            // Si le contact n'existe pas, le créer
+            if (!$contactId) {
+                $telephoneFormatted = null;
+                if (!empty($telephone)) {
+                    if (substr($telephone, 0, 3) === '261') {
+                        $telephoneFormatted = $telephone;
+                    } else {
+                        $telephoneFormatted = formatPhoneNumber($telephone);
+                    }
+                }
+                
+                $contactData = [
+                    'id_compte' => $idCompte,
+                    'nom' => $nom,
+                    'prenom' => $prenom,
+                    'email' => !empty($email) ? $email : null,
+                    'telephone' => $telephoneFormatted,
+                    'adresse' => !empty($adresse) ? $adresse : null,
+                    'ville' => !empty($ville) ? $ville : null,
+                    'code_postal' => !empty($code_postal) ? $code_postal : null,
+                    'pays' => !empty($pays) ? $pays : 'France',
+                    'date_naissance' => !empty($dateNaissance) ? $dateNaissance : null,
+                    'date_inscription' => date('Y-m-d H:i:s')
+                ];
+                
                 try {
-                    $db->insert('liste_contact', [
-                        'id_liste' => $id_liste,
-                        'id_contact' => $contactId
-                    ]);
-                    $importCount++;
-                    
-                    if ($isExisting) {
-                        $existingCount++;
+                    $contactId = $db->insertAndGetId('contact', $contactData);
+                    if ($contactId) {
+                        $createdCount++;
+                    } else {
+                        $errors[] = "Ligne $rowNumber: Impossible de créer le contact";
+                        continue;
                     }
                 } catch (Exception $e) {
-                    $errors[] = "Ligne $rowNumber: erreur ajout liste";
+                    error_log("Erreur création contact ligne $rowNumber: " . $e->getMessage());
+                    $errors[] = "Ligne $rowNumber: Erreur création contact";
+                    continue;
                 }
-            } else {
-                $errors[] = "Ligne $rowNumber: contact déjà dans la liste";
+            }
+            
+            // Ajouter le contact à la liste
+            if ($contactId) {
+                $existingInList = $db->select('liste_contact', [
+                    'id_liste' => $id_liste,
+                    'id_contact' => $contactId
+                ]);
+                
+                if (empty($existingInList)) {
+                    try {
+                        $db->insert('liste_contact', [
+                            'id_liste' => $id_liste,
+                            'id_contact' => $contactId
+                        ]);
+                        $importCount++;
+                        
+                        if ($isExisting) {
+                            $existingCount++;
+                        }
+                    } catch (Exception $e) {
+                        error_log("Erreur ajout liste ligne $rowNumber: " . $e->getMessage());
+                        $errors[] = "Ligne $rowNumber: Erreur ajout liste";
+                    }
+                } else {
+                    $errors[] = "Ligne $rowNumber: Contact déjà dans la liste";
+                }
             }
         }
-    }
-    
-    fclose($handle);
-    
-    if ($importCount > 0) {
-        $message = "$importCount contact(s) importé(s) dans la liste";
-        if ($createdCount > 0) {
-            $message .= " ($createdCount nouveau(x) créé(s))";
-        }
-        if ($existingCount > 0) {
-            $message .= " ($existingCount existant(s) ajouté(s))";
-        }
-        echo json_encode(['success' => true, 'message' => $message, 'imported' => $importCount]);
-    } else {
-        if ($createdCount == 0 && $existingCount == 0) {
-            echo json_encode(['success' => false, 'error' => 'Aucun contact importé. Vérifiez le format de votre fichier.']);
+        
+        fclose($handle);
+        
+        error_log("Import terminé: $importCount importés, $createdCount créés, $existingCount existants, " . count($errors) . " erreurs");
+        
+        // Construire le message de retour
+        if ($importCount > 0) {
+            $message = "$importCount contact(s) importé(s) dans la liste";
+            if ($createdCount > 0) {
+                $message .= " ($createdCount nouveau(x) créé(s))";
+            }
+            if ($existingCount > 0) {
+                $message .= " ($existingCount existant(s) ajouté(s))";
+            }
+            if (!empty($errors)) {
+                $message .= count($errors) . " non importé (s)";
+            }
+            echo json_encode(['success' => true, 'message' => $message, 'imported' => $importCount]);
         } else {
-            echo json_encode(['success' => false, 'error' => 'Erreur lors de l\'importation']);
+            $errorMsg = "Aucun contact importé.";
+            if (!empty($errors)) {
+                $errorMsg .= " Erreurs: " . implode('; ', array_slice($errors, 0, 5));
+            } else {
+                $errorMsg .= " Vérifiez le format de votre fichier CSV.";
+            }
+            echo json_encode(['success' => false, 'error' => $errorMsg]);
         }
+        
+    } catch (Exception $e) {
+        error_log("ERREUR IMPORT: " . $e->getMessage());
+        error_log("TRACE: " . $e->getTraceAsString());
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
 }
@@ -374,7 +535,6 @@ unset($_SESSION['flash_error']);
             transform: scale(1) !important;
         }
         
-        /* Styles pour le modal d'ajout de contacts */
         .contact-item.hide {
             display: none;
         }
@@ -383,6 +543,41 @@ unset($_SESSION['flash_error']);
             top: 0;
             background: white;
             z-index: 10;
+        }
+        
+        .file-upload-wrapper {
+            position: relative;
+            overflow: hidden;
+        }
+        .file-upload-wrapper input[type=file] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        .file-upload-wrapper .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        .file-upload-wrapper .file-info:hover {
+            border-color: #8b5cf6;
+            background: #f5f3ff;
+        }
+        .file-upload-wrapper .file-info .file-name {
+            font-size: 14px;
+            color: #1f2937;
+        }
+        .file-upload-wrapper .file-info .file-size {
+            font-size: 12px;
+            color: #6b7280;
         }
     </style>
 </head>
@@ -400,10 +595,10 @@ unset($_SESSION['flash_error']);
     </div>
 
     <?php if ($flashMessage): ?>
-        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= $flashMessage ?></div>
+        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= htmlspecialchars($flashMessage) ?></div>
     <?php endif; ?>
     <?php if ($flashError): ?>
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= $flashError ?></div>
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= htmlspecialchars($flashError) ?></div>
     <?php endif; ?>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -615,14 +810,38 @@ unset($_SESSION['flash_error']);
 <div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4">
         <div class="p-6">
-            <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold">Importer des contacts</h3><button onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button></div>
-            <div class="bg-blue-50 p-3 rounded mb-4 text-sm"><strong>Format attendu :</strong> nom, prenom, email, telephone (séparateur ; ou ,)</div>
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">Importer des contacts</h3>
+                <button onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="bg-blue-50 p-3 rounded mb-4 text-sm">
+                <strong>Format attendu :</strong> 
+                <span class="block mt-1 text-xs text-gray-600">Colonnes: prenom, nom, email, telephone, ville, adresse, code_postal, pays, date_naissance</span>
+                <span class="block mt-1 text-xs text-gray-600">Séparateur: ; ou ,</span>
+                <span class="block mt-1 text-xs text-gray-600">Date: YYYY-MM-DD ou DD/MM/YYYY</span>
+                <span class="block mt-1 text-xs text-gray-600 text-red-500">Âge minimum: 18 ans</span>
+            </div>
             <form id="importForm" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="id_liste" id="importListId">
                 <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Liste cible</label><span id="importListName" class="font-semibold"></span></div>
-                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Fichier CSV</label><input type="file" name="csv_file" accept=".csv" required class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fichier CSV</label>
+                    <div class="file-upload-wrapper">
+                        <div class="file-info" id="fileInfo">
+                            <i class="fas fa-cloud-upload-alt text-2xl text-purple-500"></i>
+                            <span class="file-name" id="fileName">Cliquez ou glissez votre fichier CSV ici</span>
+                            <span class="file-size" id="fileSize"></span>
+                        </div>
+                        <input type="file" name="csv_file" accept=".csv" required id="csvFileInput">
+                    </div>
+                </div>
                 <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Séparateur</label><select name="separator" class="w-full border border-gray-300 rounded-lg px-3 py-2"><option value=";">Point-virgule (;)</option><option value=",">Virgule (,)</option></select></div>
-                <div class="flex justify-end space-x-2"><button type="button" onclick="closeImportModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">Importer</button></div>
+                <div class="flex justify-end space-x-2">
+                    <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">Annuler</button>
+                    <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition">
+                        <i class="fas fa-upload mr-2"></i>Importer
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -677,8 +896,7 @@ async function openAddContactToListModal(button) {
     const listName = button.getAttribute('data-name');
     document.getElementById('addContactListName').innerHTML = listName;
     
-    // Récupérer les contacts déjà dans la liste
-    document.getElementById('contactsListContainer').innerHTML = '<div class="p-4 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Chargement...</div>';
+    document.getElementById('contactsListContainer').innerHTML = '<div class="p-4 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Chargement des contacts...</div>';
     document.getElementById('addContactToListModal').style.display = 'flex';
     
     try {
@@ -800,7 +1018,6 @@ async function submitAddContactsToList() {
     }
 }
 
-// Recherche dans le modal
 document.getElementById('searchContactInput')?.addEventListener('input', function() {
     renderContactsList();
 });
@@ -916,29 +1133,114 @@ function openImportModal(button) {
 function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
 
 // ============================================
-// IMPORT CSV AJAX
+// GESTION DU FICHIER DANS LE MODAL IMPORT
+// ============================================
+document.getElementById('csvFileInput')?.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        fileName.textContent = file.name;
+        fileSize.textContent = `(${sizeMB} MB)`;
+        fileInfo.style.borderColor = '#8b5cf6';
+        fileInfo.style.background = '#f5f3ff';
+        
+        // Vérifier l'extension
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (extension !== 'csv') {
+            showToast('Veuillez sélectionner un fichier CSV', 'warning');
+            this.value = '';
+            resetFileInfo();
+        }
+        
+        // Vérifier la taille
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('Fichier trop volumineux (max 5MB)', 'warning');
+            this.value = '';
+            resetFileInfo();
+        }
+    }
+});
+
+function resetFileInfo() {
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    fileName.textContent = 'Cliquez ou glissez votre fichier CSV ici';
+    fileSize.textContent = '';
+    fileInfo.style.borderColor = '#d1d5db';
+    fileInfo.style.background = 'transparent';
+}
+
+// ============================================
+// IMPORT CSV AJAX - Version avec logs améliorés
 // ============================================
 document.getElementById('importForm').addEventListener('submit', async function(e) {
     e.preventDefault();
+    
+    const fileInput = document.getElementById('csvFileInput');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showToast('Veuillez sélectionner un fichier CSV', 'warning');
+        return;
+    }
+    
     const formData = new FormData(this);
     const submitBtn = document.getElementById('importSubmitBtn');
     const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = 'Import en cours...';
+    
+    //LOG : Afficher les données du formulaire
+    console.log('=== IMPORT CSV ===');
+    for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ' + pair[1]);
+    }
+    
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Import en cours...';
     submitBtn.disabled = true;
+    
     try {
-        const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
-        const result = await response.json();
+        const response = await fetch(window.location.href, { 
+            method: 'POST', 
+            headers: { 
+                'X-Requested-With': 'XMLHttpRequest'
+            }, 
+            body: formData 
+        });
+        
+        // LOG : Vérifier la réponse
+        console.log('Status HTTP:', response.status);
+        
+        // Lire la réponse brute
+        const textResponse = await response.text();
+        console.log('Réponse brute:', textResponse);
+        
+        let result;
+        try {
+            result = JSON.parse(textResponse);
+        } catch (parseError) {
+            console.error('Erreur de parsing JSON:', parseError);
+            console.error('Réponse reçue:', textResponse);
+            showToast('Erreur de parsing: ' + textResponse.substring(0, 200), 'error');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+            return;
+        }
+        
         if (result.success) {
             showToast(result.message, 'success');
             closeImportModal();
             setTimeout(() => window.location.reload(), 1500);
         } else {
-            showToast(result.error, 'error');
+            showToast(result.error || 'Erreur inconnue', 'error');
             submitBtn.innerHTML = originalText;
             submitBtn.disabled = false;
         }
+        
     } catch (error) {
-        showToast('Erreur réseau', 'error');
+        console.error('Erreur réseau:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
     }
@@ -951,7 +1253,16 @@ document.getElementById('renameModal')?.addEventListener('click', e => { if (e.t
 document.getElementById('clearModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeClearModal(); });
 document.getElementById('deleteModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeDeleteModal(); });
 document.getElementById('importModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) closeImportModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddListeModal(); closeAddContactToListModal(); closeRenameModal(); closeClearModal(); closeDeleteModal(); closeImportModal(); } });
+document.addEventListener('keydown', e => { 
+    if (e.key === 'Escape') { 
+        closeAddListeModal(); 
+        closeAddContactToListModal(); 
+        closeRenameModal(); 
+        closeClearModal(); 
+        closeDeleteModal(); 
+        closeImportModal(); 
+    } 
+});
 </script>
 
 </body>
