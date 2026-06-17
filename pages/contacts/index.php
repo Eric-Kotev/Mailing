@@ -893,13 +893,13 @@ unset($_SESSION['flash_error']);
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Type de champ</label>
                         <select id="new_field_type" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                            <option value="text">📝 Texte court</option>
-                            <option value="textarea">📄 Zone texte</option>
-                            <option value="number">🔢 Nombre</option>
-                            <option value="date">📅 Date</option>
-                            <option value="email">✉️ Email</option>
-                            <option value="tel">📞 Téléphone</option>
-                            <option value="select">📋 Liste déroulante</option>
+                            <option value="text">Texte court</option>
+                            <option value="textarea">Zone texte</option>
+                            <option value="number">Nombre</option>
+                            <option value="date">Date</option>
+                            <option value="email">Email</option>
+                            <option value="tel">Téléphone</option>
+                            <option value="select">Liste déroulante</option>
                         </select>
                     </div>
                     <div id="new_field_options_div" style="display:none">
