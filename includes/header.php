@@ -68,23 +68,28 @@ if (isset($_SESSION['user_id'])) {
 
 <header class="bg-white shadow-sm">
     <div class="flex justify-between items-center px-6 py-3">
-        <div class="flex items-center">
-            <button id="sidebarToggle" class="text-gray-500 hover:text-gray-700 mr-4">
+        <!--  GROUPE GAUCHE : Menu hamburger + Message Bonjour -->
+        <div class="flex items-center gap-4">
+            <button id="sidebarToggle" class="text-gray-500 hover:text-gray-700">
                 <i class="fas fa-bars text-xl"></i>
             </button>
-        </div>
-        
-        <div class="flex items-center space-x-4">
-            <div class="text-right">
-                <div class="text-xl font-semibold text-gray-800">
-                    Bonjour, <?= htmlspecialchars($displayName) ?>
+            
+            <div class="text-left">
+                <div class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <span>Bonjour</span>
+                    <span><?= htmlspecialchars($displayName) ?></span>
+                    <span class="text-xl"></span>
                 </div>
-                <div class="text-xs text-gray-500">
-                    <?= htmlspecialchars($_SESSION['user_entreprise'] ?? '') ?>
+                <div class="text-xs text-gray-500 flex items-center gap-2">
+                    <i class="fas fa-building text-gray-400"></i>
+                    <?= htmlspecialchars($_SESSION['user_entreprise'] ?? 'Aucune entreprise') ?>
                 </div>
             </div>
-            
-            <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full">
+        </div>
+        
+        <!-- GROUPE DROITE : Crédits + Logo + Déconnexion -->
+        <div class="flex items-center space-x-4">
+            <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                 <i class="fas fa-coins mr-1"></i>
                 <?= number_format($credits, 2) ?> €
             </div>
@@ -246,7 +251,7 @@ function escapeHtml(text) {
 // ============================================
 <?php foreach ($campagnesAAlerter as $campagne): ?>
     setTimeout(function() {
-        showToast('📅 La campagne "<?= addslashes($campagne['nom_campagne']) ?>" doit être envoyée !', 'warning');
+        showToast('La campagne "<?= addslashes($campagne['nom_campagne']) ?>" doit être envoyée !', 'warning');
     }, 1000);
 <?php endforeach; ?>
 </script>
