@@ -1026,15 +1026,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="flex items-start">
                                 <i class="fas fa-microphone-slash icon"></i>
                                 <div class="text-left">
-                                    <div class="title">⚠️ Impossible d'accéder au microphone</div>
+                                    <div class="title"> Impossible d'accéder au microphone</div>
                                     <div class="description">
                                         Pour enregistrer un message vocal, vous devez autoriser l'accès au microphone.
                                     </div>
                                     <ul class="solutions">
-                                        <li>🔒 Utilisez une connexion <strong>HTTPS</strong> (ou <strong>localhost</strong> en développement)</li>
-                                        <li>🌐 Vérifiez les autorisations du navigateur (cliquez sur le cadenas dans la barre d'adresse)</li>
-                                        <li>🎤 Assurez-vous qu'aucun autre logiciel n'utilise le microphone</li>
-                                        <li>🔄 Rafraîchissez la page et réessayez</li>
+                                        <li> Utilisez une connexion <strong>HTTPS</strong> (ou <strong>localhost</strong> en développement)</li>
+                                        <li> Vérifiez les autorisations du navigateur (cliquez sur le cadenas dans la barre d'adresse)</li>
+                                        <li> Assurez-vous qu'aucun autre logiciel n'utilise le microphone</li>
+                                        <li> Rafraîchissez la page et réessayez</li>
                                     </ul>
                                 </div>
                             </div>

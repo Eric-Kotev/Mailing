@@ -32,8 +32,6 @@ try {
         throw new Exception('Session non trouvée');
     }
     
-    // Désactiver toutes les sessions
-    $db->update('whatsapp_sessions', ['est_active' => false], ['id_compte' => $idCompte]);
     
     // Activer la session sélectionnée
     $db->update('whatsapp_sessions', ['est_active' => true], ['id_session' => $sessionId]);

@@ -36,11 +36,11 @@ try {
     ]);
     
     if (!empty($existing)) {
-        // La session existe déjà, on la rend active
+        // La session existe déjà, on la rend active (sans désactiver les autres)
         $db->update('whatsapp_sessions', ['est_active' => true], ['id_session' => $existing[0]['id_session']]);
         echo json_encode(['success' => true, 'session' => $nom_session, 'existing' => true, 'active' => true]);
     } else {
-        // Créer une nouvelle session (active)
+        // Créer une nouvelle session active (sans désactiver les autres)
         $data = [
             'id_compte' => $idCompte,
             'nom_session' => $nom_session,

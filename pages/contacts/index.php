@@ -139,9 +139,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
         
         $contactId = $db->insertAndGetId('contact', $data);
         
-        // Sauvegarder les champs personnalisés
+        // Sauvegarder les champs personnalisés (incluant les temporaires)
         if (isset($_POST['custom_fields']) && is_array($_POST['custom_fields'])) {
             saveContactCustomValues($contactId, $_POST['custom_fields']);
+        }
+        
+        // Traiter les champs temporaires (créés pendant l'ajout)
+        if (isset($_POST['temp_custom_fields']) && !empty($_POST['temp_custom_fields'])) {
+            $tempFields = json_decode($_POST['temp_custom_fields'], true);
+            if (is_array($tempFields)) {
+                foreach ($tempFields as $field) {
+                    // Créer le champ personnalisé pour ce contact
+                    createCustomFieldForContact(
+                        $idCompte,
+                        $contactId,
+                        $field['field_name'],
+                        $field['field_label'],
+                        $field['field_type'],
+                        $field['field_options'] ?? null
+                    );
+                    
+                    // Si une valeur a été fournie, la sauvegarder
+                    if (isset($field['field_value']) && !empty($field['field_value'])) {
+                        // Récupérer l'ID du champ créé
+                        $createdField = $db->select('custom_fields', [
+                            'id_contact' => $contactId,
+                            'field_name' => $field['field_name']
+                        ]);
+                        if (!empty($createdField)) {
+                            $db->insert('contact_custom_values', [
+                                'id_custom_field' => $createdField[0]['id_custom_field'],
+                                'field_value' => $field['field_value']
+                            ]);
+                        }
+                    }
+                }
+            }
         }
         
         echo json_encode([
@@ -609,6 +642,25 @@ unset($_SESSION['flash_error']);
             0% { background-color: #bfdbfe; }
             100% { background-color: transparent; }
         }
+        .temp-field-badge {
+            display: inline-block;
+            background-color: #dbeafe;
+            color: #1e40af;
+            border-radius: 9999px;
+            padding: 2px 10px;
+            font-size: 11px;
+            margin: 2px 4px 2px 0;
+            border: 1px dashed #60a5fa;
+        }
+        .remove-temp-field {
+            cursor: pointer;
+            color: #ef4444;
+            margin-left: 4px;
+            font-weight: bold;
+        }
+        .remove-temp-field:hover {
+            color: #dc2626;
+        }
     </style>
 </head>
 <body>
@@ -748,6 +800,7 @@ unset($_SESSION['flash_error']);
             </div>
             <form id="addContactForm" method="POST">
                 <input type="hidden" name="action_add_contact" value="1">
+                <input type="hidden" id="tempCustomFields" name="temp_custom_fields" value="">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
@@ -772,9 +825,9 @@ unset($_SESSION['flash_error']);
                 <div class="mt-6 pt-4 border-t border-gray-200">
                     <div class="flex justify-between items-center mb-3">
                         <h3 class="text-md font-semibold text-gray-700">
-                            <i class="fas fa-cog mr-2"></i>Informations supplémentaires
+                            <i class="fas fa-cog mr-2"></i>Champs personnalisés
                         </h3>
-                        <button type="button" onclick="openAddCustomFieldModalFromAdd()" 
+                        <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
                                 class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
                             <i class="fas fa-plus-circle"></i> Ajouter un champ
                         </button>
@@ -782,10 +835,15 @@ unset($_SESSION['flash_error']);
                     <div id="addCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Aucun champ personnalisé. Enregistrez d'abord le contact, puis ajoutez des champs.
+                            Aucun champ personnalisé.
+                            <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
+                                    class="text-blue-600 hover:underline">
+                                Ajouter votre premier champ
+                            </button>
                         </div>
                     </div>
-                    <input type="hidden" id="addContactIdForFields" value="">
+                    <!-- Liste des champs temporaires -->
+                    <div id="tempFieldsList" class="mt-3 flex flex-wrap gap-2"></div>
                 </div>
                 
                 <div class="mt-6 flex justify-end space-x-2">
@@ -872,6 +930,9 @@ unset($_SESSION['flash_error']);
             </div>
             
             <form id="addCustomFieldForm">
+                <input type="hidden" id="custom_field_contact_id" value="">
+                <input type="hidden" id="custom_field_mode" value="temp">
+                
                 <div class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -911,6 +972,14 @@ unset($_SESSION['flash_error']);
                                placeholder="ex: Option 1|Option 2|Option 3">
                         <p class="text-xs text-gray-500 mt-1">Séparez les options par <strong>|</strong></p>
                     </div>
+                    <div id="new_field_value_div">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Valeur (optionnel)
+                        </label>
+                        <input type="text" id="new_field_value" 
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                               placeholder="Valeur du champ">
+                    </div>
                 </div>
                 
                 <div class="mt-6 flex justify-end space-x-2">
@@ -920,7 +989,7 @@ unset($_SESSION['flash_error']);
                     </button>
                     <button type="submit" id="createFieldBtn" 
                             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                        <i class="fas fa-plus mr-2"></i>Créer le champ
+                        <i class="fas fa-plus mr-2"></i>Ajouter le champ
                     </button>
                 </div>
             </form>
@@ -1006,11 +1075,71 @@ function showToast(message, type = 'success') {
 // ============================================
 let currentContactIdForField = null;
 let currentContactIdForEdit = null;
+let tempCustomFields = [];
+let isTempMode = false;
 
 // ============================================
-// FONCTION POUR AJOUTER UN CHAMP DYNAMIQUEMENT
+// GESTION DES CHAMPS TEMPORAIRES
 // ============================================
-function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions) {
+
+function addTempField(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue) {
+    // Vérifier si le champ existe déjà
+    const exists = tempCustomFields.some(f => f.field_name === fieldName);
+    if (exists) {
+        showToast('Un champ avec ce nom existe déjà', 'warning');
+        return false;
+    }
+    
+    tempCustomFields.push({
+        field_name: fieldName,
+        field_label: fieldLabel,
+        field_type: fieldType,
+        field_options: fieldOptions || null,
+        field_value: fieldValue || ''
+    });
+    
+    updateTempFieldsDisplay();
+    updateTempFieldsInput();
+    return true;
+}
+
+function removeTempField(index) {
+    tempCustomFields.splice(index, 1);
+    updateTempFieldsDisplay();
+    updateTempFieldsInput();
+}
+
+function updateTempFieldsDisplay() {
+    const container = document.getElementById('tempFieldsList');
+    if (!container) return;
+    
+    if (tempCustomFields.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.innerHTML = tempCustomFields.map((field, index) => {
+        const label = field.field_label || field.field_name;
+        const value = field.field_value ? `: ${field.field_value}` : '';
+        return `<span class="temp-field-badge">
+            <i class="fas fa-tag mr-1"></i>
+            ${escapeHtml(label)}${escapeHtml(value)}
+            <span class="remove-temp-field" onclick="removeTempField(${index})" title="Supprimer ce champ">×</span>
+        </span>`;
+    }).join('');
+}
+
+function updateTempFieldsInput() {
+    const input = document.getElementById('tempCustomFields');
+    if (input) {
+        input.value = JSON.stringify(tempCustomFields);
+    }
+}
+
+// ============================================
+// FONCTION POUR AJOUTER UN CHAMP DYNAMIQUEMENT DANS LE FORMULAIRE D'AJOUT
+// ============================================
+function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue) {
     const noFieldsMsg = document.getElementById('noCustomFieldsMessage');
     if (noFieldsMsg) {
         noFieldsMsg.remove();
@@ -1022,12 +1151,13 @@ function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOption
     let fieldHtml = '';
     const fieldNameEscaped = escapeHtml(fieldName);
     const fieldLabelEscaped = escapeHtml(fieldLabel);
+    const fieldValueEscaped = escapeHtml(fieldValue || '');
     
     if (fieldType === 'textarea') {
         fieldHtml = `
             <div class="custom-field-wrapper new-field-highlight">
                 <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <textarea name="custom_fields[${fieldNameEscaped}]" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></textarea>
+                <textarea name="custom_fields[${fieldNameEscaped}]" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">${fieldValueEscaped}</textarea>
             </div>
         `;
     } else if (fieldType === 'select' && fieldOptions) {
@@ -1035,7 +1165,8 @@ function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOption
         let optionsHtml = '<option value="">-- Sélectionner --</option>';
         options.forEach(opt => {
             const optTrimmed = opt.trim();
-            optionsHtml += `<option value="${escapeHtml(optTrimmed)}">${escapeHtml(optTrimmed)}</option>`;
+            const selected = fieldValue === optTrimmed ? 'selected' : '';
+            optionsHtml += `<option value="${escapeHtml(optTrimmed)}" ${selected}>${escapeHtml(optTrimmed)}</option>`;
         });
         fieldHtml = `
             <div class="custom-field-wrapper new-field-highlight">
@@ -1049,21 +1180,21 @@ function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOption
         fieldHtml = `
             <div class="custom-field-wrapper new-field-highlight">
                 <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <input type="date" name="custom_fields[${fieldNameEscaped}]" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                <input type="date" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
             </div>
         `;
     } else if (fieldType === 'number') {
         fieldHtml = `
             <div class="custom-field-wrapper new-field-highlight">
                 <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <input type="number" name="custom_fields[${fieldNameEscaped}]" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                <input type="number" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
             </div>
         `;
     } else {
         fieldHtml = `
             <div class="custom-field-wrapper new-field-highlight">
                 <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <input type="text" name="custom_fields[${fieldNameEscaped}]" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" placeholder="${fieldLabelEscaped}">
+                <input type="text" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" placeholder="${fieldLabelEscaped}">
             </div>
         `;
     }
@@ -1078,15 +1209,14 @@ function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOption
 }
 
 // ============================================
-// MODALE D'AJOUT DE CHAMP PERSONNALISÉ
+// MODALE D'AJOUT DE CHAMP PERSONNALISÉ (MODE TEMPORAIRE)
 // ============================================
-function openAddCustomFieldModalFromAdd() {
-    const contactId = document.getElementById('addContactIdForFields').value;
-    if (!contactId) {
-        showToast('Veuillez d\'abord enregistrer le contact', 'warning');
-        return;
-    }
-    openAddCustomFieldModal(contactId);
+function openAddCustomFieldModalFromAddTemp() {
+    isTempMode = true;
+    document.getElementById('custom_field_contact_id').value = 'temp';
+    document.getElementById('custom_field_mode').value = 'temp';
+    document.getElementById('new_field_value_div').style.display = 'block';
+    openAddCustomFieldModal();
 }
 
 function openAddCustomFieldModalFromEdit() {
@@ -1094,15 +1224,19 @@ function openAddCustomFieldModalFromEdit() {
         showToast('Contact non identifié', 'error');
         return;
     }
-    openAddCustomFieldModal(currentContactIdForEdit);
+    isTempMode = false;
+    document.getElementById('custom_field_contact_id').value = currentContactIdForEdit;
+    document.getElementById('custom_field_mode').value = 'edit';
+    document.getElementById('new_field_value_div').style.display = 'none';
+    openAddCustomFieldModal();
 }
 
-function openAddCustomFieldModal(contactId) {
-    currentContactIdForField = contactId;
+function openAddCustomFieldModal() {
     const modal = document.getElementById('addCustomFieldModal');
     const modalContent = modal.querySelector('.modal-custom-field');
     document.getElementById('addCustomFieldForm').reset();
     document.getElementById('new_field_options_div').style.display = 'none';
+    document.getElementById('new_field_value').value = '';
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
@@ -1129,62 +1263,69 @@ document.getElementById('addCustomFieldForm')?.addEventListener('submit', async 
     const fieldLabel = document.getElementById('new_field_label').value.trim();
     const fieldType = document.getElementById('new_field_type').value;
     const fieldOptions = document.getElementById('new_field_options').value.trim();
+    const fieldValue = document.getElementById('new_field_value').value.trim();
+    const mode = document.getElementById('custom_field_mode').value;
+    const contactId = document.getElementById('custom_field_contact_id').value;
     
     if (!fieldName || !fieldLabel) {
         showToast('Veuillez remplir tous les champs obligatoires', 'warning');
         return;
     }
     
-    if (!currentContactIdForField) {
-        showToast('Contact non identifié', 'error');
-        return;
-    }
-    
     const btn = document.getElementById('createFieldBtn');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Création...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Ajout...';
     btn.disabled = true;
     
     try {
-        const formData = new FormData();
-        formData.append('action_create_custom_field', '1');
-        formData.append('field_name', fieldName);
-        formData.append('field_label', fieldLabel);
-        formData.append('field_type', fieldType);
-        if (fieldOptions) {
-            formData.append('field_options', fieldOptions);
-        }
-        formData.append('id_contact', currentContactIdForField);
-        
-        const response = await fetch(window.location.href, {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: formData
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-            showToast(result.message, 'success');
-            closeAddCustomFieldModal();
-            
-            // Recharger le contact pour afficher le nouveau champ
-            if (currentContactIdForField) {
-                // Si on est en mode édition
-                if (document.getElementById('editContactModal').style.display === 'flex') {
-                    openEditContactModal(currentContactIdForField);
-                }
-                // Si on est en mode ajout
-                else {
-                    ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions);
-                }
+        if (mode === 'temp') {
+            // Mode temporaire : ajouter le champ à la liste temporaire
+            const success = addTempField(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue);
+            if (success) {
+                ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue);
+                showToast('Champ ajouté temporairement', 'success');
+                closeAddCustomFieldModal();
             }
-        } else {
-            showToast(result.error, 'error');
-            btn.innerHTML = originalText;
-            btn.disabled = false;
+        } else if (mode === 'edit') {
+            // Mode édition : créer le champ directement dans la base
+            if (!contactId || contactId === 'temp') {
+                showToast('Contact non identifié', 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action_create_custom_field', '1');
+            formData.append('field_name', fieldName);
+            formData.append('field_label', fieldLabel);
+            formData.append('field_type', fieldType);
+            if (fieldOptions) {
+                formData.append('field_options', fieldOptions);
+            }
+            formData.append('id_contact', contactId);
+            
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: formData
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                showToast(result.message, 'success');
+                closeAddCustomFieldModal();
+                // Recharger le contact pour afficher le nouveau champ
+                if (currentContactIdForEdit) {
+                    openEditContactModal(currentContactIdForEdit);
+                }
+            } else {
+                showToast(result.error, 'error');
+            }
         }
     } catch (error) {
         showToast('Erreur réseau', 'error');
+    } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
     }
@@ -1197,14 +1338,25 @@ function openAddContactModal() {
     const modal = document.getElementById('addContactModal');
     const modalContent = modal.querySelector('.modal-add-contact');
     document.getElementById('addContactForm').reset();
-    document.getElementById('addContactIdForFields').value = '';
-    // Réinitialiser les champs personnalisés
-    document.getElementById('addCustomFieldsContainer').innerHTML = `
+    
+    // Réinitialiser les champs temporaires
+    tempCustomFields = [];
+    document.getElementById('tempCustomFields').value = '';
+    document.getElementById('tempFieldsList').innerHTML = '';
+    
+    // Réinitialiser l'affichage des champs personnalisés
+    const container = document.getElementById('addCustomFieldsContainer');
+    container.innerHTML = `
         <div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage">
             <i class="fas fa-info-circle mr-1"></i>
-            Aucun champ personnalisé. Enregistrez d'abord le contact, puis ajoutez des champs.
+            Aucun champ personnalisé.
+            <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
+                    class="text-blue-600 hover:underline">
+                Ajouter votre premier champ
+            </button>
         </div>
     `;
+    
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
@@ -1217,7 +1369,7 @@ function closeAddContactModal() {
 }
 
 // ============================================
-// MODAL DE MODIFICATION DE CONTACT - CORRIGÉE
+// MODAL DE MODIFICATION DE CONTACT
 // ============================================
 async function openEditContactModal(contactId) {
     currentContactIdForEdit = contactId;
@@ -1225,7 +1377,6 @@ async function openEditContactModal(contactId) {
     const modalContent = modal.querySelector('.modal-edit-contact');
     
     try {
-        // 🔥 CORRECTION : Utiliser le bon chemin
         const url = `index.php?page=contacts/index&action=get_contact&id=${contactId}`;
         console.log('Chargement du contact:', url);
         
@@ -1278,7 +1429,6 @@ async function openEditContactModal(contactId) {
         if (fieldsData.fields && fieldsData.fields.length > 0) {
             document.getElementById('customFieldsSection').style.display = 'block';
             
-            // Sauvegarder les champs pour ce contact
             window.currentContactFields = fieldsData.fields;
             
             for (const field of fieldsData.fields) {
@@ -1427,21 +1577,6 @@ document.getElementById('addContactForm').addEventListener('submit', async funct
         
         if (result.success) {
             showToast(result.message, 'success');
-            if (result.id_contact) {
-                document.getElementById('addContactIdForFields').value = result.id_contact;
-                showToast('💡 Vous pouvez maintenant ajouter des champs personnalisés pour ce contact', 'info');
-                const container = document.getElementById('addCustomFieldsContainer');
-                container.innerHTML = `
-                    <div class="col-span-2 text-center py-3 text-gray-400 text-sm">
-                        <i class="fas fa-info-circle mr-1"></i>
-                        Contact créé ! 
-                        <button type="button" onclick="openAddCustomFieldModalFromAdd()" 
-                                class="text-blue-600 hover:underline">
-                            Ajouter un champ personnalisé
-                        </button>
-                    </div>
-                `;
-            }
             setTimeout(() => window.location.reload(), 2000);
         } else {
             showToast(result.error || 'Erreur inconnue', 'error');
