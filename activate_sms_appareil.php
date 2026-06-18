@@ -25,8 +25,6 @@ try {
         throw new Exception('ID appareil requis');
     }
 
-    // Désactiver tous les appareils du compte
-    $db->update('sms_appareils', ['est_actif' => false], ['id_compte' => $idCompte]);
     
     // Activer l'appareil sélectionné
     $db->update('sms_appareils', ['est_actif' => true], ['id_appareil' => $appareilId]);
