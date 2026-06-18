@@ -252,6 +252,6 @@ function escapeHtml(text) {
 <?php foreach ($campagnesAAlerter as $campagne): ?>
     setTimeout(function() {
         showToast('La campagne "<?= addslashes($campagne['nom_campagne']) ?>" doit être envoyée !', 'warning');
-    }, 1000);
+    }, 18000);
 <?php endforeach; ?>
 </script>

@@ -116,6 +116,42 @@ $error = '';
 $success = '';
 $resultats = [];
 
+// ============================================
+// FONCTION POUR GÉNÉRER UN MESSAGE PAR DÉFAUT
+// ============================================
+function genererMessageParDefaut($message, $hasFile, $hasAudio, $fichierData = null) {
+    // Si un message est déjà présent, on le garde
+    if (!empty($message)) {
+        return $message;
+    }
+    
+    // Si c'est un audio
+    if ($hasAudio) {
+        return "🎤 Message vocal envoyé le " . date('d/m/Y à H:i');
+    }
+    
+    // Si c'est un fichier
+    if ($hasFile && isset($_FILES['fichier']) && $_FILES['fichier']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['fichier'];
+        $nomFichier = $file['name'] ?? 'fichier';
+        $taille = round($file['size'] / 1024 / 1024, 2);
+        $type = $fichierData['type'] ?? 'fichier';
+        
+        switch ($type) {
+            case 'image':
+                return "📷 Image envoyée : " . $nomFichier . " (" . $taille . " Mo)";
+            case 'video':
+                return "🎬 Vidéo envoyée : " . $nomFichier . " (" . $taille . " Mo)";
+            case 'voice':
+                return "🎤 Message vocal envoyé le " . date('d/m/Y à H:i');
+            default:
+                return "📎 Fichier envoyé : " . $nomFichier . " (" . $taille . " Mo)";
+        }
+    }
+    
+    return '';
+}
+
 // Fonction pour formater correctement un numéro WhatsApp
 function formatWhatsAppNumber($telephone) {
     if (empty($telephone)) {
@@ -367,12 +403,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'sent_at' => date('Y-m-d H:i:s')
                         ], ['id_campagne_config' => $campagneConfigId]);
                         
+                        // Générer un message par défaut si nécessaire
+                        $messageAEnregistrer = genererMessageParDefaut($message, $hasFile, $hasAudio, $fichierData);
+                        $titreMessage = !empty($message) ? $message : $messageAEnregistrer;
+                        
                         $campagneData = [
                             'id_compte' => $idCompte,
                             'id_campagne_config' => $campagneConfigId,
                             'type_campagne' => 'whatsapp',
-                            'titre' => "WhatsApp: " . substr($message, 0, 40),
-                            'message' => $message,
+                            'titre' => "WhatsApp: " . substr($titreMessage, 0, 40),
+                            'message' => $messageAEnregistrer,
                             'destinataires' => json_encode([$phoneNumber]),
                             'nb_destinataires' => 1,
                             'nb_envoyes' => 1,
@@ -495,13 +535,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // ============================================
                     // ENREGISTREMENT DANS L'HISTORIQUE
                     // ============================================
+                    // Générer un message par défaut si nécessaire
+                    $messageAEnregistrer = genererMessageParDefaut($message, $hasFile, $hasAudio, $fichierData);
+                    
                     $titre = "WhatsApp - " . date('d/m/Y H:i');
                     if (!empty($message)) {
                         $titre = "WhatsApp: " . (strlen($message) > 40 ? substr($message, 0, 40) . '...' : $message);
                     } elseif ($hasAudio) {
                         $titre = "WhatsApp: Message vocal";
                     } elseif ($hasFile) {
-                        $titre = "WhatsApp: Fichier envoyé";
+                        $nomFichier = $_FILES['fichier']['name'] ?? 'fichier';
+                        $titre = "WhatsApp: " . $nomFichier;
                     }
                     
                     // 🔥 CORRECTION : Statut correct pour la table campagne
@@ -519,7 +563,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'id_campagne_config' => $campagneConfigId,
                         'type_campagne' => 'whatsapp',
                         'titre' => $titre,
-                        'message' => $message,
+                        'message' => $messageAEnregistrer,
                         'destinataires' => json_encode($destinatairesNoms),
                         'nb_destinataires' => $total,
                         'nb_envoyes' => $total,
