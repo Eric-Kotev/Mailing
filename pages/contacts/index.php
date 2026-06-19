@@ -568,6 +568,9 @@ unset($_SESSION['flash_error']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mes contacts - <?= APP_NAME ?></title>
     <style>
+        /* ============================================
+           STYLES DE BASE
+           ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -660,6 +663,102 @@ unset($_SESSION['flash_error']);
         }
         .remove-temp-field:hover {
             color: #dc2626;
+        }
+
+        /* ============================================
+           STYLES POUR LE SCROLL DES MODALES
+           ============================================ */
+        /* Conteneur des modales avec hauteur limitée */
+        .modal-add-contact,
+        .modal-edit-contact,
+        .modal-import-csv,
+        .modal-custom-field {
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Zone de contenu scrollable */
+        .modal-add-contact .p-6,
+        .modal-edit-contact .p-6,
+        .modal-import-csv .p-6,
+        .modal-custom-field .p-6 {
+            flex: 1;
+            overflow-y: auto;
+            max-height: calc(90vh - 20px);
+        }
+
+        /* Personnalisation de la scrollbar */
+        .modal-add-contact .p-6::-webkit-scrollbar,
+        .modal-edit-contact .p-6::-webkit-scrollbar,
+        .modal-import-csv .p-6::-webkit-scrollbar,
+        .modal-custom-field .p-6::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .modal-add-contact .p-6::-webkit-scrollbar-track,
+        .modal-edit-contact .p-6::-webkit-scrollbar-track,
+        .modal-import-csv .p-6::-webkit-scrollbar-track,
+        .modal-custom-field .p-6::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .modal-add-contact .p-6::-webkit-scrollbar-thumb,
+        .modal-edit-contact .p-6::-webkit-scrollbar-thumb,
+        .modal-import-csv .p-6::-webkit-scrollbar-thumb,
+        .modal-custom-field .p-6::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        .modal-add-contact .p-6::-webkit-scrollbar-thumb:hover,
+        .modal-edit-contact .p-6::-webkit-scrollbar-thumb:hover,
+        .modal-import-csv .p-6::-webkit-scrollbar-thumb:hover,
+        .modal-custom-field .p-6::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Header sticky pour rester visible */
+        .modal-header-sticky {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 16px;
+        }
+
+        /* Footer sticky pour les boutons */
+        .modal-footer-sticky {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            z-index: 10;
+            padding-top: 12px;
+            border-top: 1px solid #e5e7eb;
+            margin-top: 16px;
+        }
+
+        /* Version mobile */
+        @media (max-width: 768px) {
+            .modal-add-contact,
+            .modal-edit-contact,
+            .modal-import-csv,
+            .modal-custom-field {
+                max-height: 95vh;
+                margin: 0 8px;
+            }
+            
+            .modal-add-contact .p-6,
+            .modal-edit-contact .p-6,
+            .modal-import-csv .p-6,
+            .modal-custom-field .p-6 {
+                max-height: calc(95vh - 16px);
+                padding: 16px;
+            }
         }
     </style>
 </head>
@@ -765,10 +864,10 @@ unset($_SESSION['flash_error']);
                                 <td class="px-6 py-4">
                                     <?php if ($isBlacklisted): ?>
                                         <button onclick="openUnblacklistModal('<?= $contact['id_contact'] ?>')" class="px-2 py-1 rounded text-xs bg-red-100 text-red-700 hover:bg-red-200 transition cursor-pointer flex items-center gap-1">
-                                            <i class="fas fa-ban mr-1"></i> Blacklisté
+                                         Blacklisté
                                         </button>
                                     <?php else: ?>
-                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"><i class="fas fa-check-circle mr-1"></i> Normal</span>
+                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"> Normal</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-6 py-4 space-x-2">
@@ -789,18 +888,31 @@ unset($_SESSION['flash_error']);
 </div>
 
 <!-- ============================================ -->
-<!-- MODAL D'AJOUT DE CONTACT -->
+<!-- MODAL D'AJOUT DE CONTACT AVEC SCROLL -->
 <!-- ============================================ -->
 <div id="addContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-add-contact">
         <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-                <div class="flex items-center"><div class="bg-blue-100 p-2 rounded-full mr-3"><i class="fas fa-user-plus text-blue-600 text-xl"></i></div><h3 class="text-xl font-bold text-gray-800">Ajouter un contact</h3></div>
-                <button type="button" onclick="closeAddContactModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            <!-- Header sticky -->
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-blue-100 p-2 rounded-full mr-3">
+                            <i class="fas fa-user-plus text-blue-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800">Ajouter un contact</h3>
+                    </div>
+                    <button type="button" onclick="closeAddContactModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
             </div>
+            
+            <!-- Contenu scrollable -->
             <form id="addContactForm" method="POST">
                 <input type="hidden" name="action_add_contact" value="1">
                 <input type="hidden" id="tempCustomFields" name="temp_custom_fields" value="">
+                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
@@ -846,9 +958,12 @@ unset($_SESSION['flash_error']);
                     <div id="tempFieldsList" class="mt-3 flex flex-wrap gap-2"></div>
                 </div>
                 
-                <div class="mt-6 flex justify-end space-x-2">
-                    <button type="button" onclick="closeAddContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
+                <!-- Footer sticky avec les boutons -->
+                <div class="modal-footer-sticky">
+                    <div class="flex justify-end space-x-2">
+                        <button type="button" onclick="closeAddContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -856,18 +971,31 @@ unset($_SESSION['flash_error']);
 </div>
 
 <!-- ============================================ -->
-<!-- MODAL DE MODIFICATION DE CONTACT -->
+<!-- MODAL DE MODIFICATION DE CONTACT AVEC SCROLL -->
 <!-- ============================================ -->
 <div id="editContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-edit-contact">
         <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-                <div class="flex items-center"><div class="bg-yellow-100 p-2 rounded-full mr-3"><i class="fas fa-edit text-yellow-600 text-xl"></i></div><h3 class="text-xl font-bold text-gray-800">Modifier le contact</h3></div>
-                <button type="button" onclick="closeEditContactModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            <!-- Header sticky -->
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-yellow-100 p-2 rounded-full mr-3">
+                            <i class="fas fa-edit text-yellow-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800">Modifier le contact</h3>
+                    </div>
+                    <button type="button" onclick="closeEditContactModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
             </div>
+            
+            <!-- Contenu scrollable -->
             <form id="editContactForm" method="POST">
                 <input type="hidden" name="action_edit_contact" value="1">
                 <input type="hidden" name="id_contact" id="edit_id_contact">
+                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="edit_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="edit_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
@@ -902,9 +1030,12 @@ unset($_SESSION['flash_error']);
                     <div id="editCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
                 
-                <div class="mt-6 flex justify-end space-x-2">
-                    <button type="button" onclick="closeEditContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
+                <!-- Footer sticky avec les boutons -->
+                <div class="modal-footer-sticky">
+                    <div class="flex justify-end space-x-2">
+                        <button type="button" onclick="closeEditContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -912,23 +1043,27 @@ unset($_SESSION['flash_error']);
 </div>
 
 <!-- ============================================ -->
-<!-- MODALE DE CRÉATION DE CHAMP PERSONNALISÉ -->
+<!-- MODALE DE CRÉATION DE CHAMP PERSONNALISÉ AVEC SCROLL -->
 <!-- ============================================ -->
 <div id="addCustomFieldModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-[60] transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-custom-field">
         <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-                <div class="flex items-center">
-                    <div class="bg-blue-100 p-2 rounded-full mr-3">
-                        <i class="fas fa-plus-circle text-blue-600 text-xl"></i>
+            <!-- Header sticky -->
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-blue-100 p-2 rounded-full mr-3">
+                            <i class="fas fa-plus-circle text-blue-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800">Ajouter un champ personnalisé</h3>
                     </div>
-                    <h3 class="text-xl font-bold text-gray-800">Ajouter un champ personnalisé</h3>
+                    <button type="button" onclick="closeAddCustomFieldModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
                 </div>
-                <button type="button" onclick="closeAddCustomFieldModal()" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
             </div>
             
+            <!-- Contenu scrollable -->
             <form id="addCustomFieldForm">
                 <input type="hidden" id="custom_field_contact_id" value="">
                 <input type="hidden" id="custom_field_mode" value="temp">
@@ -982,63 +1117,99 @@ unset($_SESSION['flash_error']);
                     </div>
                 </div>
                 
-                <div class="mt-6 flex justify-end space-x-2">
-                    <button type="button" onclick="closeAddCustomFieldModal()" 
-                            class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                        Annuler
-                    </button>
-                    <button type="submit" id="createFieldBtn" 
-                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                        <i class="fas fa-plus mr-2"></i>Ajouter le champ
-                    </button>
+                <!-- Footer sticky avec les boutons -->
+                <div class="modal-footer-sticky">
+                    <div class="flex justify-end space-x-2">
+                        <button type="button" onclick="closeAddCustomFieldModal()" 
+                                class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                            Annuler
+                        </button>
+                        <button type="submit" id="createFieldBtn" 
+                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                            <i class="fas fa-plus mr-2"></i>Ajouter le champ
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- MODAL D'IMPORT CSV -->
+<!-- ============================================ -->
+<!-- MODAL D'IMPORT CSV AVEC SCROLL -->
+<!-- ============================================ -->
 <div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-import-csv">
         <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-                <div class="flex items-center"><div class="bg-green-100 p-2 rounded-full mr-3"><i class="fas fa-file-import text-green-600 text-xl"></i></div><h3 class="text-xl font-bold text-gray-800">Importer des contacts</h3></div>
-                <button type="button" onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+            <!-- Header sticky -->
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-green-100 p-2 rounded-full mr-3">
+                            <i class="fas fa-file-import text-green-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800">Importer des contacts</h3>
+                    </div>
+                    <button type="button" onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
             </div>
-            <div class="bg-blue-50 p-4 rounded mb-4">
-                <h4 class="font-medium text-blue-800 mb-2">Format du fichier</h4>
-                <ul class="text-sm text-blue-700 space-y-1">
-                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom, email</strong></li>
-                    <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : telephone, ville, adresse, code_postal, pays, date_naissance</li>
-                    <li><i class="fas fa-check-circle mr-2"></i> Séparateur : point-virgule (;) ou virgule (,)</li>
-                    <li><i class="fas fa-check-circle mr-2"></i> Les contacts déjà existants (même email) sont ignorés</li>
-                    <li><i class="fas fa-info-circle mr-2"></i> La date de naissance doit être au format YYYY-MM-DD et le contact doit avoir au moins 18 ans</li>
-                </ul>
-            </div>
+            
+            <!-- Contenu scrollable -->
             <form id="importForm" method="POST" enctype="multipart/form-data">
-                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV/Excel</label><input type="file" name="fichier" id="importFile" accept=".csv,.xls,.xlsx" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500"><p class="text-xs text-gray-500 mt-1">Formats acceptés : CSV, XLS, XLSX (Taille max : 10MB)</p></div>
-                <div class="mt-6 flex justify-end space-x-2">
-                    <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                    <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Importer</button>
+                <div class="bg-blue-50 p-4 rounded mb-4">
+                    <h4 class="font-medium text-blue-800 mb-2">Format du fichier</h4>
+                    <ul class="text-sm text-blue-700 space-y-1">
+                        <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom, email</strong></li>
+                        <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : telephone, ville, adresse, code_postal, pays, date_naissance</li>
+                        <li><i class="fas fa-check-circle mr-2"></i> Séparateur : point-virgule (;) ou virgule (,)</li>
+                        <li><i class="fas fa-check-circle mr-2"></i> Les contacts déjà existants (même email) sont ignorés</li>
+                        <li><i class="fas fa-info-circle mr-2"></i> La date de naissance doit être au format YYYY-MM-DD et le contact doit avoir au moins 18 ans</li>
+                    </ul>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV/Excel</label>
+                    <input type="file" name="fichier" id="importFile" accept=".csv,.xls,.xlsx" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500">
+                    <p class="text-xs text-gray-500 mt-1">Formats acceptés : CSV, XLS, XLSX (Taille max : 10MB)</p>
+                </div>
+                
+                <!-- Footer sticky avec les boutons -->
+                <div class="modal-footer-sticky">
+                    <div class="flex justify-end space-x-2">
+                        <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                        <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Importer</button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<!-- ============================================ -->
 <!-- MODALE POUR DÉBLACKLISTER -->
+<!-- ============================================ -->
 <div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div class="p-6 text-center">
             <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4"><i class="fas fa-unlock-alt text-green-600 text-3xl"></i></div>
             <h3 class="text-xl font-bold text-gray-800 mb-2">Débloquer le contact</h3>
             <p class="text-gray-500 mb-6">Êtes-vous sûr de vouloir retirer ce contact de la blacklist ?</p>
-            <form method="POST" action="?page=contacts/unblacklist"><input type="hidden" name="id_contact" id="unblacklistContactId"><div class="flex space-x-3"><button type="button" onclick="closeUnblacklistModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button><button type="submit" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Débloquer</button></div></form>
+            <form method="POST" action="?page=contacts/unblacklist">
+                <input type="hidden" name="id_contact" id="unblacklistContactId">
+                <div class="flex space-x-3">
+                    <button type="button" onclick="closeUnblacklistModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Débloquer</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
+<!-- ============================================ -->
 <!-- MODALE DE CONFIRMATION SUPPRESSION -->
+<!-- ============================================ -->
 <div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div class="p-6 text-center">
@@ -1046,7 +1217,10 @@ unset($_SESSION['flash_error']);
             <h3 class="text-xl font-bold text-gray-800 mb-2">Confirmer la suppression</h3>
             <p class="text-gray-500 mb-6">Êtes-vous sûr de vouloir supprimer ce contact ?</p>
             <p class="text-sm text-gray-400 mb-6">Cette action est irréversible.</p>
-            <div class="flex space-x-3"><button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button><a href="#" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">Supprimer</a></div>
+            <div class="flex space-x-3">
+                <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                <a href="#" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">Supprimer</a>
+            </div>
         </div>
     </div>
 </div>
