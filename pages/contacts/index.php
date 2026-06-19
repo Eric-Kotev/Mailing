@@ -871,10 +871,10 @@ unset($_SESSION['flash_error']);
                                 <td class="px-6 py-4">
                                     <?php if ($isBlacklisted): ?>
                                         <button onclick="openUnblacklistModal('<?= $contact['id_contact'] ?>')" class="px-2 py-1 rounded text-xs bg-red-100 text-red-700 hover:bg-red-200 transition cursor-pointer flex items-center gap-1">
-                                            <i class="fas fa-ban mr-1"></i> Blacklisté
+                                             Blacklisté
                                         </button>
                                     <?php else: ?>
-                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"><i class="fas fa-check-circle mr-1"></i> Normal</span>
+                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"> Normal</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-6 py-4 space-x-2">
