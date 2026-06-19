@@ -1355,11 +1355,15 @@ function addTempField(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue
         field_label: fieldLabel,
         field_type: fieldType,
         field_options: fieldOptions || null,
-        field_value: fieldValue || ''
+        field_value: fieldValue || '' // La valeur est bien conservée
     });
     
     updateTempFieldsDisplay();
     updateTempFieldsInput();
+    
+
+    showToast(`Champ "${fieldLabel}" ajouté avec la valeur${fieldValue ? ' : ' + fieldValue : ''}`, 'success');
+    
     return true;
 }
 
