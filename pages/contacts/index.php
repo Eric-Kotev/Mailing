@@ -666,9 +666,9 @@ unset($_SESSION['flash_error']);
         }
 
         /* ============================================
-           STYLES POUR LE SCROLL DES MODALES
+           STYLES POUR LE SCROLL DES MODALES - VERSION CORRIGÉE
            ============================================ */
-        /* Conteneur des modales avec hauteur limitée */
+        /* Conteneur des modales */
         .modal-add-contact,
         .modal-edit-contact,
         .modal-import-csv,
@@ -677,69 +677,78 @@ unset($_SESSION['flash_error']);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            background: white;
+            border-radius: 1rem;
         }
 
-        /* Zone de contenu scrollable */
+        /* Le conteneur interne avec padding */
         .modal-add-contact .p-6,
         .modal-edit-contact .p-6,
         .modal-import-csv .p-6,
         .modal-custom-field .p-6 {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        /* Header - collé en haut */
+        .modal-header-sticky {
+            flex-shrink: 0;
+            background: white;
+            padding-bottom: 12px;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #e5e7eb;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Zone de contenu scrollable */
+        .modal-scroll-content {
             flex: 1;
             overflow-y: auto;
-            max-height: calc(90vh - 20px);
+            padding: 4px 4px 12px 4px;
+            min-height: 0;
+        }
+
+        /* Footer - collé en bas */
+        .modal-footer-sticky {
+            flex-shrink: 0;
+            background: white;
+            padding-top: 12px;
+            margin-top: 12px;
+            border-top: 2px solid #e5e7eb;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Le formulaire occupe tout l'espace */
+        .modal-add-contact form,
+        .modal-edit-contact form,
+        .modal-import-csv form,
+        .modal-custom-field form {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
         }
 
         /* Personnalisation de la scrollbar */
-        .modal-add-contact .p-6::-webkit-scrollbar,
-        .modal-edit-contact .p-6::-webkit-scrollbar,
-        .modal-import-csv .p-6::-webkit-scrollbar,
-        .modal-custom-field .p-6::-webkit-scrollbar {
+        .modal-scroll-content::-webkit-scrollbar {
             width: 6px;
         }
-
-        .modal-add-contact .p-6::-webkit-scrollbar-track,
-        .modal-edit-contact .p-6::-webkit-scrollbar-track,
-        .modal-import-csv .p-6::-webkit-scrollbar-track,
-        .modal-custom-field .p-6::-webkit-scrollbar-track {
+        .modal-scroll-content::-webkit-scrollbar-track {
             background: #f1f1f1;
             border-radius: 3px;
         }
-
-        .modal-add-contact .p-6::-webkit-scrollbar-thumb,
-        .modal-edit-contact .p-6::-webkit-scrollbar-thumb,
-        .modal-import-csv .p-6::-webkit-scrollbar-thumb,
-        .modal-custom-field .p-6::-webkit-scrollbar-thumb {
+        .modal-scroll-content::-webkit-scrollbar-thumb {
             background: #c1c1c1;
             border-radius: 3px;
         }
-
-        .modal-add-contact .p-6::-webkit-scrollbar-thumb:hover,
-        .modal-edit-contact .p-6::-webkit-scrollbar-thumb:hover,
-        .modal-import-csv .p-6::-webkit-scrollbar-thumb:hover,
-        .modal-custom-field .p-6::-webkit-scrollbar-thumb:hover {
+        .modal-scroll-content::-webkit-scrollbar-thumb:hover {
             background: #a8a8a8;
-        }
-
-        /* Header sticky pour rester visible */
-        .modal-header-sticky {
-            position: sticky;
-            top: 0;
-            background: white;
-            z-index: 10;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #e5e7eb;
-            margin-bottom: 16px;
-        }
-
-        /* Footer sticky pour les boutons */
-        .modal-footer-sticky {
-            position: sticky;
-            bottom: 0;
-            background: white;
-            z-index: 10;
-            padding-top: 12px;
-            border-top: 1px solid #e5e7eb;
-            margin-top: 16px;
         }
 
         /* Version mobile */
@@ -751,12 +760,10 @@ unset($_SESSION['flash_error']);
                 max-height: 95vh;
                 margin: 0 8px;
             }
-            
             .modal-add-contact .p-6,
             .modal-edit-contact .p-6,
             .modal-import-csv .p-6,
             .modal-custom-field .p-6 {
-                max-height: calc(95vh - 16px);
                 padding: 16px;
             }
         }
@@ -864,10 +871,10 @@ unset($_SESSION['flash_error']);
                                 <td class="px-6 py-4">
                                     <?php if ($isBlacklisted): ?>
                                         <button onclick="openUnblacklistModal('<?= $contact['id_contact'] ?>')" class="px-2 py-1 rounded text-xs bg-red-100 text-red-700 hover:bg-red-200 transition cursor-pointer flex items-center gap-1">
-                                         Blacklisté
+                                            <i class="fas fa-ban mr-1"></i> Blacklisté
                                         </button>
                                     <?php else: ?>
-                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"> Normal</span>
+                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"><i class="fas fa-check-circle mr-1"></i> Normal</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-6 py-4 space-x-2">
@@ -893,7 +900,7 @@ unset($_SESSION['flash_error']);
 <div id="addContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-add-contact">
         <div class="p-6">
-            <!-- Header sticky -->
+            <!-- HEADER - Toujours visible -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
@@ -908,61 +915,89 @@ unset($_SESSION['flash_error']);
                 </div>
             </div>
             
-            <!-- Contenu scrollable -->
+            <!-- FORMULAIRE -->
             <form id="addContactForm" method="POST">
                 <input type="hidden" name="action_add_contact" value="1">
                 <input type="hidden" id="tempCustomFields" name="temp_custom_fields" value="">
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" name="email" id="add_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
-                        <input type="tel" name="telephone" id="add_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                        <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
-                        <input type="date" name="date_naissance" id="add_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
-                        <p class="date-hint">📅 Le contact doit avoir au moins 18 ans. Les dates futures sont interdites.</p>
-                    </div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="add_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="add_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Pays</label><input type="text" name="pays" id="add_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                </div>
-                <div class="mt-4"><label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label><textarea name="adresse" id="add_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea></div>
-                
-                <!-- Champs personnalisés pour l'ajout -->
-                <div class="mt-6 pt-4 border-t border-gray-200">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-md font-semibold text-gray-700">
-                            <i class="fas fa-cog mr-2"></i>Champs personnalisés
-                        </h3>
-                        <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
-                                class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
-                            <i class="fas fa-plus-circle"></i> Ajouter un champ
-                        </button>
-                    </div>
-                    <div id="addCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            Aucun champ personnalisé.
-                            <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
-                                    class="text-blue-600 hover:underline">
-                                Ajouter votre premier champ
-                            </button>
+                <!-- CONTENU SCROLLABLE -->
+                <div class="modal-scroll-content">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label>
+                            <input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
+                            <input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                            <input type="email" name="email" id="add_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
+                            <input type="tel" name="telephone" id="add_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
+                            <input type="date" name="date_naissance" id="add_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
+                            <p class="date-hint">📅 Le contact doit avoir au moins 18 ans. Les dates futures sont interdites.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ville</label>
+                            <input type="text" name="ville" id="add_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label>
+                            <input type="text" name="code_postal" id="add_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Pays</label>
+                            <input type="text" name="pays" id="add_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                     </div>
-                    <!-- Liste des champs temporaires -->
-                    <div id="tempFieldsList" class="mt-3 flex flex-wrap gap-2"></div>
+                    
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
+                        <textarea name="adresse" id="add_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+                    </div>
+                    
+                    <!-- Champs personnalisés -->
+                    <div class="mt-6 pt-4 border-t border-gray-200">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-md font-semibold text-gray-700">
+                                <i class="fas fa-cog mr-2"></i>Champs personnalisés
+                            </h3>
+                            <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
+                                    class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
+                                <i class="fas fa-plus-circle"></i> Ajouter un champ
+                            </button>
+                        </div>
+                        <div id="addCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Aucun champ personnalisé.
+                                <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
+                                        class="text-blue-600 hover:underline">
+                                    Ajouter votre premier champ
+                                </button>
+                            </div>
+                        </div>
+                        <div id="tempFieldsList" class="mt-3 flex flex-wrap gap-2"></div>
+                    </div>
                 </div>
                 
-                <!-- Footer sticky avec les boutons -->
+                <!-- FOOTER - Toujours visible -->
                 <div class="modal-footer-sticky">
                     <div class="flex justify-end space-x-2">
-                        <button type="button" onclick="closeAddContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
+                        <button type="button" onclick="closeAddContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                            Annuler
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                            Enregistrer
+                        </button>
                     </div>
                 </div>
             </form>
@@ -976,7 +1011,7 @@ unset($_SESSION['flash_error']);
 <div id="editContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-edit-contact">
         <div class="p-6">
-            <!-- Header sticky -->
+            <!-- HEADER -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
@@ -991,50 +1026,79 @@ unset($_SESSION['flash_error']);
                 </div>
             </div>
             
-            <!-- Contenu scrollable -->
+            <!-- FORMULAIRE -->
             <form id="editContactForm" method="POST">
                 <input type="hidden" name="action_edit_contact" value="1">
                 <input type="hidden" name="id_contact" id="edit_id_contact">
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label><input type="text" name="prenom" id="edit_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label><input type="text" name="nom" id="edit_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" name="email" id="edit_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
-                        <input type="tel" name="telephone" id="edit_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                        <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
+                <!-- CONTENU SCROLLABLE -->
+                <div class="modal-scroll-content">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label>
+                            <input type="text" name="prenom" id="edit_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
+                            <input type="text" name="nom" id="edit_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                            <input type="email" name="email" id="edit_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
+                            <input type="tel" name="telephone" id="edit_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
+                            <input type="date" name="date_naissance" id="edit_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
+                            <p class="date-hint">📅 Le contact doit avoir au moins 18 ans. Les dates futures sont interdites.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ville</label>
+                            <input type="text" name="ville" id="edit_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label>
+                            <input type="text" name="code_postal" id="edit_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Pays</label>
+                            <input type="text" name="pays" id="edit_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
-                        <input type="date" name="date_naissance" id="edit_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
-                        <p class="date-hint">📅 Le contact doit avoir au moins 18 ans. Les dates futures sont interdites.</p>
+                    
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
+                        <textarea name="adresse" id="edit_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
                     </div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Ville</label><input type="text" name="ville" id="edit_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label><input type="text" name="code_postal" id="edit_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Pays</label><input type="text" name="pays" id="edit_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+                    
+                    <!-- Champs personnalisés dynamiques -->
+                    <div class="mt-6 pt-4 border-t border-gray-200" id="customFieldsSection">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-md font-semibold text-gray-700">
+                                <i class="fas fa-cog mr-2"></i>Informations supplémentaires
+                            </h3>
+                            <button type="button" onclick="openAddCustomFieldModalFromEdit()" 
+                                    class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
+                                <i class="fas fa-plus-circle"></i> Ajouter un champ
+                            </button>
+                        </div>
+                        <div id="editCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                    </div>
                 </div>
-                <div class="mt-4"><label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label><textarea name="adresse" id="edit_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea></div>
                 
-                <!-- Champs personnalisés dynamiques -->
-                <div class="mt-6 pt-4 border-t border-gray-200" id="customFieldsSection">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-md font-semibold text-gray-700">
-                            <i class="fas fa-cog mr-2"></i>Informations supplémentaires
-                        </h3>
-                        <button type="button" onclick="openAddCustomFieldModalFromEdit()" 
-                                class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
-                            <i class="fas fa-plus-circle"></i> Ajouter un champ
-                        </button>
-                    </div>
-                    <div id="editCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-                </div>
-                
-                <!-- Footer sticky avec les boutons -->
+                <!-- FOOTER -->
                 <div class="modal-footer-sticky">
                     <div class="flex justify-end space-x-2">
-                        <button type="button" onclick="closeEditContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">Enregistrer</button>
+                        <button type="button" onclick="closeEditContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                            Annuler
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                            Enregistrer
+                        </button>
                     </div>
                 </div>
             </form>
@@ -1043,12 +1107,12 @@ unset($_SESSION['flash_error']);
 </div>
 
 <!-- ============================================ -->
-<!-- MODALE DE CRÉATION DE CHAMP PERSONNALISÉ AVEC SCROLL -->
+<!-- MODALE DE CRÉATION DE CHAMP PERSONNALISÉ -->
 <!-- ============================================ -->
 <div id="addCustomFieldModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-[60] transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-custom-field">
         <div class="p-6">
-            <!-- Header sticky -->
+            <!-- HEADER -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
@@ -1063,61 +1127,64 @@ unset($_SESSION['flash_error']);
                 </div>
             </div>
             
-            <!-- Contenu scrollable -->
+            <!-- FORMULAIRE -->
             <form id="addCustomFieldForm">
                 <input type="hidden" id="custom_field_contact_id" value="">
                 <input type="hidden" id="custom_field_mode" value="temp">
                 
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Nom technique <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" id="new_field_name" required 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                               placeholder="ex: societe, fonction">
-                        <p class="text-xs text-gray-500 mt-1">Sans accent, sans espace (utilisez _ )</p>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Libellé <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" id="new_field_label" required 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                               placeholder="ex: Société, Fonction">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Type de champ</label>
-                        <select id="new_field_type" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                            <option value="text">Texte court</option>
-                            <option value="textarea">Zone texte</option>
-                            <option value="number">Nombre</option>
-                            <option value="date">Date</option>
-                            <option value="email">Email</option>
-                            <option value="tel">Téléphone</option>
-                            <option value="select">Liste déroulante</option>
-                        </select>
-                    </div>
-                    <div id="new_field_options_div" style="display:none">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Options <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" id="new_field_options" 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                               placeholder="ex: Option 1|Option 2|Option 3">
-                        <p class="text-xs text-gray-500 mt-1">Séparez les options par <strong>|</strong></p>
-                    </div>
-                    <div id="new_field_value_div">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Valeur (optionnel)
-                        </label>
-                        <input type="text" id="new_field_value" 
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                               placeholder="Valeur du champ">
+                <!-- CONTENU SCROLLABLE -->
+                <div class="modal-scroll-content">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Nom technique <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="new_field_name" required 
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   placeholder="ex: societe, fonction">
+                            <p class="text-xs text-gray-500 mt-1">Sans accent, sans espace (utilisez _ )</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Libellé <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="new_field_label" required 
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   placeholder="ex: Société, Fonction">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Type de champ</label>
+                            <select id="new_field_type" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                                <option value="text">Texte court</option>
+                                <option value="textarea">Zone texte</option>
+                                <option value="number">Nombre</option>
+                                <option value="date">Date</option>
+                                <option value="email">Email</option>
+                                <option value="tel">Téléphone</option>
+                                <option value="select">Liste déroulante</option>
+                            </select>
+                        </div>
+                        <div id="new_field_options_div" style="display:none">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Options <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="new_field_options" 
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   placeholder="ex: Option 1|Option 2|Option 3">
+                            <p class="text-xs text-gray-500 mt-1">Séparez les options par <strong>|</strong></p>
+                        </div>
+                        <div id="new_field_value_div">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Valeur (optionnel)
+                            </label>
+                            <input type="text" id="new_field_value" 
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   placeholder="Valeur du champ">
+                        </div>
                     </div>
                 </div>
                 
-                <!-- Footer sticky avec les boutons -->
+                <!-- FOOTER -->
                 <div class="modal-footer-sticky">
                     <div class="flex justify-end space-x-2">
                         <button type="button" onclick="closeAddCustomFieldModal()" 
@@ -1136,12 +1203,12 @@ unset($_SESSION['flash_error']);
 </div>
 
 <!-- ============================================ -->
-<!-- MODAL D'IMPORT CSV AVEC SCROLL -->
+<!-- MODAL D'IMPORT CSV -->
 <!-- ============================================ -->
 <div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-import-csv">
         <div class="p-6">
-            <!-- Header sticky -->
+            <!-- HEADER -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
@@ -1156,30 +1223,37 @@ unset($_SESSION['flash_error']);
                 </div>
             </div>
             
-            <!-- Contenu scrollable -->
+            <!-- FORMULAIRE -->
             <form id="importForm" method="POST" enctype="multipart/form-data">
-                <div class="bg-blue-50 p-4 rounded mb-4">
-                    <h4 class="font-medium text-blue-800 mb-2">Format du fichier</h4>
-                    <ul class="text-sm text-blue-700 space-y-1">
-                        <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom, email</strong></li>
-                        <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : telephone, ville, adresse, code_postal, pays, date_naissance</li>
-                        <li><i class="fas fa-check-circle mr-2"></i> Séparateur : point-virgule (;) ou virgule (,)</li>
-                        <li><i class="fas fa-check-circle mr-2"></i> Les contacts déjà existants (même email) sont ignorés</li>
-                        <li><i class="fas fa-info-circle mr-2"></i> La date de naissance doit être au format YYYY-MM-DD et le contact doit avoir au moins 18 ans</li>
-                    </ul>
+                <!-- CONTENU SCROLLABLE -->
+                <div class="modal-scroll-content">
+                    <div class="bg-blue-50 p-4 rounded mb-4">
+                        <h4 class="font-medium text-blue-800 mb-2">Format du fichier</h4>
+                        <ul class="text-sm text-blue-700 space-y-1">
+                            <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom, email</strong></li>
+                            <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : telephone, ville, adresse, code_postal, pays, date_naissance</li>
+                            <li><i class="fas fa-check-circle mr-2"></i> Séparateur : point-virgule (;) ou virgule (,)</li>
+                            <li><i class="fas fa-check-circle mr-2"></i> Les contacts déjà existants (même email) sont ignorés</li>
+                            <li><i class="fas fa-info-circle mr-2"></i> La date de naissance doit être au format YYYY-MM-DD et le contact doit avoir au moins 18 ans</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV/Excel</label>
+                        <input type="file" name="fichier" id="importFile" accept=".csv,.xls,.xlsx" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500">
+                        <p class="text-xs text-gray-500 mt-1">Formats acceptés : CSV, XLS, XLSX (Taille max : 10MB)</p>
+                    </div>
                 </div>
                 
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV/Excel</label>
-                    <input type="file" name="fichier" id="importFile" accept=".csv,.xls,.xlsx" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500">
-                    <p class="text-xs text-gray-500 mt-1">Formats acceptés : CSV, XLS, XLSX (Taille max : 10MB)</p>
-                </div>
-                
-                <!-- Footer sticky avec les boutons -->
+                <!-- FOOTER -->
                 <div class="modal-footer-sticky">
                     <div class="flex justify-end space-x-2">
-                        <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                        <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Importer</button>
+                        <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                            Annuler
+                        </button>
+                        <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">
+                            Importer
+                        </button>
                     </div>
                 </div>
             </form>
@@ -1193,14 +1267,20 @@ unset($_SESSION['flash_error']);
 <div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div class="p-6 text-center">
-            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4"><i class="fas fa-unlock-alt text-green-600 text-3xl"></i></div>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <i class="fas fa-unlock-alt text-green-600 text-3xl"></i>
+            </div>
             <h3 class="text-xl font-bold text-gray-800 mb-2">Débloquer le contact</h3>
             <p class="text-gray-500 mb-6">Êtes-vous sûr de vouloir retirer ce contact de la blacklist ?</p>
             <form method="POST" action="?page=contacts/unblacklist">
                 <input type="hidden" name="id_contact" id="unblacklistContactId">
                 <div class="flex space-x-3">
-                    <button type="button" onclick="closeUnblacklistModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                    <button type="submit" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Débloquer</button>
+                    <button type="button" onclick="closeUnblacklistModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">
+                        Débloquer
+                    </button>
                 </div>
             </form>
         </div>
@@ -1213,13 +1293,19 @@ unset($_SESSION['flash_error']);
 <div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div class="p-6 text-center">
-            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i></div>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>
+            </div>
             <h3 class="text-xl font-bold text-gray-800 mb-2">Confirmer la suppression</h3>
             <p class="text-gray-500 mb-6">Êtes-vous sûr de vouloir supprimer ce contact ?</p>
             <p class="text-sm text-gray-400 mb-6">Cette action est irréversible.</p>
             <div class="flex space-x-3">
-                <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
-                <a href="#" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">Supprimer</a>
+                <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                    Annuler
+                </button>
+                <a href="#" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">
+                    Supprimer
+                </a>
             </div>
         </div>
     </div>
