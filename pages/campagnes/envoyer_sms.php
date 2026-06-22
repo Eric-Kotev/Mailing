@@ -107,6 +107,8 @@ foreach ($listesBrutes as $liste) {
 
 $error = '';
 $success = '';
+$successMessage = '';
+$showSuccess = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $message = trim($_POST['message'] ?? '');
@@ -232,6 +234,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $successMsg .= "<br><small>⚠️ " . count($contactsBlacklistes) . " contact(s) blacklistés ont été exclus.</small>";
             }
             $success = $successMsg;
+            $showSuccess = true;
+            $successMessage = $successMsg;
             
             // ENREGISTREMENT SUCCÈS
             $campagneData = [
@@ -288,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 
-<!-- Reste du HTML identique à votre code original -->
+<!-- Reste du HTML -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -297,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Envoyer SMS - <?= APP_NAME ?></title>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
-        /* Vos styles existants (gardez les mêmes que dans votre code original) */
+        /* Vos styles existants */
         .select2-container--default .select2-selection--single {
             border: 1px solid #d1d5db;
             border-radius: 0.5rem;
@@ -424,6 +428,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #6b21a5;
             margin-bottom: 8px;
         }
+
+        /* Animation de disparition du message de succès */
+        .success-fade {
+            animation: fadeOut 5s forwards;
+        }
+        
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; }
+        }
     </style>
 </head>
 <body>
@@ -469,11 +484,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         
         <?php if ($success): ?>
-            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded"><?= $success ?></div>
+            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded success-fade" id="successMessage">
+                <i class="fas fa-check-circle mr-2"></i> <?= $success ?>
+            </div>
         <?php endif; ?>
         
         <?php if ($error): ?>
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded"><?= $error ?></div>
+            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+                <i class="fas fa-exclamation-circle mr-2"></i> <?= $error ?>
+            </div>
         <?php endif; ?>
         
         <form method="POST" id="smsForm">
@@ -527,7 +546,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                     <option value="">-- Sélectionnez une liste --</option>
                     <?php foreach ($listes as $liste): ?>
-                        <option value="<?= $liste['id_liste'] ?>">
+                        <option value="<?= $liste['id_liste'] ?>" <?= (isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) ? 'selected' : '' ?>>
                             <?= htmlspecialchars($liste['nom_liste']) ?> (<?= $liste['nombre_contacts'] ?> contact<?= $liste['nombre_contacts'] > 1 ? 's' : '' ?>)
                         </option>
                     <?php endforeach; ?>
@@ -541,7 +560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </label>
                 <textarea name="message" id="message" rows="5" required
                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition"
-                          placeholder="Votre message..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : '' ?></textarea>
+                          placeholder="Votre message..."><?= isset($_POST['message']) && !$showSuccess ? htmlspecialchars($_POST['message']) : '' ?></textarea>
                 <p class="text-xs text-gray-500 mt-1" id="charCount">0 caractères</p>
             </div>
             
@@ -632,7 +651,10 @@ if (messageTextarea) {
             countSpan.classList.add('text-gray-500');
         }
     });
-    messageTextarea.dispatchEvent(new Event('input'));
+    
+    // Initialiser le compteur
+    const countSpan = document.getElementById('charCount');
+    countSpan.textContent = messageTextarea.value.length + ' caractères';
 }
 
 $('#liste_id').on('change', function() {
@@ -706,6 +728,51 @@ function showToast(message, type = 'success') {
 if (performance.navigation.type === 1) {
     setLoading(false);
 }
+
+// ============================================
+// VIDER LE CHAMP MESSAGE APRÈS ENVOI RÉUSSI
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+    // Vérifier si le message de succès est présent
+    const successDiv = document.querySelector('.bg-green-100');
+    
+    if (successDiv) {
+        // Vider le champ message
+        const messageInput = document.getElementById('message');
+        if (messageInput) {
+            messageInput.value = '';
+            // Mettre à jour le compteur de caractères
+            const countSpan = document.getElementById('charCount');
+            if (countSpan) {
+                countSpan.textContent = '0 caractères';
+                countSpan.classList.remove('text-red-500');
+                countSpan.classList.add('text-gray-500');
+            }
+        }
+        
+        // Réinitialiser les Select2 si nécessaire
+        // $('#contact_unique').val(null).trigger('change');
+        // $('#liste_id').val(null).trigger('change');
+        
+        // Faire disparaître le message après 5 secondes
+        setTimeout(function() {
+            if (successDiv) {
+                successDiv.style.transition = 'opacity 1s';
+                successDiv.style.opacity = '0';
+                setTimeout(function() {
+                    successDiv.style.display = 'none';
+                }, 1000);
+            }
+        }, 5000);
+    }
+});
+
+// Si le formulaire est soumis avec succès, vider le champ avant l'envoi
+// Cela permet de garder une interface propre
+document.getElementById('smsForm').addEventListener('submit', function() {
+    // On garde le message pour l'envoi, mais il sera vidé après
+    // Le vidage se fait dans le DOMContentLoaded ci-dessus si succès
+});
 </script>
 
 </body>
