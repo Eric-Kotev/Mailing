@@ -23,9 +23,17 @@ $envois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'c
 $totalEnvois = count($envois);
 $totalSucces = 0;
 $totalErreurs = 0;
+$totalWhatsApp = 0;
+$totalSms = 0;
+
 foreach ($envois as $e) {
     $totalSucces += $e['nb_succes'];
     $totalErreurs += $e['nb_erreurs'];
+    if ($e['type_campagne'] == 'whatsapp') {
+        $totalWhatsApp++;
+    } else {
+        $totalSms++;
+    }
 }
 ?>
 
@@ -84,6 +92,67 @@ foreach ($envois as $e) {
         .envoi-row:hover {
             background-color: #f9fafb;
         }
+        
+        /* Styles pour les filtres */
+        .filter-container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .filter-container label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #4b5563;
+        }
+        .filter-container select {
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .filter-container select:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .filter-container .filter-info {
+            font-size: 12px;
+            color: #6b7280;
+            margin-left: 8px;
+        }
+        .filter-container .filter-info strong {
+            color: #374151;
+        }
+        .filter-container .btn-clear-filter {
+            background: #e5e7eb;
+            color: #4b5563;
+            padding: 4px 12px;
+            border-radius: 6px;
+            border: none;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .filter-container .btn-clear-filter:hover {
+            background: #d1d5db;
+        }
+        
+        /* Badges de statistiques par type */
+        .stat-type {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .stat-type-whatsapp { background: #d1fae5; color: #065f46; }
+        .stat-type-sms { background: #dbeafe; color: #1e40af; }
     </style>
 </head>
 <body>
@@ -123,11 +192,26 @@ foreach ($envois as $e) {
                     <div class="mt-1 font-medium"><?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?></div>
                 </div>
             <?php endif; ?>
+            <div>
+                <label class="text-xs text-gray-500 uppercase">Statut</label>
+                <div class="mt-1">
+                    <span class="status-badge status-<?= $campagne['statut'] ?>">
+                        <?php
+                        $statusText = [
+                            'brouillon' => 'Brouillon',
+                            'planifiee' => 'Planifiée',
+                            'envoyee' => 'Envoyée'
+                        ];
+                        echo $statusText[$campagne['statut']] ?? $campagne['statut'];
+                        ?>
+                    </span>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Statistiques des envois -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div class="bg-white rounded-lg shadow p-4 text-center">
             <div class="text-2xl font-bold text-blue-600"><?= $totalEnvois ?></div>
             <div class="text-sm text-gray-500">Messages envoyés</div>
@@ -140,14 +224,52 @@ foreach ($envois as $e) {
             <div class="text-2xl font-bold text-red-600"><?= $totalErreurs ?></div>
             <div class="text-sm text-gray-500">Échecs</div>
         </div>
+        <div class="bg-white rounded-lg shadow p-4 text-center">
+            <div class="text-2xl font-bold text-green-600"><?= $totalWhatsApp ?></div>
+            <div class="text-sm text-gray-500">
+                <span class="stat-type stat-type-whatsapp"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</span>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4 text-center">
+            <div class="text-2xl font-bold text-blue-600"><?= $totalSms ?></div>
+            <div class="text-sm text-gray-500">
+                <span class="stat-type stat-type-sms"><i class="fas fa-comment-dots mr-1"></i> SMS</span>
+            </div>
+        </div>
     </div>
 
-    <!-- Barre de recherche -->
+    <!-- Barre de recherche ET filtre par type -->
     <div class="bg-white rounded-lg shadow p-4 mb-6">
         <div class="relative">
             <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-            <input type="text" id="searchInput" placeholder="Rechercher un message..." 
+            <input type="text" id="searchInput" placeholder="Rechercher un message (date, contenu, statut...)" 
                    class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
+        </div>
+        
+        <!-- Filtre par type -->
+        <div class="filter-container">
+            <label for="filterType"><i class="fas fa-filter mr-1"></i> Type :</label>
+            <select id="filterType">
+                <option value="all">Tous les types</option>
+                <option value="whatsapp">📱 WhatsApp</option>
+                <option value="sms">💬 SMS</option>
+            </select>
+            
+            <label for="filterStatus" class="ml-2"><i class="fas fa-check-circle mr-1"></i> Statut :</label>
+            <select id="filterStatus">
+                <option value="all">Tous les statuts</option>
+                <option value="envoye">Envoyé</option>
+                <option value="echoue">Échoué</option>
+                <option value="partiel">Partiel</option>
+            </select>
+            
+            <button id="clearFilters" class="btn-clear-filter">
+                <i class="fas fa-times mr-1"></i> Effacer les filtres
+            </button>
+            
+            <span class="filter-info" id="filterInfo">
+                <span id="visibleCount"><?= $totalEnvois ?></span> message(s) affiché(s)
+            </span>
         </div>
     </div>
 
@@ -182,21 +304,26 @@ foreach ($envois as $e) {
                     </thead>
                     <tbody id="envoisTableBody">
                         <?php foreach ($envois as $envoi): 
-                            $statutClass = $envoi['statut'] == 'envoye' ? 'text-green-600' : 'text-red-600';
-                            $statutIcon = $envoi['statut'] == 'envoye' ? 'fa-check-circle' : 'fa-exclamation-circle';
+                            $statutClass = $envoi['statut'] == 'envoye' ? 'text-green-600' : ($envoi['statut'] == 'partiel' ? 'text-yellow-600' : 'text-red-600');
+                            $statutIcon = $envoi['statut'] == 'envoye' ? 'fa-check-circle' : ($envoi['statut'] == 'partiel' ? 'fa-exclamation-triangle' : 'fa-exclamation-circle');
+                            $statutLabel = $envoi['statut'] == 'envoye' ? 'Envoyé' : ($envoi['statut'] == 'partiel' ? 'Partiel' : 'Échoué');
+                            $typeClass = $envoi['type_campagne'] == 'whatsapp' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700';
+                            $typeIcon = $envoi['type_campagne'] == 'whatsapp' ? 'fab fa-whatsapp' : 'fas fa-comment-dots';
+                            $typeLabel = $envoi['type_campagne'] == 'whatsapp' ? 'WhatsApp' : 'SMS';
                         ?>
                             <tr class="envoi-row hover:bg-gray-50 cursor-pointer" 
                                 data-id="<?= $envoi['id_campagne'] ?>"
+                                data-type="<?= $envoi['type_campagne'] ?>"
+                                data-status="<?= $envoi['statut'] ?>"
                                 onclick="showDetails(<?= htmlspecialchars(json_encode($envoi)) ?>)">
                                 <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                                     <?= date('d/m/Y H:i', strtotime($envoi['created_at'])) ?>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <?php if ($envoi['type_campagne'] == 'whatsapp'): ?>
-                                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">WhatsApp</span>
-                                    <?php else: ?>
-                                        <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">SMS</span>
-                                    <?php endif; ?>
+                                    <span class="<?= $typeClass ?> px-2 py-1 rounded-full text-xs font-medium">
+                                        <i class="<?= $typeIcon ?> mr-1"></i>
+                                        <?= $typeLabel ?>
+                                    </span>
                                 </td>
                                 <td class="px-6 py-4">
                                     <div class="text-sm text-gray-800 max-w-xs truncate" title="<?= htmlspecialchars($envoi['message']) ?>">
@@ -206,7 +333,7 @@ foreach ($envois as $e) {
                                 <td class="px-6 py-4 text-center text-sm"><?= $envoi['nb_destinataires'] ?></td>
                                 <td class="px-6 py-4 text-center">
                                     <i class="fas <?= $statutIcon ?> <?= $statutClass ?> mr-1"></i>
-                                    <span class="text-sm <?= $statutClass ?>"><?= ucfirst($envoi['statut']) ?></span>
+                                    <span class="text-sm <?= $statutClass ?>"><?= $statutLabel ?></span>
                                 </td>
                                 <td class="px-6 py-4 text-center">
                                     <button onclick="event.stopPropagation(); showDetails(<?= htmlspecialchars(json_encode($envoi)) ?>)" 
@@ -257,6 +384,93 @@ foreach ($envois as $e) {
 
 <script>
 // ============================================
+// FILTRES COMBINÉS (RECHERCHE + TYPE + STATUT)
+// ============================================
+const searchInput = document.getElementById('searchInput');
+const filterType = document.getElementById('filterType');
+const filterStatus = document.getElementById('filterStatus');
+const envoisRows = document.querySelectorAll('.envoi-row');
+const visibleCountSpan = document.getElementById('visibleCount');
+
+function applyFilters() {
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    const typeFilter = filterType.value;
+    const statusFilter = filterStatus.value;
+    let visibleCount = 0;
+    
+    envoisRows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const type = row.dataset.type || '';
+        const status = row.dataset.status || '';
+        let show = true;
+        
+        // Filtre par recherche
+        if (searchTerm !== '' && !text.includes(searchTerm)) {
+            show = false;
+        }
+        
+        // Filtre par type
+        if (show && typeFilter !== 'all' && type !== typeFilter) {
+            show = false;
+        }
+        
+        // Filtre par statut
+        if (show && statusFilter !== 'all' && status !== statusFilter) {
+            show = false;
+        }
+        
+        if (show) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Mettre à jour le compteur
+    visibleCountSpan.textContent = visibleCount;
+    
+    // Afficher un message si aucun résultat
+    const noResult = document.getElementById('noResultMessage');
+    if (visibleCount === 0 && envoisRows.length > 0) {
+        if (!noResult) {
+            const tbody = document.getElementById('envoisTableBody');
+            const tr = document.createElement('tr');
+            tr.id = 'noResultMessage';
+            tr.innerHTML = `
+                <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                    <i class="fas fa-search text-3xl mb-2 block"></i>
+                    Aucun message ne correspond aux filtres sélectionnés.
+                    <div class="mt-2">
+                        <button onclick="resetFilters()" class="text-purple-600 hover:text-purple-800">
+                            <i class="fas fa-undo mr-1"></i> Réinitialiser les filtres
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+    } else {
+        if (noResult) {
+            noResult.remove();
+        }
+    }
+}
+
+function resetFilters() {
+    searchInput.value = '';
+    filterType.value = 'all';
+    filterStatus.value = 'all';
+    applyFilters();
+}
+
+// Écouteurs d'événements
+searchInput.addEventListener('input', applyFilters);
+filterType.addEventListener('change', applyFilters);
+filterStatus.addEventListener('change', applyFilters);
+document.getElementById('clearFilters').addEventListener('click', resetFilters);
+
+// ============================================
 // AFFICHAGE DES DÉTAILS DANS LE MODAL
 // ============================================
 function showDetails(envoi) {
@@ -302,7 +516,13 @@ function showDetails(envoi) {
     
     const statusBadge = envoi.statut === 'envoye' 
         ? '<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs"><i class="fas fa-check-circle mr-1"></i>Envoyé</span>'
-        : '<span class="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>';
+        : (envoi.statut === 'partiel' 
+            ? '<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs"><i class="fas fa-exclamation-triangle mr-1"></i>Partiel</span>'
+            : '<span class="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>');
+    
+    const typeBadge = envoi.type_campagne === 'whatsapp'
+        ? '<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs"><i class="fab fa-whatsapp mr-1"></i>WhatsApp</span>'
+        : '<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs"><i class="fas fa-comment-dots mr-1"></i>SMS</span>';
     
     modalContent.innerHTML = `
         <div class="space-y-5">
@@ -321,7 +541,7 @@ function showDetails(envoi) {
                 </div>
                 <div class="bg-gray-50 rounded-lg p-3">
                     <div class="text-xs text-gray-500 mb-1">Type</div>
-                    <div class="font-medium text-gray-800">${envoi.type_campagne === 'whatsapp' ? 'WhatsApp' : 'SMS'}</div>
+                    <div>${typeBadge}</div>
                 </div>
             </div>
             
@@ -402,26 +622,6 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-}
-
-// ============================================
-// RECHERCHE
-// ============================================
-const searchInput = document.getElementById('searchInput');
-const envoisRows = document.querySelectorAll('.envoi-row');
-
-if (searchInput) {
-    searchInput.addEventListener('input', function() {
-        const searchTerm = this.value.toLowerCase().trim();
-        envoisRows.forEach(row => {
-            const text = row.textContent.toLowerCase();
-            if (searchTerm === '' || text.includes(searchTerm)) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    });
 }
 
 // Fermeture modale avec Echap

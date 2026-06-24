@@ -6,17 +6,77 @@ $campagneId = $_GET['campagne_id'] ?? null;
 $searchTerm = $_GET['search'] ?? '';
 $export = $_GET['export'] ?? null;
 
-// Récupérer les campagnes config
+// ============================================
+// FILTRES PAR PÉRIODE
+// ============================================
+$dateDebut = $_GET['date_debut'] ?? '';
+$dateFin = $_GET['date_fin'] ?? '';
+
+// Construction de la requête WHERE pour les filtres
+$whereConditions = ['id_compte' => $idCompte];
+$orderBy = 'created_at DESC';
+
+// Filtre par recherche de nom
+$searchCondition = '';
 if (!empty($searchTerm)) {
-    $allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC');
-    $campagnes = [];
-    foreach ($allCampagnes as $c) {
-        if (stripos($c['nom_campagne'], $searchTerm) !== false) {
-            $campagnes[] = $c;
+    $searchCondition = $searchTerm;
+}
+
+// Filtre par période
+$periodCondition = '';
+if (!empty($dateDebut) && !empty($dateFin)) {
+    // Convertir les dates au format Y-m-d pour la comparaison
+    $dateDebutFormatted = date('Y-m-d H:i:s', strtotime($dateDebut . ' 00:00:00'));
+    $dateFinFormatted = date('Y-m-d H:i:s', strtotime($dateFin . ' 23:59:59'));
+    $periodCondition = [
+        'created_at >= ? AND created_at <= ?' => [$dateDebutFormatted, $dateFinFormatted]
+    ];
+} elseif (!empty($dateDebut)) {
+    $dateDebutFormatted = date('Y-m-d H:i:s', strtotime($dateDebut . ' 00:00:00'));
+    $periodCondition = ['created_at >= ?' => $dateDebutFormatted];
+} elseif (!empty($dateFin)) {
+    $dateFinFormatted = date('Y-m-d H:i:s', strtotime($dateFin . ' 23:59:59'));
+    $periodCondition = ['created_at <= ?' => $dateFinFormatted];
+}
+
+// Récupérer les campagnes avec les filtres
+$allCampagnes = $db->select('campagne_config', $whereConditions, '*', $orderBy);
+
+// Appliquer les filtres supplémentaires (recherche et période)
+$campagnes = [];
+foreach ($allCampagnes as $c) {
+    $match = true;
+    
+    // Filtre par recherche de nom
+    if (!empty($searchTerm) && stripos($c['nom_campagne'], $searchTerm) === false) {
+        $match = false;
+    }
+    
+    // Filtre par période (déjà appliqué en SQL, mais on garde pour sécurité)
+    if ($match && !empty($dateDebut) && !empty($dateFin)) {
+        $dateCreation = strtotime($c['created_at']);
+        $debut = strtotime($dateDebut . ' 00:00:00');
+        $fin = strtotime($dateFin . ' 23:59:59');
+        if ($dateCreation < $debut || $dateCreation > $fin) {
+            $match = false;
+        }
+    } elseif ($match && !empty($dateDebut)) {
+        $dateCreation = strtotime($c['created_at']);
+        $debut = strtotime($dateDebut . ' 00:00:00');
+        if ($dateCreation < $debut) {
+            $match = false;
+        }
+    } elseif ($match && !empty($dateFin)) {
+        $dateCreation = strtotime($c['created_at']);
+        $fin = strtotime($dateFin . ' 23:59:59');
+        if ($dateCreation > $fin) {
+            $match = false;
         }
     }
-} else {
-    $campagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC');
+    
+    if ($match) {
+        $campagnes[] = $c;
+    }
 }
 
 // Compter les envois pour chaque campagne
@@ -93,7 +153,7 @@ if ($export === 'csv' && $campagneId && !empty($envoisListe)) {
     exit;
 }
 
-// Export de toutes les campagnes
+// Export de toutes les campagnes filtrées
 if ($export === 'all_csv' && empty($campagneId)) {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="toutes_campagnes_' . date('Y-m-d') . '.csv"');
@@ -194,6 +254,71 @@ if ($export === 'all_csv' && empty($campagneId)) {
         .btn-export:hover {
             background-color: #059669;
         }
+        
+        /* Styles pour les filtres de période */
+        .filter-container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            background: #f9fafb;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+        .filter-container label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #4b5563;
+        }
+        .filter-container input[type="date"] {
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            transition: all 0.2s;
+        }
+        .filter-container input[type="date"]:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .filter-container .btn-filter {
+            background: #8b5cf6;
+            color: white;
+            padding: 6px 16px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .filter-container .btn-filter:hover {
+            background: #7c3aed;
+        }
+        .filter-container .btn-clear {
+            background: #e5e7eb;
+            color: #4b5563;
+            padding: 6px 16px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .filter-container .btn-clear:hover {
+            background: #d1d5db;
+        }
+        .filter-container .filter-info {
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .filter-container .filter-info strong {
+            color: #374151;
+        }
     </style>
 </head>
 <body>
@@ -204,16 +329,16 @@ if ($export === 'all_csv' && empty($campagneId)) {
             <h1 class="text-2xl font-bold text-gray-800">Historique des campagnes</h1>
             <p class="text-gray-500">Consultez toutes vos campagnes et leurs envois</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
             <?php if ($campagneId && !empty($envoisListe)): ?>
                 <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv" 
                    class="btn-export">
                     <i class="fas fa-download"></i> Exporter cette campagne (CSV)
                 </a>
             <?php elseif (empty($campagneId) && !empty($campagnes)): ?>
-                <a href="?page=campagnes/historique&export=all_csv" 
+                <a href="?page=campagnes/historique&export=all_csv<?= !empty($dateDebut) ? '&date_debut=' . urlencode($dateDebut) : '' ?><?= !empty($dateFin) ? '&date_fin=' . urlencode($dateFin) : '' ?><?= !empty($searchTerm) ? '&search=' . urlencode($searchTerm) : '' ?>" 
                    class="btn-export">
-                    <i class="fas fa-download"></i> Exporter toutes les campagnes (CSV)
+                    <i class="fas fa-download"></i> Exporter les résultats (CSV)
                 </a>
             <?php endif; ?>
             
@@ -361,38 +486,68 @@ if ($export === 'all_csv' && empty($campagneId)) {
         </a>
         
     <?php else: ?>
-        <!-- Barre de recherche -->
+        <!-- Barre de recherche ET filtres de période -->
         <div class="bg-white rounded-lg shadow p-4">
-            <div class="flex justify-between items-center mb-3">
-                <form method="GET" action="" class="flex-1">
-                    <input type="hidden" name="page" value="campagnes/historique">
-                    <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                        <input type="text" name="search" value="<?= htmlspecialchars($searchTerm) ?>" 
-                               placeholder="Rechercher par nom de campagne..." 
-                               class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
-                        <?php if (!empty($searchTerm)): ?>
-                            <a href="index.php?page=campagnes/historique" class="search-clear">
-                                <i class="fas fa-times-circle"></i>
-                            </a>
-                        <?php endif; ?>
+            <form method="GET" action="">
+                <input type="hidden" name="page" value="campagnes/historique">
+                
+                <!-- Recherche par nom -->
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" name="search" value="<?= htmlspecialchars($searchTerm) ?>" 
+                           placeholder="Rechercher par nom de campagne..." 
+                           class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
+                    <?php if (!empty($searchTerm)): ?>
+                        <a href="index.php?page=campagnes/historique<?= !empty($dateDebut) ? '&date_debut=' . urlencode($dateDebut) : '' ?><?= !empty($dateFin) ? '&date_fin=' . urlencode($dateFin) : '' ?>" class="search-clear">
+                            <i class="fas fa-times-circle"></i>
+                        </a>
+                    <?php endif; ?>
+                </div>
+                
+                <!-- Filtres par période -->
+                <div class="filter-container">
+                    <label for="date_debut">Du :</label>
+                    <input type="date" name="date_debut" id="date_debut" value="<?= htmlspecialchars($dateDebut) ?>">
+                    
+                    <label for="date_fin">Au :</label>
+                    <input type="date" name="date_fin" id="date_fin" value="<?= htmlspecialchars($dateFin) ?>">
+                    
+                    <button type="submit" class="btn-filter">
+                        <i class="fas fa-filter mr-1"></i> Filtrer
+                    </button>
+                    
+                    <?php if (!empty($dateDebut) || !empty($dateFin) || !empty($searchTerm)): ?>
+                        <a href="index.php?page=campagnes/historique" class="btn-clear">
+                            <i class="fas fa-times mr-1"></i> Effacer les filtres
+                        </a>
+                    <?php endif; ?>
+                    
+                    <div class="filter-info">
+                        <?php
+                        $totalFiltres = 0;
+                        if (!empty($searchTerm)) $totalFiltres++;
+                        if (!empty($dateDebut)) $totalFiltres++;
+                        if (!empty($dateFin)) $totalFiltres++;
+                        
+                        if ($totalFiltres > 0) {
+                            echo count($campagnes) . ' résultat(s)';
+                            if (!empty($searchTerm)) {
+                                echo ' pour "<strong>' . htmlspecialchars($searchTerm) . '</strong>"';
+                            }
+                            if (!empty($dateDebut) && !empty($dateFin)) {
+                                echo ' du <strong>' . date('d/m/Y', strtotime($dateDebut)) . '</strong> au <strong>' . date('d/m/Y', strtotime($dateFin)) . '</strong>';
+                            } elseif (!empty($dateDebut)) {
+                                echo ' à partir du <strong>' . date('d/m/Y', strtotime($dateDebut)) . '</strong>';
+                            } elseif (!empty($dateFin)) {
+                                echo ' jusqu\'au <strong>' . date('d/m/Y', strtotime($dateFin)) . '</strong>';
+                            }
+                        } else {
+                            echo count($campagnes) . ' campagne(s) au total';
+                        }
+                        ?>
                     </div>
-                    <div class="mt-2 flex justify-between items-center">
-                        <span class="text-xs text-gray-500">
-                            <?php if (!empty($searchTerm)): ?>
-                                <?= count($campagnes) ?> résultat(s) pour "<strong><?= htmlspecialchars($searchTerm) ?></strong>"
-                            <?php else: ?>
-                                <?= count($campagnes) ?> campagne(s) au total
-                            <?php endif; ?>
-                        </span>
-                        <?php if (!empty($searchTerm)): ?>
-                            <a href="index.php?page=campagnes/historique" class="text-sm text-blue-600 hover:text-blue-800">
-                                Effacer la recherche
-                            </a>
-                        <?php endif; ?>
-                    </div>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
 
         <!-- Liste des campagnes (cliquables) -->
@@ -406,73 +561,108 @@ if ($export === 'all_csv' && empty($campagneId)) {
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
                             <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($campagnes)): ?>
-                        <tr>
-                            <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                                <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
-                                <?php if (!empty($searchTerm)): ?>
-                                    Aucune campagne ne correspond à "<strong><?= htmlspecialchars($searchTerm) ?></strong>".
-                                <?php else: ?>
-                                    Aucune campagne pour le moment.
-                                    <a href="index.php?page=campagnes/creer" class="text-purple-600 block mt-2">Créer votre première campagne →</a>
-                                <?php endif; ?>
-                            </td>
                         </tr>
-                    <?php else: ?>
-                        <?php foreach ($campagnes as $campagne): ?>
-                            <tr class="campagne-row hover:bg-gray-50" 
-                                onclick="window.location.href='index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>'">
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center">
-                                        <div class="bg-purple-100 rounded-full p-2 mr-3">
-                                            <i class="fas fa-bullhorn text-purple-600 text-sm"></i>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($campagnes)): ?>
+                            <tr>
+                                <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                                    <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
+                                    <?php if (!empty($searchTerm) || !empty($dateDebut) || !empty($dateFin)): ?>
+                                        Aucune campagne ne correspond aux filtres sélectionnés.
+                                        <div class="mt-2">
+                                            <a href="index.php?page=campagnes/historique" class="text-purple-600">Réinitialiser les filtres</a>
                                         </div>
-                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 text-center">
-                                    <span class="font-semibold text-blue-600"><?= $campagne['nb_envois'] ?></span>
-                                    <span class="text-xs text-gray-500"> envoi(s)</span>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span class="status-badge status-<?= $campagne['statut'] ?>">
-                                        <?php
-                                        $statusText = [
-                                            'brouillon' => 'Brouillon',
-                                            'planifiee' => 'Planifiée',
-                                            'envoyee' => 'Envoyée',
-                                            'annulee' => 'Annulée'
-                                        ];
-                                        echo $statusText[$campagne['statut']] ?? $campagne['statut'];
-                                        ?>
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4 text-sm text-gray-500">
-                                    <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
-                                </td>
-                                <td class="px-6 py-4 text-center whitespace-nowrap" onclick="event.stopPropagation()">
-                                    <?php if ($campagne['statut'] == 'brouillon'): ?>
-                                        <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                           class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Envoyer">
-                                            <i class="fas fa-paper-plane"></i>
-                                        </a>
+                                    <?php else: ?>
+                                        Aucune campagne pour le moment.
+                                        <a href="index.php?page=campagnes/creer" class="text-purple-600 block mt-2">Créer votre première campagne →</a>
                                     <?php endif; ?>
-                                    <a href="index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                       class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les envois">
-                                        <i class="fas fa-eye"></i>
-                                    </a>
                                 </td>
                             </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                        <?php else: ?>
+                            <?php foreach ($campagnes as $campagne): ?>
+                                <tr class="campagne-row hover:bg-gray-50" 
+                                    onclick="window.location.href='index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>'">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center">
+                                            <div class="bg-purple-100 rounded-full p-2 mr-3">
+                                                <i class="fas fa-bullhorn text-purple-600 text-sm"></i>
+                                            </div>
+                                            <span class="font-medium text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="font-semibold text-blue-600"><?= $campagne['nb_envois'] ?></span>
+                                        <span class="text-xs text-gray-500"> envoi(s)</span>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="status-badge status-<?= $campagne['statut'] ?>">
+                                            <?php
+                                            $statusText = [
+                                                'brouillon' => 'Brouillon',
+                                                'planifiee' => 'Planifiée',
+                                                'envoyee' => 'Envoyée',
+                                                'annulee' => 'Annulée'
+                                            ];
+                                            echo $statusText[$campagne['statut']] ?? $campagne['statut'];
+                                            ?>
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-500">
+                                        <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
+                                    </td>
+                                    <td class="px-6 py-4 text-center whitespace-nowrap" onclick="event.stopPropagation()">
+                                        <?php if ($campagne['statut'] == 'brouillon'): ?>
+                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                               class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Envoyer">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                        <a href="index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
+                                           class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les envois">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     <?php endif; ?>
 </div>
+
+<script>
+// ============================================
+// RÉINITIALISATION DES FILTRES
+// ============================================
+document.querySelectorAll('.btn-clear').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        window.location.href = this.getAttribute('href');
+    });
+});
+
+// ============================================
+// DÉTECTION DES DATES INVALIDE
+// ============================================
+document.getElementById('date_debut')?.addEventListener('change', function() {
+    const dateFin = document.getElementById('date_fin');
+    if (dateFin.value && this.value > dateFin.value) {
+        alert('La date de début ne peut pas être postérieure à la date de fin.');
+        this.value = '';
+    }
+});
+
+document.getElementById('date_fin')?.addEventListener('change', function() {
+    const dateDebut = document.getElementById('date_debut');
+    if (dateDebut.value && this.value < dateDebut.value) {
+        alert('La date de fin ne peut pas être antérieure à la date de début.');
+        this.value = '';
+    }
+});
+</script>
 
 </body>
 </html>

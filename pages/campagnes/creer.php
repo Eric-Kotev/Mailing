@@ -64,7 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
         exit;
     }
     
-    $statut = $date_planification ? 'planifiee' : 'brouillon';
+    // Si date fournie → planifiee, sinon → a_envoyer (envoi immédiat)
+    $statut = $date_planification ? 'planifiee' : 'a_envoyer';
     
     $data = [
         'id_compte' => $idCompte,
@@ -85,11 +86,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
         if (!empty($nouvelleCampagne)) {
             $id_campagne = $nouvelleCampagne[0]['id_campagne_config'];
             
-            echo json_encode([
+            // Si campagne en "a_envoyer", rediriger immédiatement vers le choix du canal
+            $response = [
                 'success' => true, 
                 'message' => 'Campagne créée avec succès', 
-                'id_campagne' => $id_campagne
-            ]);
+                'id_campagne' => $id_campagne,
+                'statut' => $statut
+            ];
+            
+            // Si c'est un envoi immédiat, ajouter l'URL de redirection
+            if ($statut === 'a_envoyer') {
+                $response['redirect'] = 'index.php?page=campagnes/choix&campagne_id=' . $id_campagne;
+            }
+            
+            echo json_encode($response);
         } else {
             echo json_encode(['success' => false, 'error' => 'Impossible de récupérer la campagne créée']);
         }
@@ -99,17 +109,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
     exit;
 }
 
-// Traitement pour supprimer une campagne planifiée
+// Traitement pour supprimer une campagne
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_supprimer_campagne'])) {
     $id_campagne = $_POST['id_campagne'];
     
     try {
         $campagne = $db->select('campagne_config', ['id_campagne_config' => $id_campagne, 'id_compte' => $idCompte]);
+        // 🔥 MODIFICATION : Seulement les campagnes avec statut 'planifiee' peuvent être supprimées
         if (!empty($campagne) && $campagne[0]['statut'] == 'planifiee') {
             $db->delete('campagne_config', $id_campagne, 'id_campagne_config');
             $_SESSION['flash_message'] = "Campagne planifiée supprimée avec succès";
         } else {
-            $_SESSION['flash_error'] = "Impossible de supprimer cette campagne";
+            $_SESSION['flash_error'] = "Impossible de supprimer cette campagne (seules les campagnes planifiées sont supprimables)";
         }
     } catch (Exception $e) {
         $_SESSION['flash_error'] = "Erreur lors de la suppression";
@@ -125,14 +136,22 @@ unset($_SESSION['flash_message']);
 unset($_SESSION['flash_error']);
 
 $allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte]);
-$activeCount = 0;
 $planifieesCount = 0;
+$aEnvoyerCount = 0;
 $totalEnvois = 0;
+$activeCount = 0;
+
 foreach ($allCampagnes as $c) {
-    if ($c['statut'] == 'brouillon') $activeCount++;
     if ($c['statut'] == 'planifiee') {
-        $activeCount++;
         $planifieesCount++;
+        $activeCount++;
+    }
+    if ($c['statut'] == 'a_envoyer') {
+        $aEnvoyerCount++;
+        $activeCount++;
+    }
+    if ($c['statut'] == 'envoyee') {
+        $activeCount++;
     }
     $envoisCount = $db->select('campagne', ['id_campagne_config' => $c['id_campagne_config']]);
     $totalEnvois += count($envoisCount);
@@ -190,8 +209,8 @@ foreach ($allCampagnes as $c) {
             font-size: 11px;
             font-weight: 500;
         }
-        .status-brouillon { background: #f3f4f6; color: #4b5563; }
         .status-planifiee { background: #fef3c7; color: #92400e; }
+        .status-a_envoyer { background: #dbeafe; color: #1e40af; }
         .status-envoyee { background: #dcfce7; color: #166534; }
         
         .campagne-row {
@@ -392,8 +411,8 @@ foreach ($allCampagnes as $c) {
             font-size: 11px;
             font-weight: 500;
         }
-        .badge-brouillon { background: #f3f4f6; color: #4b5563; }
         .badge-planifiee { background: #fef3c7; color: #92400e; }
+        .badge-a_envoyer { background: #dbeafe; color: #1e40af; }
         .badge-envoyee { background: #dcfce7; color: #166534; }
         .planification-date {
             font-size: 12px;
@@ -474,8 +493,6 @@ foreach ($allCampagnes as $c) {
         .inline-flex {
             display: inline-flex;
         }
-        
-        
     </style>
 </head>
 <body>
@@ -550,10 +567,10 @@ foreach ($allCampagnes as $c) {
         <div class="bg-white rounded-lg shadow p-4">
             <div class="flex justify-between items-center">
                 <div>
-                    <span class="text-gray-500">Planifiées</span>
-                    <span class="text-2xl font-bold text-yellow-600 ml-2"><?= $planifieesCount ?></span>
+                    <span class="text-gray-500">À envoyer</span>
+                    <span class="text-2xl font-bold text-blue-600 ml-2"><?= $aEnvoyerCount ?></span>
                 </div>
-                <div class="text-yellow-400"><i class="fas fa-calendar-alt text-2xl"></i></div>
+                <div class="text-blue-400"><i class="fas fa-clock text-2xl"></i></div>
             </div>
         </div>
         <div class="bg-white rounded-lg shadow p-4">
@@ -623,12 +640,12 @@ foreach ($allCampagnes as $c) {
                                     <?php
                                     $badgeClass = '';
                                     $statusLabel = '';
-                                    if ($campagne['statut'] == 'brouillon') {
-                                        $badgeClass = 'badge-brouillon';
-                                        $statusLabel = 'Brouillon';
-                                    } elseif ($campagne['statut'] == 'planifiee') {
+                                    if ($campagne['statut'] == 'planifiee') {
                                         $badgeClass = 'badge-planifiee';
                                         $statusLabel = 'Planifiée';
+                                    } elseif ($campagne['statut'] == 'a_envoyer') {
+                                        $badgeClass = 'badge-a_envoyer';
+                                        $statusLabel = 'À envoyer';
                                     } else {
                                         $badgeClass = 'badge-envoyee';
                                         $statusLabel = 'Envoyée';
@@ -647,7 +664,7 @@ foreach ($allCampagnes as $c) {
                                             <i class="fas fa-calendar-alt"></i> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
                                         </div>
                                     <?php else: ?>
-                                        <span class="text-gray-400">-</span>
+                                        <span class="text-gray-400 text-sm">Envoi immédiat</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-gray-500 text-sm">
@@ -655,15 +672,9 @@ foreach ($allCampagnes as $c) {
                                 </td>
                                 <td class="text-center">
                                     <div class="action-buttons" onclick="event.stopPropagation()">
-                                        <?php if ($campagne['statut'] == 'brouillon'): ?>
+                                        <?php if ($campagne['statut'] == 'planifiee' || $campagne['statut'] == 'a_envoyer'): ?>
                                             <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                               class="action-btn text-green-600 hover:text-green-800" title="Envoyer maintenant">
-                                                <i class="fas fa-paper-plane"></i>
-                                            </a>
-                                        <?php endif; ?>
-                                        <?php if ($campagne['statut'] == 'planifiee'): ?>
-                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                               class="action-btn text-orange-600 hover:text-orange-800" title="Envoyer (forcer)">
+                                               class="action-btn text-green-600 hover:text-green-800" title="Envoyer">
                                                 <i class="fas fa-paper-plane"></i>
                                             </a>
                                         <?php endif; ?>
@@ -671,9 +682,10 @@ foreach ($allCampagnes as $c) {
                                            class="action-btn text-blue-600 hover:text-blue-800" title="Voir les détails">
                                             <i class="fas fa-eye"></i>
                                         </a>
+                                        <?php // 🔥 MODIFICATION : Seulement afficher le bouton supprimer pour les campagnes planifiées ?>
                                         <?php if ($campagne['statut'] == 'planifiee'): ?>
                                             <button onclick="openConfirmDeleteModal('<?= $campagne['id_campagne_config'] ?>', '<?= addslashes($campagne['nom_campagne']) ?>')" 
-                                                    class="action-btn text-red-600 hover:text-red-800" title="Supprimer la campagne">
+                                                    class="action-btn text-red-600 hover:text-red-800" title="Supprimer la campagne planifiée">
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
                                         <?php endif; ?>
@@ -743,19 +755,21 @@ foreach ($allCampagnes as $c) {
                 
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Date de planification (optionnelle)
+                        Date de planification <span class="text-gray-400 text-xs">(optionnel)</span>
                     </label>
                     <input type="datetime-local" name="date_planification" id="date_planification" 
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 datetime-input">
                     <p class="text-xs text-gray-500 mt-1">
                         <i class="fas fa-info-circle mr-1"></i>
-                        Laissez vide pour une création immédiate (brouillon). Remplissez pour planifier l'envoi automatique.
+                        <strong>Laissez vide</strong> pour un envoi <strong>immédiat</strong> après création.<br>
+                        <strong>Remplissez</strong> pour planifier un envoi automatique.
                     </p>
                 </div>
                 
-                <div class="bg-yellow-50 p-3 rounded-lg mb-4 text-sm text-yellow-700">
-                    <i class="fas fa-clock mr-2"></i>
-                    <strong>Note :</strong> Si vous définissez une date de planification, la campagne sera envoyée automatiquement à cette date.
+                <div class="bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Info :</strong> 
+                    <span id="infoMessage">Sans date, la campagne sera envoyée immédiatement.</span>
                 </div>
                 
                 <div class="mt-6 flex justify-end space-x-2">
@@ -789,6 +803,21 @@ function showToast(message, type = 'success') {
 }
 
 // ============================================
+// MISE À JOUR DU MESSAGE D'INFO EN FONCTION DE LA DATE
+// ============================================
+document.getElementById('date_planification').addEventListener('change', function() {
+    const infoMessage = document.getElementById('infoMessage');
+    if (this.value) {
+        const dateFormatted = new Date(this.value).toLocaleString('fr-FR');
+        infoMessage.innerHTML = `📅 Envoi planifié pour le <strong>${dateFormatted}</strong>.`;
+        infoMessage.parentElement.className = 'bg-yellow-50 p-3 rounded-lg mb-4 text-sm text-yellow-700';
+    } else {
+        infoMessage.innerHTML = '⚡ Envoi <strong>immédiat</strong> après la création de la campagne.';
+        infoMessage.parentElement.className = 'bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700';
+    }
+});
+
+// ============================================
 // MODAL DE CONFIRMATION POUR SUPPRESSION
 // ============================================
 let campagneToDelete = null;
@@ -818,7 +847,7 @@ function confirmDelete() {
         })
         .then(response => {
             if (response.ok) {
-                showToast('Campagne supprimée avec succès', 'success');
+                showToast('Campagne planifiée supprimée avec succès', 'success');
                 setTimeout(() => window.location.reload(), 1000);
             } else {
                 showToast('Erreur lors de la suppression', 'error');
@@ -850,6 +879,10 @@ function openAddCampagneModal() {
     const modalContent = modal.querySelector('.modal-campagne');
     document.getElementById('addCampagneForm').reset();
     document.getElementById('date_planification').value = '';
+    // Réinitialiser le message d'info
+    const infoMessage = document.getElementById('infoMessage');
+    infoMessage.innerHTML = '⚡ Envoi <strong>immédiat</strong> après la création de la campagne.';
+    infoMessage.parentElement.className = 'bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700';
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
@@ -901,15 +934,23 @@ document.getElementById('addCampagneForm').addEventListener('submit', async func
         
         if (result.success) {
             let message = result.message;
+            
             if (datePlanification) {
                 const dateFormatted = new Date(datePlanification).toLocaleString('fr-FR');
                 message = `Campagne créée et planifiée pour le ${dateFormatted}`;
                 showToast(message, 'success');
+                closeAddCampagneModal();
+                setTimeout(() => window.location.reload(), 1000);
             } else {
-                showToast(result.message, 'success');
+                // Envoi immédiat - rediriger vers choix.php
+                message = 'Campagne créée, vous allez être redirigé pour l\'envoi immédiat';
+                showToast(message, 'success');
+                closeAddCampagneModal();
+                // Redirection vers la page de choix
+                setTimeout(() => {
+                    window.location.href = 'index.php?page=campagnes/choix&campagne_id=' + result.id_campagne;
+                }, 1000);
             }
-            closeAddCampagneModal();
-            setTimeout(() => window.location.reload(), 1000);
         } else {
             showToast(result.error, 'error');
             submitBtn.innerHTML = originalText;
