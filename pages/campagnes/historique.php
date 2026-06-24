@@ -5,12 +5,23 @@ $idCompte = $_SESSION['user_id'];
 $campagneId = $_GET['campagne_id'] ?? null;
 $searchTerm = $_GET['search'] ?? '';
 $export = $_GET['export'] ?? null;
+$typeFiltre = $_GET['type_filtre'] ?? ''; // Ajout du filtre par type
 
 // ============================================
 // FILTRES PAR PÉRIODE
 // ============================================
 $dateDebut = $_GET['date_debut'] ?? '';
 $dateFin = $_GET['date_fin'] ?? '';
+$errorMessage = ''; // Variable pour les messages d'erreur
+
+// Vérification des dates
+if (!empty($dateDebut) && !empty($dateFin)) {
+    if (strtotime($dateDebut) > strtotime($dateFin)) {
+        $errorMessage = 'La date de début ne peut pas être postérieure à la date de fin.';
+        $dateDebut = '';
+        $dateFin = '';
+    }
+}
 
 // Construction de la requête WHERE pour les filtres
 $whereConditions = ['id_compte' => $idCompte];
@@ -95,7 +106,19 @@ if ($campagneId) {
     ]);
     if ($campagneSelectionnee) {
         $campagneSelectionnee = $campagneSelectionnee[0];
-        $envoisListe = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
+        // Récupérer tous les envois
+        $allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
+        
+        // Appliquer le filtre par type
+        if (!empty($typeFiltre)) {
+            $envoisListe = array_filter($allEnvois, function($envoi) use ($typeFiltre) {
+                return $envoi['type_campagne'] === $typeFiltre;
+            });
+            // Réindexer le tableau
+            $envoisListe = array_values($envoisListe);
+        } else {
+            $envoisListe = $allEnvois;
+        }
     }
 }
 
@@ -205,6 +228,9 @@ if ($export === 'all_csv' && empty($campagneId)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Historique des campagnes - <?= APP_NAME ?></title>
     <style>
+        /* ============================================
+           STYLES GÉNÉRAUX
+           ============================================ */
         .status-badge {
             display: inline-flex;
             align-items: center;
@@ -255,7 +281,9 @@ if ($export === 'all_csv' && empty($campagneId)) {
             background-color: #059669;
         }
         
-        /* Styles pour les filtres de période */
+        /* ============================================
+           FILTRES
+           ============================================ */
         .filter-container {
             display: flex;
             flex-wrap: wrap;
@@ -283,6 +311,10 @@ if ($export === 'all_csv' && empty($campagneId)) {
             outline: none;
             border-color: #8b5cf6;
             box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .filter-container input[type="date"].error {
+            border-color: #ef4444;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
         }
         .filter-container .btn-filter {
             background: #8b5cf6;
@@ -319,9 +351,204 @@ if ($export === 'all_csv' && empty($campagneId)) {
         .filter-container .filter-info strong {
             color: #374151;
         }
+
+        /* ============================================
+           FILTRE PAR TYPE (DANS LES DÉTAILS)
+           ============================================ */
+        .type-filter-container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            background: #f3f4f6;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        .type-filter-container label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #4b5563;
+            margin-right: 4px;
+        }
+        .type-filter-container select {
+            padding: 5px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .type-filter-container select:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .type-filter-container .btn-filter-type {
+            background: #8b5cf6;
+            color: white;
+            padding: 5px 14px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .type-filter-container .btn-filter-type:hover {
+            background: #7c3aed;
+        }
+        .type-filter-container .btn-clear-type {
+            background: #e5e7eb;
+            color: #4b5563;
+            padding: 5px 14px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .type-filter-container .btn-clear-type:hover {
+            background: #d1d5db;
+        }
+        .type-filter-container .filter-type-info {
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .type-filter-container .filter-type-info strong {
+            color: #374151;
+        }
+
+        /* ============================================
+           TOAST / NOTIFICATION
+           ============================================ */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+            width: 100%;
+            pointer-events: none;
+        }
+        .toast {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            pointer-events: auto;
+            animation: slideInRight 0.4s ease forwards;
+            border-left: 4px solid;
+        }
+        .toast.error {
+            border-left-color: #ef4444;
+        }
+        .toast.success {
+            border-left-color: #10b981;
+        }
+        .toast.warning {
+            border-left-color: #f59e0b;
+        }
+        .toast.info {
+            border-left-color: #3b82f6;
+        }
+        .toast-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .toast-content {
+            flex: 1;
+        }
+        .toast-title {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+        .toast-message {
+            color: #6b7280;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .toast-close {
+            background: none;
+            border: none;
+            color: #9ca3af;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0 4px;
+            transition: color 0.2s;
+            flex-shrink: 0;
+        }
+        .toast-close:hover {
+            color: #4b5563;
+        }
+        .toast.hide {
+            animation: slideOutRight 0.3s ease forwards;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        @keyframes slideOutRight {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+        }
+
+        /* ============================================
+           MESSAGE D'ERREUR INTÉGRÉ
+           ============================================ */
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #991b1b;
+            font-size: 14px;
+            animation: fadeIn 0.3s ease;
+        }
+        .error-message i {
+            font-size: 18px;
+            color: #dc2626;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
+
+<!-- ============================================
+     CONTAINER POUR TOASTS
+     ============================================ -->
+<div id="toastContainer" class="toast-container"></div>
 
 <div class="space-y-6">
     <div class="flex justify-between items-center">
@@ -331,7 +558,7 @@ if ($export === 'all_csv' && empty($campagneId)) {
         </div>
         <div class="flex gap-2 flex-wrap">
             <?php if ($campagneId && !empty($envoisListe)): ?>
-                <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv" 
+                <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv<?= !empty($typeFiltre) ? '&type_filtre=' . urlencode($typeFiltre) : '' ?>" 
                    class="btn-export">
                     <i class="fas fa-download"></i> Exporter cette campagne (CSV)
                 </a>
@@ -351,7 +578,9 @@ if ($export === 'all_csv' && empty($campagneId)) {
     </div>
 
     <?php if ($campagneId && $campagneSelectionnee): ?>
-        <!-- Affichage des détails de la campagne sélectionnée -->
+        <!-- ============================================
+             DÉTAILS DE LA CAMPAGNE SÉLECTIONNÉE
+             ============================================ -->
         <div class="bg-white rounded-lg shadow overflow-hidden">
             <div class="p-4 border-b bg-purple-50">
                 <div class="flex justify-between items-center">
@@ -391,17 +620,48 @@ if ($export === 'all_csv' && empty($campagneId)) {
                         Envois réalisés (<?= count($envoisListe) ?>)
                     </h3>
                     <?php if (!empty($envoisListe)): ?>
-                        <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv" 
+                        <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv<?= !empty($typeFiltre) ? '&type_filtre=' . urlencode($typeFiltre) : '' ?>" 
                            class="text-sm text-green-600 hover:text-green-800">
                             <i class="fas fa-file-csv mr-1"></i> Exporter en CSV
                         </a>
                     <?php endif; ?>
                 </div>
                 
+                <!-- Filtre par type pour les détails de la campagne -->
+                <div class="type-filter-container">
+                    <label for="type_filtre">Filtrer par type :</label>
+                    <form method="GET" action="" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;" id="typeFilterForm">
+                        <input type="hidden" name="page" value="campagnes/historique">
+                        <input type="hidden" name="campagne_id" value="<?= $campagneId ?>">
+                        <select name="type_filtre" id="type_filtre">
+                            <option value="">Tous les types</option>
+                            <option value="whatsapp" <?= $typeFiltre === 'whatsapp' ? 'selected' : '' ?>>WhatsApp</option>
+                            <option value="sms" <?= $typeFiltre === 'sms' ? 'selected' : '' ?>>SMS</option>
+                        </select>
+                        <button type="submit" class="btn-filter-type">
+                            <i class="fas fa-filter mr-1"></i> Filtrer
+                        </button>
+                        <?php if (!empty($typeFiltre)): ?>
+                            <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>" class="btn-clear-type">
+                                <i class="fas fa-times mr-1"></i> Effacer
+                            </a>
+                        <?php endif; ?>
+                        <div class="filter-type-info">
+                            <?php if (!empty($typeFiltre)): ?>
+                                Affichage des envois de type <strong><?= $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS' ?></strong>
+                            <?php endif; ?>
+                        </div>
+                    </form>
+                </div>
+                
                 <?php if (empty($envoisListe)): ?>
                     <div class="text-center py-8 text-gray-500">
                         <i class="fas fa-inbox text-3xl mb-2 block"></i>
-                        Aucun envoi pour cette campagne.
+                        <?php if (!empty($typeFiltre)): ?>
+                            Aucun envoi de type <strong><?= $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS' ?></strong> pour cette campagne.
+                        <?php else: ?>
+                            Aucun envoi pour cette campagne.
+                        <?php endif; ?>
                         <?php if ($campagneSelectionnee['statut'] == 'brouillon'): ?>
                             <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagneId ?>" class="text-green-600 block mt-2">
                                 <i class="fas fa-plus mr-1"></i>Envoyer un message
@@ -457,13 +717,20 @@ if ($export === 'all_csv' && empty($campagneId)) {
                     $totalSucces = 0;
                     $totalErreurs = 0;
                     $totalDestinataires = 0;
+                    $totalWhatsApp = 0;
+                    $totalSMS = 0;
                     foreach ($envoisListe as $e) {
                         $totalSucces += $e['nb_succes'];
                         $totalErreurs += $e['nb_erreurs'];
                         $totalDestinataires += $e['nb_destinataires'];
+                        if ($e['type_campagne'] == 'whatsapp') {
+                            $totalWhatsApp++;
+                        } else {
+                            $totalSMS++;
+                        }
                     }
                     ?>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 pt-3 border-t">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4 pt-3 border-t">
                         <div class="bg-blue-50 rounded-lg p-2 text-center">
                             <div class="text-lg font-bold text-blue-600"><?= $totalDestinataires ?></div>
                             <div class="text-xs text-gray-500">Destinataires</div>
@@ -476,6 +743,14 @@ if ($export === 'all_csv' && empty($campagneId)) {
                             <div class="text-lg font-bold text-red-600"><?= $totalErreurs ?></div>
                             <div class="text-xs text-gray-500">Échecs</div>
                         </div>
+                        <div class="bg-green-100 rounded-lg p-2 text-center">
+                            <div class="text-lg font-bold text-green-700"><?= $totalWhatsApp ?></div>
+                            <div class="text-xs text-gray-500">WhatsApp</div>
+                        </div>
+                        <div class="bg-blue-100 rounded-lg p-2 text-center">
+                            <div class="text-lg font-bold text-blue-700"><?= $totalSMS ?></div>
+                            <div class="text-xs text-gray-500">SMS</div>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -486,9 +761,11 @@ if ($export === 'all_csv' && empty($campagneId)) {
         </a>
         
     <?php else: ?>
-        <!-- Barre de recherche ET filtres de période -->
+        <!-- ============================================
+             BARRE DE RECHERCHE ET FILTRES DE PÉRIODE
+             ============================================ -->
         <div class="bg-white rounded-lg shadow p-4">
-            <form method="GET" action="">
+            <form method="GET" action="" id="filterForm">
                 <input type="hidden" name="page" value="campagnes/historique">
                 
                 <!-- Recherche par nom -->
@@ -507,10 +784,10 @@ if ($export === 'all_csv' && empty($campagneId)) {
                 <!-- Filtres par période -->
                 <div class="filter-container">
                     <label for="date_debut">Du :</label>
-                    <input type="date" name="date_debut" id="date_debut" value="<?= htmlspecialchars($dateDebut) ?>">
+                    <input type="date" name="date_debut" id="date_debut" value="<?= htmlspecialchars($dateDebut) ?>" class="<?= !empty($errorMessage) ? 'error' : '' ?>">
                     
                     <label for="date_fin">Au :</label>
-                    <input type="date" name="date_fin" id="date_fin" value="<?= htmlspecialchars($dateFin) ?>">
+                    <input type="date" name="date_fin" id="date_fin" value="<?= htmlspecialchars($dateFin) ?>" class="<?= !empty($errorMessage) ? 'error' : '' ?>">
                     
                     <button type="submit" class="btn-filter">
                         <i class="fas fa-filter mr-1"></i> Filtrer
@@ -547,6 +824,14 @@ if ($export === 'all_csv' && empty($campagneId)) {
                         ?>
                     </div>
                 </div>
+                
+                <!-- Message d'erreur intégré -->
+                <?php if (!empty($errorMessage)): ?>
+                    <div class="error-message" id="errorMessage">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span><?= htmlspecialchars($errorMessage) ?></span>
+                    </div>
+                <?php endif; ?>
             </form>
         </div>
 
@@ -635,9 +920,90 @@ if ($export === 'all_csv' && empty($campagneId)) {
 
 <script>
 // ============================================
+// FONCTIONS POUR LES TOASTS
+// ============================================
+function showToast(title, message, type = 'info', duration = 5000) {
+    const container = document.getElementById('toastContainer');
+    
+    // Icônes par type
+    const icons = {
+        error: 'fas fa-times-circle',
+        success: 'fas fa-check-circle',
+        warning: 'fas fa-exclamation-triangle',
+        info: 'fas fa-info-circle'
+    };
+    
+    // Créer le toast
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="toast-icon">
+            <i class="${icons[type] || icons.info}"></i>
+        </div>
+        <div class="toast-content">
+            <div class="toast-title">${title}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close" onclick="this.closest('.toast').remove()">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Supprimer automatiquement après la durée
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.classList.add('hide');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, duration);
+}
+
+// ============================================
+// VALIDATION DES DATES AVEC TOAST
+// ============================================
+const dateDebut = document.getElementById('date_debut');
+const dateFin = document.getElementById('date_fin');
+
+if (dateDebut && dateFin) {
+    dateDebut.addEventListener('change', function() {
+        if (dateFin.value && this.value > dateFin.value) {
+            showToast(
+                'Erreur de date',
+                'La date de début ne peut pas être postérieure à la date de fin.',
+                'error',
+                4000
+            );
+            this.classList.add('error');
+            this.value = '';
+            setTimeout(() => this.classList.remove('error'), 500);
+        } else {
+            this.classList.remove('error');
+        }
+    });
+    
+    dateFin.addEventListener('change', function() {
+        if (dateDebut.value && this.value < dateDebut.value) {
+            showToast(
+                'Erreur de date',
+                'La date de fin ne peut pas être antérieure à la date de début.',
+                'error',
+                4000
+            );
+            this.classList.add('error');
+            this.value = '';
+            setTimeout(() => this.classList.remove('error'), 500);
+        } else {
+            this.classList.remove('error');
+        }
+    });
+}
+
+// ============================================
 // RÉINITIALISATION DES FILTRES
 // ============================================
-document.querySelectorAll('.btn-clear').forEach(btn => {
+document.querySelectorAll('.btn-clear, .btn-clear-type').forEach(btn => {
     btn.addEventListener('click', function(e) {
         e.preventDefault();
         window.location.href = this.getAttribute('href');
@@ -645,23 +1011,39 @@ document.querySelectorAll('.btn-clear').forEach(btn => {
 });
 
 // ============================================
-// DÉTECTION DES DATES INVALIDE
+// SOUMISSION AUTOMATIQUE DU FILTRE TYPE
 // ============================================
-document.getElementById('date_debut')?.addEventListener('change', function() {
-    const dateFin = document.getElementById('date_fin');
-    if (dateFin.value && this.value > dateFin.value) {
-        alert('La date de début ne peut pas être postérieure à la date de fin.');
-        this.value = '';
-    }
+document.getElementById('type_filtre')?.addEventListener('change', function() {
+    this.closest('form').submit();
 });
 
-document.getElementById('date_fin')?.addEventListener('change', function() {
-    const dateDebut = document.getElementById('date_debut');
-    if (dateDebut.value && this.value < dateDebut.value) {
-        alert('La date de fin ne peut pas être antérieure à la date de début.');
-        this.value = '';
-    }
+// ============================================
+// AFFICHAGE D'UN TOAST SI MESSAGE D'ERREUR PHP
+// ============================================
+<?php if (!empty($errorMessage)): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    showToast(
+        'Erreur de validation',
+        '<?= addslashes($errorMessage) ?>',
+        'error',
+        5000
+    );
 });
+<?php endif; ?>
+
+// ============================================
+// TOAST DE BIENVENUE / INFORMATION
+// ============================================
+<?php if (isset($_GET['filtered']) && $_GET['filtered'] === 'success'): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    showToast(
+        'Filtres appliqués',
+        'Les filtres ont été appliqués avec succès.',
+        'success',
+        3000
+    );
+});
+<?php endif; ?>
 </script>
 
 </body>
