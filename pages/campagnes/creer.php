@@ -37,17 +37,31 @@ $page = isset($_GET['page_num']) ? max(1, intval($_GET['page_num'])) : 1;
 $limit = 10;
 $offset = ($page - 1) * $limit;
 
-$totalCampagnes = count($db->select('campagne_config', ['id_compte' => $idCompte]));
+// Récupérer TOUTES les campagnes (sans filtre de statut car select ne supporte pas les tableaux)
+$allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC');
+
+// Filtrer pour exclure les brouillons
+$allowedStatus = ['envoyee', 'pret_a_envoyer', 'partiel', 'planifiee', 'a_envoyer', 'echoue'];
+$filteredCampagnes = array_filter($allCampagnes, function($campagne) use ($allowedStatus) {
+    return in_array($campagne['statut'], $allowedStatus);
+});
+
+// Réindexer le tableau
+$filteredCampagnes = array_values($filteredCampagnes);
+
+// Total des campagnes filtrées
+$totalCampagnes = count($filteredCampagnes);
 $totalPages = ceil($totalCampagnes / $limit);
 
-$campagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC', $limit, $offset);
+// Appliquer la pagination
+$campagnes = array_slice($filteredCampagnes, $offset, $limit);
 
-// 🔥 RÉCUPÉRER LES INFOS DE CHAQUE CAMPAGNE
+// RÉCUPÉRER LES INFOS DE CHAQUE CAMPAGNE
 foreach ($campagnes as $key => $campagne) {
     $envois = $db->select('campagne', ['id_campagne_config' => $campagne['id_campagne_config']]);
     $campagnes[$key]['nb_envois'] = count($envois);
     
-    // 🔥 RÉCUPÉRER TOUS LES TYPES DE MESSAGES UNIQUES
+    // RÉCUPÉRER TOUS LES TYPES DE MESSAGES UNIQUES
     $typesMessages = [];
     foreach ($envois as $e) {
         if (!empty($e['type_campagne']) && !in_array($e['type_campagne'], $typesMessages)) {
@@ -120,17 +134,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
     exit;
 }
 
-// Traitement pour supprimer une campagne
+// Traitement pour supprimer une campagne (uniquement si elle a une date de planification)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_supprimer_campagne'])) {
     $id_campagne = $_POST['id_campagne'];
     
     try {
         $campagne = $db->select('campagne_config', ['id_campagne_config' => $id_campagne, 'id_compte' => $idCompte]);
-        if (!empty($campagne) && $campagne[0]['statut'] == 'planifiee') {
-            $db->delete('campagne_config', $id_campagne, 'id_campagne_config');
-            $_SESSION['flash_message'] = "Campagne planifiée supprimée avec succès";
+        if (!empty($campagne)) {
+            // Vérifier si la campagne a une date de planification
+            if (!empty($campagne[0]['date_planification'])) {
+                $db->delete('campagne_config', $id_campagne, 'id_campagne_config');
+                $_SESSION['flash_message'] = "Campagne supprimée avec succès";
+            } else {
+                $_SESSION['flash_error'] = "Impossible de supprimer cette campagne (pas de date de planification)";
+            }
         } else {
-            $_SESSION['flash_error'] = "Impossible de supprimer cette campagne (seules les campagnes planifiées sont supprimables)";
+            $_SESSION['flash_error'] = "Campagne non trouvée";
         }
     } catch (Exception $e) {
         $_SESSION['flash_error'] = "Erreur lors de la suppression";
@@ -151,13 +170,13 @@ $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
 unset($_SESSION['flash_message']);
 unset($_SESSION['flash_error']);
 
-$allCampagnes = $db->select('campagne_config', ['id_compte' => $idCompte]);
+// Statistiques (utiliser les campagnes déjà filtrées)
 $planifieesCount = 0;
 $aEnvoyerCount = 0;
 $totalEnvois = 0;
 $activeCount = 0;
 
-foreach ($allCampagnes as $c) {
+foreach ($filteredCampagnes as $c) {
     if ($c['statut'] == 'planifiee') {
         $planifieesCount++;
         $activeCount++;
@@ -173,6 +192,12 @@ foreach ($allCampagnes as $c) {
     if ($c['statut'] == 'envoyee') {
         $activeCount++;
     }
+    if ($c['statut'] == 'partiel') {
+        $activeCount++;
+    }
+    if ($c['statut'] == 'echoue') {
+        $activeCount++;
+    }
     $envoisCount = $db->select('campagne', ['id_campagne_config' => $c['id_campagne_config']]);
     $totalEnvois += count($envoisCount);
 }
@@ -184,6 +209,7 @@ foreach ($allCampagnes as $c) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mes campagnes - <?= APP_NAME ?></title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .toast-notification {
             position: fixed;
@@ -416,6 +442,13 @@ foreach ($allCampagnes as $c) {
         .action-btn:hover {
             transform: scale(1.1);
         }
+        .action-btn.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .action-btn.disabled:hover {
+            transform: none;
+        }
         
         .badge {
             display: inline-flex;
@@ -442,7 +475,7 @@ foreach ($allCampagnes as $c) {
             color: #f59e0b;
         }
         
-        /* 🔥 STYLES POUR LES TYPES DE MESSAGES */
+        /* STYLES POUR LES TYPES DE MESSAGES */
         .type-badge {
             display: inline-flex;
             align-items: center;
@@ -479,6 +512,44 @@ foreach ($allCampagnes as $c) {
         .items-center { align-items: center; }
         .gap-2 { gap: 8px; }
         .inline-flex { display: inline-flex; }
+        .space-y-6 > * + * { margin-top: 24px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mt-2 { margin-top: 8px; }
+        .block { display: block; }
+        
+        /* Grid layout */
+        .grid { display: grid; }
+        .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+        .gap-4 { gap: 16px; }
+        @media (min-width: 768px) {
+            .md\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+        
+        .shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .rounded-lg { border-radius: 8px; }
+        .bg-white { background: white; }
+        .p-4 { padding: 16px; }
+        .text-2xl { font-size: 24px; }
+        .font-bold { font-weight: 700; }
+        .text-gray-700 { color: #374151; }
+        .text-xs { font-size: 12px; }
+        
+        .w-full { width: 100%; }
+        .border { border: 1px solid #e5e7eb; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .focus\:outline-none:focus { outline: none; }
+        .focus\:border-purple-500:focus { border-color: #8b5cf6; }
+        .px-4 { padding-left: 16px; padding-right: 16px; }
+        .py-2 { padding-top: 8px; padding-bottom: 8px; }
+        .py-8 { padding-top: 32px; padding-bottom: 32px; }
+        .text-sm { font-size: 14px; }
+        .text-purple-600 { color: #9333ea; }
+        .hover\:text-purple-800:hover { color: #6b21a8; }
+        
+        .bg-purple-600 { background-color: #9333ea; }
+        .hover\:bg-purple-700:hover { background-color: #7e22ce; }
+        .text-white { color: white; }
+        .transition { transition: all 0.2s ease; }
     </style>
 </head>
 <body>
@@ -493,7 +564,7 @@ foreach ($allCampagnes as $c) {
             </h3>
         </div>
         <div class="confirm-modal-body">
-            <p>Êtes-vous sûr de vouloir supprimer la campagne planifiée <strong id="confirmCampagneNom"></strong> ?</p>
+            <p>Êtes-vous sûr de vouloir supprimer la campagne <strong id="confirmCampagneNom"></strong> ?</p>
             <p>Cette action est irréversible et supprimera définitivement la campagne.</p>
             <div class="warning-text">
                 <i class="fas fa-info-circle mr-1"></i>
@@ -643,7 +714,7 @@ foreach ($allCampagnes as $c) {
                                     }
                                     ?>
                                     <span class="badge <?= $badgeClass ?>"><?= $statusLabel ?></span>
-                                    <?php if ($campagne['statut'] == 'planifiee' && !empty($campagne['date_planification'])): ?>
+                                    <?php if (!empty($campagne['date_planification'])): ?>
                                         <div class="planification-date">
                                             <i class="fas fa-calendar-alt"></i> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
                                         </div>
@@ -683,11 +754,18 @@ foreach ($allCampagnes as $c) {
                                             <i class="fas fa-eye"></i>
                                         </a>
                                         
-                                        <?php if ($campagne['statut'] == 'planifiee'): ?>
+                                        <?php 
+                                        // Afficher le bouton de suppression UNIQUEMENT si la campagne a une date de planification
+                                        if (!empty($campagne['date_planification'])): 
+                                        ?>
                                             <button onclick="openConfirmDeleteModal('<?= $campagne['id_campagne_config'] ?>', '<?= addslashes($campagne['nom_campagne']) ?>')" 
                                                     class="action-btn text-red-600 hover:text-red-800" title="Supprimer la campagne planifiée">
                                                 <i class="fas fa-trash-alt"></i>
                                             </button>
+                                        <?php else: ?>
+                                            <span class="action-btn text-gray-400 disabled" title="Suppression non disponible (pas de date de planification)">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </span>
                                         <?php endif; ?>
                                     </div>
                                 </td>
@@ -867,7 +945,7 @@ function confirmDelete() {
         })
         .then(response => {
             if (response.ok) {
-                showToast('Campagne planifiée supprimée avec succès', 'success');
+                showToast('Campagne supprimée avec succès', 'success');
                 setTimeout(() => window.location.reload(), 1000);
             } else {
                 showToast('Erreur lors de la suppression', 'error');

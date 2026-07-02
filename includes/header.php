@@ -26,44 +26,6 @@ if ($userId) {
         $userLogo = $userInfo[0]['logo_url'];
     }
 }
-
-// ============================================
-// VÉRIFICATION DES CAMPAGNES PLANIFIÉES À ENVOYER
-// ============================================
-$campagnesAAlerter = [];
-if (isset($_SESSION['user_id'])) {
-    $idCompte = $_SESSION['user_id'];
-    $now = date('Y-m-d H:i:s');
-    
-    // Initialiser la session pour les notifications si pas existante
-    if (!isset($_SESSION['campagnes_notifiees'])) {
-        $_SESSION['campagnes_notifiees'] = [];
-    }
-    
-    // Récupérer les campagnes planifiées
-    $campagnesPlanifiees = $db->select('campagne_config', [
-        'id_compte' => $idCompte,
-        'statut' => 'planifiee'
-    ]);
-    
-    foreach ($campagnesPlanifiees as $campagne) {
-        // Vérifier si la date de planification est passée ou dans les 5 minutes
-        $datePlanif = strtotime($campagne['date_planification']);
-        $dateNow = time();
-        
-        // Si la date est passée (ou dans les 5 minutes)
-        if (!empty($campagne['date_planification']) && $datePlanif <= $dateNow) {
-            // Vérifier si déjà notifiée
-            if (!in_array($campagne['id_campagne_config'], $_SESSION['campagnes_notifiees'])) {
-                $_SESSION['campagnes_notifiees'][] = $campagne['id_campagne_config'];
-                $campagnesAAlerter[] = $campagne;
-                
-                // Mettre à jour le statut pour ne plus alerter
-                $db->update('campagne_config', ['statut' => 'a_envoyer'], ['id_campagne_config' => $campagne['id_campagne_config']]);
-            }
-        }
-    }
-}
 ?>
 
 <header class="bg-white shadow-sm">
@@ -247,11 +209,43 @@ function escapeHtml(text) {
 }
 
 // ============================================
-// AFFICHER LES ALERTES AU CHARGEMENT
+// POLLING DES NOTIFICATIONS D'ENVOI AUTOMATIQUE
 // ============================================
-<?php foreach ($campagnesAAlerter as $campagne): ?>
-    setTimeout(function() {
-        showToast('La campagne "<?= addslashes($campagne['nom_campagne']) ?>" doit être envoyée !', 'warning');
-    }, 18000);
-<?php endforeach; ?>
+(function() {
+    async function verifierNotifications() {
+        try {
+            const res = await fetch('pages/campagnes/check_notifications.php');
+            const data = await res.json();
+
+            if (data.success && data.nouveaux.length > 0) {
+                data.nouveaux.forEach(envoi => {
+                    let msg, type;
+                    if (envoi.statut === 'envoye') {
+                        msg = `Campagne envoyée (${envoi.nb_succes} destinataires)`;
+                        type = 'success';
+                    } else if (envoi.statut === 'echoue') {
+                        msg = `Échec d'un envoi de campagne`;
+                        type = 'error';
+                    } else {
+                        msg = `Envoi partiel : ${envoi.nb_succes} succès, ${envoi.nb_erreurs} échecs`;
+                        type = 'warning';
+                    }
+
+                    showToast(msg, type);
+
+                    fetch('pages/campagnes/marquer_notification_vue.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id_campagne: envoi.id_campagne })
+                    });
+                });
+            }
+        } catch (err) {
+            console.error('Erreur vérification notifications:', err);
+        }
+    }
+
+    setInterval(verifierNotifications, 15000); // toutes les 15 secondes
+    verifierNotifications(); // vérification immédiate au chargement
+})();
 </script>

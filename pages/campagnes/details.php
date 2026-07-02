@@ -17,8 +17,17 @@ if (empty($campagne)) {
 }
 $campagne = $campagne[0];
 
-// Récupérer tous les envois liés à cette campagne
-$envois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
+// Récupérer tous les envois liés à cette campagne (exclure les brouillons)
+// Récupérer d'abord tous les envois
+$allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
+
+// Filtrer pour exclure les brouillons
+$envois = array_filter($allEnvois, function($e) {
+    return $e['statut'] !== 'brouillon';
+});
+
+// Réindexer le tableau
+$envois = array_values($envois);
 
 $totalEnvois = count($envois);
 $totalSucces = 0;
@@ -35,7 +44,8 @@ foreach ($envois as $e) {
     } else {
         $totalSms++;
     }
-    if ($e['statut'] == 'brouillon' || $e['statut'] == 'pret_a_envoyer') {
+    // Ne compter que les messages prêts à envoyer
+    if ($e['statut'] == 'pret_a_envoyer') {
         $totalAPreparer++;
     }
 }
@@ -517,6 +527,7 @@ unset($_SESSION['flash_error']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($campagne['nom_campagne']) ?> - <?= APP_NAME ?></title>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * { box-sizing: border-box; }
         body { 
@@ -731,6 +742,10 @@ unset($_SESSION['flash_error']);
             padding: 12px 24px;
         }
         
+        .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
+        .gap-4 { gap: 16px; }
+        
         @media (max-width: 768px) {
             .container { padding: 12px; }
             .header-title { font-size: 20px; }
@@ -819,7 +834,7 @@ unset($_SESSION['flash_error']);
     </div>
 
     <!-- ===== STATISTIQUES ===== -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div class="grid grid-cols-5 md:grid-cols-5 gap-4 mb-6">
         <div class="bg-white rounded-xl shadow-md stat-card text-center">
             <div class="stat-number text-blue-600"><?= $totalEnvois ?></div>
             <div class="stat-label">Messages envoyés</div>
@@ -891,7 +906,7 @@ unset($_SESSION['flash_error']);
         <?php if (empty($envois)): ?>
             <div class="text-center py-12">
                 <i class="fas fa-envelope text-4xl text-gray-300 mb-3"></i>
-                <p class="text-gray-500">Aucun message pour cette campagne.</p>
+                <p class="text-gray-500">Aucun message.</p>
                 <a href="index.php?page=campagnes/choix_type&campagne_id=<?= $campagneId ?>" 
                    class="text-green-600 mt-2 inline-block font-semibold">
                     <i class="fas fa-plus mr-1"></i>Créer votre premier message
@@ -912,9 +927,9 @@ unset($_SESSION['flash_error']);
                     </thead>
                     <tbody id="envoisTableBody">
                         <?php foreach ($envois as $envoi): 
-                            $statutClass = $envoi['statut'] == 'envoye' ? 'text-green-600' : ($envoi['statut'] == 'partiel' ? 'text-yellow-600' : ($envoi['statut'] == 'pret_a_envoyer' ? 'text-blue-600' : ($envoi['statut'] == 'brouillon' ? 'text-gray-600' : 'text-red-600')));
-                            $statutIcon = $envoi['statut'] == 'envoye' ? 'fa-check-circle' : ($envoi['statut'] == 'partiel' ? 'fa-exclamation-triangle' : ($envoi['statut'] == 'pret_a_envoyer' ? 'fa-clock' : ($envoi['statut'] == 'brouillon' ? 'fa-pencil' : 'fa-exclamation-circle')));
-                            $statutLabel = $envoi['statut'] == 'envoye' ? 'Envoyé' : ($envoi['statut'] == 'partiel' ? 'Partiel' : ($envoi['statut'] == 'pret_a_envoyer' ? 'Prêt à envoyer' : ($envoi['statut'] == 'brouillon' ? 'Brouillon' : 'Échoué')));
+                            $statutClass = $envoi['statut'] == 'envoye' ? 'text-green-600' : ($envoi['statut'] == 'partiel' ? 'text-yellow-600' : ($envoi['statut'] == 'pret_a_envoyer' ? 'text-blue-600' : 'text-red-600'));
+                            $statutIcon = $envoi['statut'] == 'envoye' ? 'fa-check-circle' : ($envoi['statut'] == 'partiel' ? 'fa-exclamation-triangle' : ($envoi['statut'] == 'pret_a_envoyer' ? 'fa-clock' : 'fa-exclamation-circle'));
+                            $statutLabel = $envoi['statut'] == 'envoye' ? 'Envoyé' : ($envoi['statut'] == 'partiel' ? 'Partiel' : ($envoi['statut'] == 'pret_a_envoyer' ? 'Prêt à envoyer' : 'Échoué'));
                             $typeClass = $envoi['type_campagne'] == 'whatsapp' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700';
                             $typeIcon = $envoi['type_campagne'] == 'whatsapp' ? 'fab fa-whatsapp' : 'fas fa-comment-dots';
                             $typeLabel = $envoi['type_campagne'] == 'whatsapp' ? 'WhatsApp' : 'SMS';
@@ -1040,6 +1055,12 @@ function applyFilters() {
         const status = row.dataset.status || '';
         let show = true;
         
+        // Ignorer les brouillons (ils ne devraient pas être présents, mais au cas où)
+        if (status === 'brouillon') {
+            row.style.display = 'none';
+            return;
+        }
+        
         if (searchTerm !== '' && !text.includes(searchTerm)) show = false;
         if (show && typeFilter !== 'all' && type !== typeFilter) show = false;
         if (show && statusFilter !== 'all' && status !== statusFilter) show = false;
@@ -1129,9 +1150,7 @@ function showDetails(envoi) {
             ? '<span class="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Partiel</span>'
             : (envoi.statut === 'pret_a_envoyer'
                 ? '<span class="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-clock mr-1"></i>Prêt à envoyer</span>'
-                : (envoi.statut === 'brouillon'
-                    ? '<span class="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-pencil mr-1"></i>Brouillon</span>'
-                    : '<span class="bg-red-100 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>')));
+                : '<span class="bg-red-100 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>'));
     
     const typeBadge = envoi.type_campagne === 'whatsapp'
         ? '<span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fab fa-whatsapp mr-1"></i>WhatsApp</span>'
