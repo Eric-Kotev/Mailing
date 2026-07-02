@@ -1,7 +1,7 @@
 <?php
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes/envoi_functions.php';
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../../config.php';
+require_once __DIR__ . '/../../includes/envoi_functions.php';
+require_once __DIR__ . '/../../includes/db.php';
 
 
 header('Content-Type: application/json');
