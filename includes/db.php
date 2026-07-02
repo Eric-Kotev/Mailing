@@ -155,26 +155,48 @@ class Database {
      * Insère un enregistrement et retourne l'ID créé
      */
     public function insertAndGetId($table, $data) {
-        $result = $this->request('POST', $table, $data);
-        
-        // Déterminer le nom du champ ID
-        $idField = 'id_' . $table;
-        
-        // Supabase retourne le tableau des données insérées
-        if (is_array($result) && isset($result[0][$idField])) {
-            return $result[0][$idField];
-        } elseif (is_array($result) && isset($result[$idField])) {
-            return $result[$idField];
-        }
-        
-        // Fallback: chercher le dernier enregistrement
-        $lastRecord = $this->select($table, [], '*', 'created_at.desc', 1);
-        if (!empty($lastRecord) && isset($lastRecord[0][$idField])) {
-            return $lastRecord[0][$idField];
-        }
-        
-        return null;
+    $endpoint = $table;
+    
+    // Convertir les données en format Supabase
+    $postData = [];
+    foreach ($data as $key => $value) {
+        $postData[$key] = $value;
     }
+    
+    $result = $this->request('POST', $endpoint, $postData);
+    
+    // 🔥 DEBUG - Log du résultat
+    error_log("insertAndGetId - Résultat: " . json_encode($result));
+    
+    // Supabase retourne un tableau avec les données insérées
+    if (!empty($result) && isset($result[0])) {
+        $row = $result[0];
+        
+        // Vérifier les différents noms possibles pour la clé primaire
+        $possibleKeys = ['id_custom_field', 'id_contact', 'id', 'id_value'];
+        foreach ($possibleKeys as $key) {
+            if (isset($row[$key])) {
+                return $row[$key];
+            }
+        }
+        
+        // Si aucun ID trouvé, retourner la première colonne
+        $firstKey = array_key_first($row);
+        if ($firstKey) {
+            return $row[$firstKey];
+        }
+    }
+    
+    // Si on a un seul élément dans le tableau avec un ID
+    if (!empty($result) && isset($result['id_custom_field'])) {
+        return $result['id_custom_field'];
+    }
+    if (!empty($result) && isset($result['id'])) {
+        return $result['id'];
+    }
+    
+    return null;
+}
     
     public function update($table, $data, $conditions) {
         $query = "";

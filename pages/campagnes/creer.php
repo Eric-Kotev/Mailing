@@ -1,4 +1,5 @@
 <?php
+require_once 'config.php';
 global $db;
 
 $idCompte = $_SESSION['user_id'];
@@ -11,19 +12,16 @@ if (isset($_SESSION['user_id'])) {
     $idCompte = $_SESSION['user_id'];
     $now = date('Y-m-d H:i:s');
     
-    // Initialiser la session pour les notifications si pas existante
     if (!isset($_SESSION['campagnes_notifiees'])) {
         $_SESSION['campagnes_notifiees'] = [];
     }
     
-    // Récupérer TOUTES les campagnes planifiées
     $campagnesPlanifiees = $db->select('campagne_config', [
         'id_compte' => $idCompte,
         'statut' => 'planifiee'
     ]);
     
     foreach ($campagnesPlanifiees as $campagne) {
-        // Vérifier si la date de planification est passée
         if (!empty($campagne['date_planification']) && 
             strtotime($campagne['date_planification']) <= strtotime($now) &&
             !in_array($campagne['id_campagne_config'], $_SESSION['campagnes_notifiees'])) {
@@ -39,17 +37,38 @@ $page = isset($_GET['page_num']) ? max(1, intval($_GET['page_num'])) : 1;
 $limit = 10;
 $offset = ($page - 1) * $limit;
 
-// Compter le total des campagnes
 $totalCampagnes = count($db->select('campagne_config', ['id_compte' => $idCompte]));
 $totalPages = ceil($totalCampagnes / $limit);
 
-// Récupérer les campagnes avec pagination
 $campagnes = $db->select('campagne_config', ['id_compte' => $idCompte], '*', 'created_at DESC', $limit, $offset);
 
-// Compter les envois pour chaque campagne
+// 🔥 RÉCUPÉRER LES INFOS DE CHAQUE CAMPAGNE
 foreach ($campagnes as $key => $campagne) {
     $envois = $db->select('campagne', ['id_campagne_config' => $campagne['id_campagne_config']]);
     $campagnes[$key]['nb_envois'] = count($envois);
+    
+    // 🔥 RÉCUPÉRER TOUS LES TYPES DE MESSAGES UNIQUES
+    $typesMessages = [];
+    foreach ($envois as $e) {
+        if (!empty($e['type_campagne']) && !in_array($e['type_campagne'], $typesMessages)) {
+            $typesMessages[] = $e['type_campagne'];
+        }
+    }
+    $campagnes[$key]['types_messages'] = $typesMessages;
+    
+    // Pour compatibilité avec l'affichage existant (type principal)
+    if (!empty($envois)) {
+        $campagnes[$key]['type_message'] = $envois[0]['type_campagne'] ?? 'sms';
+        $campagnes[$key]['message_content'] = $envois[0]['message'] ?? '';
+        $campagnes[$key]['id_campagne_historique'] = $envois[0]['id_campagne'] ?? null;
+        $campagnes[$key]['piece_jointe'] = $envois[0]['piece_jointe'] ?? null;
+    } else {
+        $campagnes[$key]['type_message'] = 'sms';
+        $campagnes[$key]['message_content'] = '';
+        $campagnes[$key]['id_campagne_historique'] = null;
+        $campagnes[$key]['piece_jointe'] = null;
+        $campagnes[$key]['types_messages'] = [];
+    }
 }
 
 // Traitement de la création d'une nouvelle campagne (AJAX)
@@ -64,7 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
         exit;
     }
     
-    // Si date fournie → planifiee, sinon → a_envoyer (envoi immédiat)
     $statut = $date_planification ? 'planifiee' : 'a_envoyer';
     
     $data = [
@@ -85,20 +103,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_creer_campagne
         
         if (!empty($nouvelleCampagne)) {
             $id_campagne = $nouvelleCampagne[0]['id_campagne_config'];
-            
-            // Si campagne en "a_envoyer", rediriger immédiatement vers le choix du canal
             $response = [
                 'success' => true, 
                 'message' => 'Campagne créée avec succès', 
                 'id_campagne' => $id_campagne,
                 'statut' => $statut
             ];
-            
-            // Si c'est un envoi immédiat, ajouter l'URL de redirection
-            if ($statut === 'a_envoyer') {
-                $response['redirect'] = 'index.php?page=campagnes/choix&campagne_id=' . $id_campagne;
-            }
-            
+            $response['redirect'] = 'index.php?page=campagnes/choix_type&campagne_id=' . $id_campagne;
             echo json_encode($response);
         } else {
             echo json_encode(['success' => false, 'error' => 'Impossible de récupérer la campagne créée']);
@@ -115,7 +126,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_supprimer_camp
     
     try {
         $campagne = $db->select('campagne_config', ['id_campagne_config' => $id_campagne, 'id_compte' => $idCompte]);
-        // 🔥 MODIFICATION : Seulement les campagnes avec statut 'planifiee' peuvent être supprimées
         if (!empty($campagne) && $campagne[0]['statut'] == 'planifiee') {
             $db->delete('campagne_config', $id_campagne, 'id_campagne_config');
             $_SESSION['flash_message'] = "Campagne planifiée supprimée avec succès";
@@ -126,9 +136,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_supprimer_camp
         $_SESSION['flash_error'] = "Erreur lors de la suppression";
     }
     
-    header('Location: index.php?page=campagnes/index');
+    header('Location: index.php?page=campagnes/creer');
     exit;
 }
+
+// Récupérer les messages toast
+$toastMessage = isset($_SESSION['toast_message']) ? $_SESSION['toast_message'] : null;
+$toastType = isset($_SESSION['toast_type']) ? $_SESSION['toast_type'] : null;
+unset($_SESSION['toast_message']);
+unset($_SESSION['toast_type']);
 
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
@@ -147,6 +163,10 @@ foreach ($allCampagnes as $c) {
         $activeCount++;
     }
     if ($c['statut'] == 'a_envoyer') {
+        $aEnvoyerCount++;
+        $activeCount++;
+    }
+    if ($c['statut'] == 'pret_a_envoyer') {
         $aEnvoyerCount++;
         $activeCount++;
     }
@@ -183,10 +203,20 @@ foreach ($allCampagnes as $c) {
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             font-size: 14px;
             font-weight: 500;
+            max-width: 450px;
         }
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.warning .toast-content { background: #f59e0b; }
+        .toast-notification.info .toast-content { background: #3b82f6; }
+        
+        .toast-notification.fade-out {
+            animation: fadeOut 0.3s ease forwards;
+        }
+        @keyframes fadeOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
         
         .modal-show {
             opacity: 1 !important;
@@ -201,17 +231,6 @@ foreach ($allCampagnes as $c) {
             opacity: 1 !important;
             transform: scale(1) !important;
         }
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 500;
-        }
-        .status-planifiee { background: #fef3c7; color: #92400e; }
-        .status-a_envoyer { background: #dbeafe; color: #1e40af; }
-        .status-envoyee { background: #dcfce7; color: #166534; }
         
         .campagne-row {
             cursor: pointer;
@@ -253,17 +272,6 @@ foreach ($allCampagnes as $c) {
             font-family: inherit;
         }
         
-        .btn-annuler {
-            background: none;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-annuler:hover {
-            transform: scale(1.1);
-        }
-        
-        /* MODAL DE CONFIRMATION PERSONNALISÉ */
         .confirm-modal {
             position: fixed;
             top: 0;
@@ -359,7 +367,6 @@ foreach ($allCampagnes as $c) {
             background: #b91c1c;
         }
         
-        /* Styles pour le tableau */
         .table-container {
             overflow-x: auto;
         }
@@ -379,6 +386,7 @@ foreach ($allCampagnes as $c) {
             font-size: 11px;
             letter-spacing: 0.5px;
             color: #6b7280;
+            text-align: left;
         }
         .campagne-table td {
             border-bottom: 1px solid #e5e7eb;
@@ -386,6 +394,7 @@ foreach ($allCampagnes as $c) {
         .campagne-row:last-child td {
             border-bottom: none;
         }
+        
         .action-buttons {
             display: flex;
             gap: 8px;
@@ -399,10 +408,15 @@ foreach ($allCampagnes as $c) {
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 14px;
         }
         .action-btn:hover {
             transform: scale(1.1);
         }
+        
         .badge {
             display: inline-flex;
             align-items: center;
@@ -414,6 +428,10 @@ foreach ($allCampagnes as $c) {
         .badge-planifiee { background: #fef3c7; color: #92400e; }
         .badge-a_envoyer { background: #dbeafe; color: #1e40af; }
         .badge-envoyee { background: #dcfce7; color: #166534; }
+        .badge-pret_a_envoyer { background: #dbeafe; color: #1e40af; }
+        .badge-partiel { background: #fef3c7; color: #92400e; }
+        .badge-echoue { background: #fee2e2; color: #991b1b; }
+        
         .planification-date {
             font-size: 12px;
             color: #6b7280;
@@ -423,81 +441,49 @@ foreach ($allCampagnes as $c) {
             margin-right: 4px;
             color: #f59e0b;
         }
-        .text-center {
-            text-align: center;
-        }
-        .text-left {
-            text-align: left;
-        }
-        .font-medium {
-            font-weight: 500;
-        }
-        .text-gray-800 {
-            color: #1f2937;
-        }
-        .text-gray-500 {
-            color: #6b7280;
-        }
-        .text-blue-600 {
-            color: #2563eb;
-        }
-        .text-green-600 {
-            color: #16a34a;
-        }
-        .text-orange-600 {
-            color: #ea580c;
-        }
-        .text-red-600 {
-            color: #dc2626;
-        }
-        .hover\:text-blue-800:hover {
-            color: #1e40af;
-        }
-        .hover\:text-green-800:hover {
-            color: #15803d;
-        }
-        .hover\:text-orange-800:hover {
-            color: #c2410c;
-        }
-        .hover\:text-red-800:hover {
-            color: #b91c1c;
-        }
-        .bg-purple-100 {
-            background-color: #f3e8ff;
-        }
-        .text-purple-600 {
-            color: #9333ea;
-        }
-        .rounded-full {
-            border-radius: 9999px;
-        }
-        .p-2 {
-            padding: 8px;
-        }
-        .mr-3 {
-            margin-right: 12px;
-        }
-        .flex {
-            display: flex;
-        }
-        .items-center {
-            align-items: center;
-        }
-        .gap-2 {
-            gap: 8px;
-        }
-        .mx-1 {
-            margin-left: 4px;
-            margin-right: 4px;
-        }
-        .inline-flex {
+        
+        /* 🔥 STYLES POUR LES TYPES DE MESSAGES */
+        .type-badge {
             display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
         }
+        .type-badge-sms { background: #dbeafe; color: #1e40af; }
+        .type-badge-whatsapp { background: #dcfce7; color: #166534; }
+        .type-badge-email { background: #fef3c7; color: #92400e; }
+        
+        .types-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        
+        .text-center { text-align: center; }
+        .text-left { text-align: left; }
+        .font-medium { font-weight: 500; }
+        .text-gray-800 { color: #1f2937; }
+        .text-gray-500 { color: #6b7280; }
+        .text-blue-600 { color: #2563eb; }
+        .text-green-600 { color: #16a34a; }
+        .text-red-600 { color: #dc2626; }
+        
+        .bg-purple-100 { background-color: #f3e8ff; }
+        .text-purple-600 { color: #9333ea; }
+        .rounded-full { border-radius: 9999px; }
+        .p-2 { padding: 8px; }
+        .mr-3 { margin-right: 12px; }
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .gap-2 { gap: 8px; }
+        .inline-flex { display: inline-flex; }
     </style>
 </head>
 <body>
 
-<!-- MODAL DE CONFIRMATION PERSONNALISÉ -->
+<!-- MODAL DE CONFIRMATION SUPPRESSION -->
 <div id="confirmDeleteModal" class="confirm-modal">
     <div class="confirm-modal-content">
         <div class="confirm-modal-header">
@@ -536,13 +522,6 @@ foreach ($allCampagnes as $c) {
             <i class="fas fa-plus mr-2"></i>Nouvelle campagne
         </button>
     </div>
-
-    <?php if ($flashMessage): ?>
-        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= htmlspecialchars($flashMessage) ?></div>
-    <?php endif; ?>
-    <?php if ($flashError): ?>
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= htmlspecialchars($flashError) ?></div>
-    <?php endif; ?>
 
     <!-- Statistiques -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -605,7 +584,7 @@ foreach ($allCampagnes as $c) {
                         <th class="text-left">Nom</th>
                         <th class="text-center">Messages</th>
                         <th class="text-left">Statut</th>
-                        <th class="text-left">Date planification</th>
+                        <th class="text-left">Types</th>
                         <th class="text-left">Date création</th>
                         <th class="text-center">Actions</th>
                     </tr>
@@ -646,9 +625,21 @@ foreach ($allCampagnes as $c) {
                                     } elseif ($campagne['statut'] == 'a_envoyer') {
                                         $badgeClass = 'badge-a_envoyer';
                                         $statusLabel = 'À envoyer';
-                                    } else {
+                                    } elseif ($campagne['statut'] == 'pret_a_envoyer') {
+                                        $badgeClass = 'badge-pret_a_envoyer';
+                                        $statusLabel = 'Prêt à envoyer';
+                                    } elseif ($campagne['statut'] == 'envoyee') {
                                         $badgeClass = 'badge-envoyee';
                                         $statusLabel = 'Envoyée';
+                                    } elseif ($campagne['statut'] == 'partiel') {
+                                        $badgeClass = 'badge-partiel';
+                                        $statusLabel = 'Partiel';
+                                    } elseif ($campagne['statut'] == 'echoue') {
+                                        $badgeClass = 'badge-echoue';
+                                        $statusLabel = 'Échouée';
+                                    } else {
+                                        $badgeClass = 'badge-a_envoyer';
+                                        $statusLabel = ucfirst($campagne['statut']);
                                     }
                                     ?>
                                     <span class="badge <?= $badgeClass ?>"><?= $statusLabel ?></span>
@@ -659,12 +650,27 @@ foreach ($allCampagnes as $c) {
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if (!empty($campagne['date_planification'])): ?>
-                                        <div class="planification-date">
-                                            <i class="fas fa-calendar-alt"></i> <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
+                                    <?php 
+                                    $types = $campagne['types_messages'] ?? [];
+                                    if (empty($types)): 
+                                    ?>
+                                        <span class="text-gray-400 text-xs">Aucun message</span>
+                                    <?php else: 
+                                        $typeLabels = [
+                                            'sms' => ['label' => 'SMS', 'class' => 'type-badge-sms'],
+                                            'whatsapp' => ['label' => 'WhatsApp', 'class' => 'type-badge-whatsapp'],
+                                            'email' => ['label' => 'Email', 'class' => 'type-badge-email']
+                                        ];
+                                    ?>
+                                        <div class="types-container">
+                                            <?php foreach ($types as $type): 
+                                                $info = $typeLabels[$type] ?? ['label' => ucfirst($type), 'class' => 'type-badge-sms'];
+                                            ?>
+                                                <span class="type-badge <?= $info['class'] ?>">
+                                                    <?= $info['label'] ?>
+                                                </span>
+                                            <?php endforeach; ?>
                                         </div>
-                                    <?php else: ?>
-                                        <span class="text-gray-400 text-sm">Envoi immédiat</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-gray-500 text-sm">
@@ -672,17 +678,11 @@ foreach ($allCampagnes as $c) {
                                 </td>
                                 <td class="text-center">
                                     <div class="action-buttons" onclick="event.stopPropagation()">
-                                        <?php if ($campagne['statut'] == 'planifiee' || $campagne['statut'] == 'a_envoyer'): ?>
-                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                               class="action-btn text-green-600 hover:text-green-800" title="Envoyer">
-                                                <i class="fas fa-paper-plane"></i>
-                                            </a>
-                                        <?php endif; ?>
                                         <a href="index.php?page=campagnes/details&id=<?= $campagne['id_campagne_config'] ?>" 
                                            class="action-btn text-blue-600 hover:text-blue-800" title="Voir les détails">
                                             <i class="fas fa-eye"></i>
                                         </a>
-                                        <?php // 🔥 MODIFICATION : Seulement afficher le bouton supprimer pour les campagnes planifiées ?>
+                                        
                                         <?php if ($campagne['statut'] == 'planifiee'): ?>
                                             <button onclick="openConfirmDeleteModal('<?= $campagne['id_campagne_config'] ?>', '<?= addslashes($campagne['nom_campagne']) ?>')" 
                                                     class="action-btn text-red-600 hover:text-red-800" title="Supprimer la campagne planifiée">
@@ -725,7 +725,7 @@ foreach ($allCampagnes as $c) {
     <?php endif; ?>
 </div>
 
-<!-- MODALE D'AJOUT DE CAMPAGNE AVEC DATE DE PLANIFICATION OPTIONNELLE -->
+<!-- MODALE D'AJOUT DE CAMPAGNE -->
 <div id="addCampagneModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-campagne">
         <div class="p-6">
@@ -746,7 +746,7 @@ foreach ($allCampagnes as $c) {
                 
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Nom de la campagne * <span class="text-red-500">*</span>
+                        Nom de la campagne *
                     </label>
                     <input type="text" name="nom_campagne" id="nom_campagne" required 
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"
@@ -761,7 +761,7 @@ foreach ($allCampagnes as $c) {
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 datetime-input">
                     <p class="text-xs text-gray-500 mt-1">
                         <i class="fas fa-info-circle mr-1"></i>
-                        <strong>Laissez vide</strong> pour un envoi <strong>immédiat</strong> après création.<br>
+                        <strong>Laissez vide</strong> pour un envoi <strong>immédiat</strong>.<br>
                         <strong>Remplissez</strong> pour planifier un envoi automatique.
                     </p>
                 </div>
@@ -794,31 +794,51 @@ foreach ($allCampagnes as $c) {
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
+    
     const toast = document.createElement('div');
     toast.className = `toast-notification ${type}`;
-    const colors = { success: '#10b981', error: '#ef4444', warning: '#f59e0b' };
+    const colors = { success: '#10b981', error: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
     toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+    
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
 }
 
 // ============================================
-// MISE À JOUR DU MESSAGE D'INFO EN FONCTION DE LA DATE
+// AFFICHER LES TOASTS DEPUIS PHP
+// ============================================
+<?php if ($toastMessage): ?>
+    showToast('<?= addslashes($toastMessage) ?>', '<?= $toastType ?>');
+<?php endif; ?>
+
+<?php if ($flashMessage): ?>
+    showToast('<?= addslashes($flashMessage) ?>', 'success');
+<?php endif; ?>
+
+<?php if ($flashError): ?>
+    showToast('<?= addslashes($flashError) ?>', 'error');
+<?php endif; ?>
+
+// ============================================
+// MISE À JOUR DU MESSAGE D'INFO
 // ============================================
 document.getElementById('date_planification').addEventListener('change', function() {
     const infoMessage = document.getElementById('infoMessage');
     if (this.value) {
         const dateFormatted = new Date(this.value).toLocaleString('fr-FR');
-        infoMessage.innerHTML = `📅 Envoi planifié pour le <strong>${dateFormatted}</strong>.`;
+        infoMessage.innerHTML = ` Envoi planifié pour le <strong>${dateFormatted}</strong>.`;
         infoMessage.parentElement.className = 'bg-yellow-50 p-3 rounded-lg mb-4 text-sm text-yellow-700';
     } else {
-        infoMessage.innerHTML = '⚡ Envoi <strong>immédiat</strong> après la création de la campagne.';
+        infoMessage.innerHTML = 'Envoi <strong>immédiat</strong> après la création de la campagne.';
         infoMessage.parentElement.className = 'bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700';
     }
 });
 
 // ============================================
-// MODAL DE CONFIRMATION POUR SUPPRESSION
+// MODAL DE CONFIRMATION SUPPRESSION
 // ============================================
 let campagneToDelete = null;
 
@@ -860,11 +880,9 @@ function confirmDelete() {
     }
 }
 
-// Écouteurs des boutons du modal
 document.getElementById('confirmCancelBtn').addEventListener('click', closeConfirmDeleteModal);
 document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
 
-// Fermer le modal en cliquant en dehors
 document.getElementById('confirmDeleteModal').addEventListener('click', function(e) {
     if (e.target === this) {
         closeConfirmDeleteModal();
@@ -879,9 +897,8 @@ function openAddCampagneModal() {
     const modalContent = modal.querySelector('.modal-campagne');
     document.getElementById('addCampagneForm').reset();
     document.getElementById('date_planification').value = '';
-    // Réinitialiser le message d'info
     const infoMessage = document.getElementById('infoMessage');
-    infoMessage.innerHTML = '⚡ Envoi <strong>immédiat</strong> après la création de la campagne.';
+    infoMessage.innerHTML = ' Envoi <strong>immédiat</strong> après la création de la campagne.';
     infoMessage.parentElement.className = 'bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700';
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
@@ -933,24 +950,11 @@ document.getElementById('addCampagneForm').addEventListener('submit', async func
         }
         
         if (result.success) {
-            let message = result.message;
-            
-            if (datePlanification) {
-                const dateFormatted = new Date(datePlanification).toLocaleString('fr-FR');
-                message = `Campagne créée et planifiée pour le ${dateFormatted}`;
-                showToast(message, 'success');
-                closeAddCampagneModal();
-                setTimeout(() => window.location.reload(), 1000);
-            } else {
-                // Envoi immédiat - rediriger vers choix.php
-                message = 'Campagne créée, vous allez être redirigé pour l\'envoi immédiat';
-                showToast(message, 'success');
-                closeAddCampagneModal();
-                // Redirection vers la page de choix
-                setTimeout(() => {
-                    window.location.href = 'index.php?page=campagnes/choix&campagne_id=' + result.id_campagne;
-                }, 1000);
-            }
+            showToast('Campagne créée avec succès !', 'success');
+            closeAddCampagneModal();
+            setTimeout(() => {
+                window.location.href = result.redirect;
+            }, 1000);
         } else {
             showToast(result.error, 'error');
             submitBtn.innerHTML = originalText;
@@ -997,17 +1001,15 @@ if (searchInput) {
 }
 
 // ============================================
-// AFFICHER LES ALERTES DE CAMPAGNES PLANIFIÉES
+// ALERTES CAMPAGNES PLANIFIÉES
 // ============================================
 <?php if (!empty($campagnesAAlerter)): ?>
     console.log("Campagnes à alerter: <?= count($campagnesAAlerter) ?>");
     <?php foreach ($campagnesAAlerter as $campagne): ?>
         setTimeout(function() {
-            showToast('📅 La campagne "<?= addslashes($campagne['nom_campagne']) ?>" doit être envoyée !', 'warning');
+            showToast('La campagne "<?= addslashes($campagne['nom_campagne']) ?>" doit être envoyée !', 'warning');
         }, 15000);
     <?php endforeach; ?>
-<?php else: ?>
-    console.log("Aucune campagne à alerter");
 <?php endif; ?>
 
 // Fermeture des modales

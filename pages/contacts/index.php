@@ -1,16 +1,14 @@
 <?php
 require_once 'includes/functions.php';
 require_once 'includes/db.php';
-// 🔥 DEBUG - Ajouter en tout début du fichier
+
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
-// 🔥 Nettoyer tout buffer de sortie
 ob_clean();
 ob_start();
 
-// Démarrer la session si elle n'est pas déjà active
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -18,10 +16,8 @@ if (session_status() === PHP_SESSION_NONE) {
 global $db;
 
 $idCompte = $_SESSION['user_id'];
-// Récupérer tous les contacts
 $contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'date_inscription DESC');
 
-// Récupérer les IDs des contacts blacklistés et leurs détails
 $blacklistItems = $db->select('blacklist', [], '*');
 $blacklistedIds = [];
 $blacklistDetails = [];
@@ -30,10 +26,11 @@ foreach ($blacklistItems as $bl) {
     $blacklistDetails[$bl['id_contact']] = $bl;
 }
 
-// Pré-calculer les valeurs des champs personnalisés pour tous les contacts
 $contactsCustomValues = [];
+$contactsEnfants = [];
 foreach ($contacts as $contact) {
     $contactsCustomValues[$contact['id_contact']] = getContactCustomValues($contact['id_contact']);
+    $contactsEnfants[$contact['id_contact']] = $db->select('enfants', ['contact_id' => $contact['id_contact']], '*', 'date_anniversaire ASC');
 }
 
 $totalContacts = count($contacts);
@@ -64,6 +61,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_custom_
         exit;
     }
     
+    $existingFields = $db->select('custom_fields', ['id_contact' => $idContact]);
+    if (count($existingFields) >= 10) {
+        echo json_encode(['success' => false, 'error' => 'Nombre maximum de champs personnalisés atteint (10 max)']);
+        exit;
+    }
+    
     $result = createCustomFieldForContact($idCompte, $idContact, $fieldName, $fieldLabel, $fieldType, $fieldOptions);
     echo json_encode($result);
     exit;
@@ -82,6 +85,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
         $email = trim($_POST['email'] ?? '');
         $telephone = trim($_POST['telephone'] ?? '');
         $dateNaissance = $_POST['date_naissance'] ?? null;
+        
+        $noClient = trim($_POST['no_client'] ?? '');
+        $sexe = !empty($_POST['sexe']) ? $_POST['sexe'] : null;
+        $civilite = !empty($_POST['civilite']) ? $_POST['civilite'] : null;
+        $telPortable = trim($_POST['tel_portable'] ?? '');
+        $commentaire = trim($_POST['commentaire'] ?? '');
+        $commentairePrive = trim($_POST['commentaire_prive'] ?? '');
+        $enseigne = trim($_POST['enseigne'] ?? '');
+        $numeroSiret = trim($_POST['numero_siret'] ?? '');
+        $mari = trim($_POST['mari'] ?? '');
+        $anniversaireMari = $_POST['anniversaire_mari'] ?? null;
+        $femme = trim($_POST['femme'] ?? '');
+        $anniversaireFemme = $_POST['anniversaire_femme'] ?? null;
+        $pointsFidelite = intval($_POST['points_fidelite'] ?? 0);
+        $cumulCadeau = floatval($_POST['cumul_cadeau'] ?? 0);
+        $cumulAchats = floatval($_POST['cumul_achats'] ?? 0);
+        $cumulAchatAvantCadeau = floatval($_POST['cumul_achat_avant_cadeau'] ?? 0);
+        $quantiteArticle = intval($_POST['quantite_article'] ?? 0);
+        $nombreTicket = intval($_POST['nombre_ticket'] ?? 0);
+        $identifiantEcommerce = trim($_POST['identifiant_ecommerce'] ?? '');
+        $valeurCoupon = trim($_POST['valeur_coupon'] ?? '');
+        $dateFinValiditeCoupon = $_POST['date_fin_validite_coupon'] ?? null;
         
         $errors = [];
         if (empty($prenom)) {
@@ -109,18 +134,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
             }
         }
         
+        if (!empty($noClient)) {
+            $existingNoClient = $db->select('contact', ['id_compte' => $idCompte, 'no_client' => $noClient]);
+            if (!empty($existingNoClient)) {
+                $errors[] = "Ce numéro client est déjà utilisé";
+            }
+        }
+        
         if (!empty($errors)) {
             echo json_encode(['success' => false, 'error' => implode(', ', $errors)]);
             exit;
         }
         
-        // Formater le téléphone
         $telephoneFormatted = null;
         if (!empty($telephone)) {
             if (substr($telephone, 0, 3) === '261') {
                 $telephoneFormatted = $telephone;
             } else {
                 $telephoneFormatted = formatPhoneNumber($telephone);
+            }
+        }
+        
+        $telPortableFormatted = null;
+        if (!empty($telPortable)) {
+            if (substr($telPortable, 0, 3) === '261') {
+                $telPortableFormatted = $telPortable;
+            } else {
+                $telPortableFormatted = formatPhoneNumber($telPortable);
             }
         }
         
@@ -134,22 +174,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
             'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
             'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
             'ville' => !empty($_POST['ville']) ? $_POST['ville'] : null,
-            'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France'
+            'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France',
+            'no_client' => !empty($noClient) ? $noClient : null,
+            'civilite' => $civilite,
+            'sexe' => $sexe,
+            'tel_portable' => $telPortableFormatted,
+            'commentaire' => !empty($commentaire) ? $commentaire : null,
+            'commentaire_prive' => !empty($commentairePrive) ? $commentairePrive : null,
+            'enseigne' => !empty($enseigne) ? $enseigne : null,
+            'numero_siret' => !empty($numeroSiret) ? $numeroSiret : null,
+            'mari' => !empty($mari) ? $mari : null,
+            'anniversaire_mari' => !empty($anniversaireMari) ? $anniversaireMari : null,
+            'femme' => !empty($femme) ? $femme : null,
+            'anniversaire_femme' => !empty($anniversaireFemme) ? $anniversaireFemme : null,
+            'points_fidelite' => $pointsFidelite,
+            'cumul_cadeau' => $cumulCadeau,
+            'cumul_achats' => $cumulAchats,
+            'cumul_achat_avant_cadeau' => $cumulAchatAvantCadeau,
+            'quantite_article' => $quantiteArticle,
+            'nombre_ticket' => $nombreTicket,
+            'identifiant_ecommerce' => !empty($identifiantEcommerce) ? $identifiantEcommerce : null,
+            'valeur_coupon' => !empty($valeurCoupon) ? $valeurCoupon : null,
+            'date_fin_validite_coupon' => !empty($dateFinValiditeCoupon) ? $dateFinValiditeCoupon : null
         ];
         
         $contactId = $db->insertAndGetId('contact', $data);
         
-        // Sauvegarder les champs personnalisés (incluant les temporaires)
         if (isset($_POST['custom_fields']) && is_array($_POST['custom_fields'])) {
             saveContactCustomValues($contactId, $_POST['custom_fields']);
         }
         
-        // Traiter les champs temporaires (créés pendant l'ajout)
         if (isset($_POST['temp_custom_fields']) && !empty($_POST['temp_custom_fields'])) {
             $tempFields = json_decode($_POST['temp_custom_fields'], true);
             if (is_array($tempFields)) {
                 foreach ($tempFields as $field) {
-                    // Créer le champ personnalisé pour ce contact
+                    $existingFields = $db->select('custom_fields', ['id_contact' => $contactId]);
+                    if (count($existingFields) >= 10) {
+                        continue;
+                    }
                     createCustomFieldForContact(
                         $idCompte,
                         $contactId,
@@ -159,9 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
                         $field['field_options'] ?? null
                     );
                     
-                    // Si une valeur a été fournie, la sauvegarder
                     if (isset($field['field_value']) && !empty($field['field_value'])) {
-                        // Récupérer l'ID du champ créé
                         $createdField = $db->select('custom_fields', [
                             'id_contact' => $contactId,
                             'field_name' => $field['field_name']
@@ -173,6 +233,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contact'])
                             ]);
                         }
                     }
+                }
+            }
+        }
+        
+        if (isset($_POST['enfants']) && is_array($_POST['enfants'])) {
+            foreach ($_POST['enfants'] as $enfant) {
+                if (!empty($enfant['prenom']) && !empty($enfant['nom'])) {
+                    $db->insert('enfants', [
+                        'contact_id' => $contactId,
+                        'nom' => trim($enfant['nom']),
+                        'prenom' => trim($enfant['prenom']),
+                        'sexe' => $enfant['sexe'] ?? null,
+                        'date_anniversaire' => !empty($enfant['date_anniversaire']) ? $enfant['date_anniversaire'] : null
+                    ]);
                 }
             }
         }
@@ -211,6 +285,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_contact']
         $telephone = trim($_POST['telephone'] ?? '');
         $dateNaissance = $_POST['date_naissance'] ?? null;
         
+        $noClient = trim($_POST['no_client'] ?? '');
+        $civilite = !empty($_POST['civilite']) ? $_POST['civilite'] : null;
+        $sexe = !empty($_POST['sexe']) ? $_POST['sexe'] : null;
+        $telPortable = trim($_POST['tel_portable'] ?? '');
+        $commentaire = trim($_POST['commentaire'] ?? '');
+        $commentairePrive = trim($_POST['commentaire_prive'] ?? '');
+        $enseigne = trim($_POST['enseigne'] ?? '');
+        $numeroSiret = trim($_POST['numero_siret'] ?? '');
+        $mari = trim($_POST['mari'] ?? '');
+        $anniversaireMari = $_POST['anniversaire_mari'] ?? null;
+        $femme = trim($_POST['femme'] ?? '');
+        $anniversaireFemme = $_POST['anniversaire_femme'] ?? null;
+        $pointsFidelite = intval($_POST['points_fidelite'] ?? 0);
+        $cumulCadeau = floatval($_POST['cumul_cadeau'] ?? 0);
+        $cumulAchats = floatval($_POST['cumul_achats'] ?? 0);
+        $cumulAchatAvantCadeau = floatval($_POST['cumul_achat_avant_cadeau'] ?? 0);
+        $quantiteArticle = intval($_POST['quantite_article'] ?? 0);
+        $nombreTicket = intval($_POST['nombre_ticket'] ?? 0);
+        $identifiantEcommerce = trim($_POST['identifiant_ecommerce'] ?? '');
+        $valeurCoupon = trim($_POST['valeur_coupon'] ?? '');
+        $dateFinValiditeCoupon = $_POST['date_fin_validite_coupon'] ?? null;
+        
         $errors = [];
         if (empty($prenom)) {
             $errors[] = 'Le prénom est requis';
@@ -237,18 +333,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_contact']
             }
         }
         
+        if (!empty($noClient)) {
+            $existingNoClient = $db->select('contact', ['id_compte' => $idCompte, 'no_client' => $noClient]);
+            if (!empty($existingNoClient) && $existingNoClient[0]['id_contact'] != $id) {
+                $errors[] = "Ce numéro client est déjà utilisé";
+            }
+        }
+        
         if (!empty($errors)) {
             echo json_encode(['success' => false, 'error' => implode(', ', $errors)]);
             exit;
         }
         
-        // Formater le téléphone
         $telephoneFormatted = null;
         if (!empty($telephone)) {
             if (substr($telephone, 0, 3) === '261') {
                 $telephoneFormatted = $telephone;
             } else {
                 $telephoneFormatted = formatPhoneNumber($telephone);
+            }
+        }
+        
+        $telPortableFormatted = null;
+        if (!empty($telPortable)) {
+            if (substr($telPortable, 0, 3) === '261') {
+                $telPortableFormatted = $telPortable;
+            } else {
+                $telPortableFormatted = formatPhoneNumber($telPortable);
             }
         }
         
@@ -261,13 +372,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_contact']
             'adresse' => !empty($_POST['adresse']) ? $_POST['adresse'] : null,
             'code_postal' => !empty($_POST['code_postal']) ? $_POST['code_postal'] : null,
             'ville' => !empty($_POST['ville']) ? $_POST['ville'] : null,
-            'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France'
+            'pays' => !empty($_POST['pays']) ? $_POST['pays'] : 'France',
+            'no_client' => !empty($noClient) ? $noClient : null,
+            'civilite' => $civilite,
+            'sexe' => $sexe,
+            'tel_portable' => $telPortableFormatted,
+            'commentaire' => !empty($commentaire) ? $commentaire : null,
+            'commentaire_prive' => !empty($commentairePrive) ? $commentairePrive : null,
+            'enseigne' => !empty($enseigne) ? $enseigne : null,
+            'numero_siret' => !empty($numeroSiret) ? $numeroSiret : null,
+            'mari' => !empty($mari) ? $mari : null,
+            'anniversaire_mari' => !empty($anniversaireMari) ? $anniversaireMari : null,
+            'femme' => !empty($femme) ? $femme : null,
+            'anniversaire_femme' => !empty($anniversaireFemme) ? $anniversaireFemme : null,
+            'points_fidelite' => $pointsFidelite,
+            'cumul_cadeau' => $cumulCadeau,
+            'cumul_achats' => $cumulAchats,
+            'cumul_achat_avant_cadeau' => $cumulAchatAvantCadeau,
+            'quantite_article' => $quantiteArticle,
+            'nombre_ticket' => $nombreTicket,
+            'identifiant_ecommerce' => !empty($identifiantEcommerce) ? $identifiantEcommerce : null,
+            'valeur_coupon' => !empty($valeurCoupon) ? $valeurCoupon : null,
+            'date_fin_validite_coupon' => !empty($dateFinValiditeCoupon) ? $dateFinValiditeCoupon : null
         ];
         
         $db->update('contact', $data, ['id_contact' => $id]);
         
         if (isset($_POST['custom_fields']) && is_array($_POST['custom_fields'])) {
             saveContactCustomValues($id, $_POST['custom_fields']);
+        }
+        
+        $enfantsExistants = $db->select('enfants', ['contact_id' => $id]);
+        foreach ($enfantsExistants as $enfant) {
+            $db->delete('enfants', $enfant['id'], 'id');
+        }
+        
+        if (isset($_POST['enfants']) && is_array($_POST['enfants'])) {
+            foreach ($_POST['enfants'] as $enfant) {
+                if (!empty($enfant['prenom']) && !empty($enfant['nom'])) {
+                    $db->insert('enfants', [
+                        'contact_id' => $id,
+                        'nom' => trim($enfant['nom']),
+                        'prenom' => trim($enfant['prenom']),
+                        'sexe' => $enfant['sexe'] ?? null,
+                        'date_anniversaire' => !empty($enfant['date_anniversaire']) ? $enfant['date_anniversaire'] : null
+                    ]);
+                }
+            }
         }
         
         echo json_encode(['success' => true, 'message' => 'Contact modifié avec succès']);
@@ -289,7 +440,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_contact' && isset($_GET['
     try {
         $id = $_GET['id'];
         
-        // 🔥 Vérifier que l'ID est valide
         if (empty($id)) {
             echo json_encode(['error' => 'ID de contact manquant']);
             exit;
@@ -304,12 +454,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_contact' && isset($_GET['
         
         $contact = $contact[0];
         $contact['custom_values'] = getContactCustomValues($id);
+        $contact['enfants'] = $db->select('enfants', ['contact_id' => $id], '*', 'date_anniversaire ASC');
         
         echo json_encode($contact);
         
     } catch (Exception $e) {
         error_log("ERREUR GET_CONTACT: " . $e->getMessage());
-        error_log("TRACE: " . $e->getTraceAsString());
         echo json_encode(['error' => $e->getMessage()]);
     }
     exit;
@@ -325,19 +475,16 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_contact_fields' && isset(
     try {
         $id = $_GET['id'];
         
-        // Vérifier que le contact appartient au compte
         $contact = $db->select('contact', ['id_contact' => $id, 'id_compte' => $idCompte]);
         if (empty($contact)) {
             echo json_encode(['error' => 'Contact non trouvé']);
             exit;
         }
         
-        // Récupérer les champs du contact
         $fields = $db->select('custom_fields', ['id_contact' => $id]);
         $result = [];
         
         foreach ($fields as $field) {
-            // Récupérer la valeur
             $value = $db->select('contact_custom_values', ['id_custom_field' => $field['id_custom_field']]);
             $result[] = [
                 'id_custom_field' => $field['id_custom_field'],
@@ -386,11 +533,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
             exit;
         }
         
-        // 🔥 CORRECTION : Détecter automatiquement le séparateur
         $firstLine = fgets($handle);
         rewind($handle);
         
-        // Tester différents séparateurs
         $separators = [';', ',', "\t", '|'];
         $separator = ',';
         $maxCount = 0;
@@ -403,9 +548,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
             }
         }
         
-        error_log("Séparateur détecté: " . json_encode($separator));
-        
-        // Lire les en-têtes
         $headers = fgetcsv($handle, 0, $separator);
         if (!$headers) {
             echo json_encode(['success' => false, 'error' => 'Format CSV invalide']);
@@ -415,9 +557,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
         $headers = array_map('trim', $headers);
         $headers = array_map('strtolower', $headers);
         
-        error_log("Headers: " . print_r($headers, true));
-        
-        // Mapping des colonnes
         $mapping = [
             'prenom' => array_search('prenom', $headers),
             'nom' => array_search('nom', $headers),
@@ -427,10 +566,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
             'adresse' => array_search('adresse', $headers),
             'code_postal' => array_search('code_postal', $headers),
             'pays' => array_search('pays', $headers),
-            'date_naissance' => array_search('date_naissance', $headers)
+            'date_naissance' => array_search('date_naissance', $headers),
+            'no_client' => array_search('no_client', $headers),
+            'civilite' => array_search('civilite', $headers),
+            'sexe' => array_search('sexe', $headers),
+            'tel_portable' => array_search('tel_portable', $headers),
+            'commentaire' => array_search('commentaire', $headers),
+            'commentaire_prive' => array_search('commentaire_prive', $headers),
+            'enseigne' => array_search('enseigne', $headers),
+            'numero_siret' => array_search('numero_siret', $headers),
+            'mari' => array_search('mari', $headers),
+            'anniversaire_mari' => array_search('anniversaire_mari', $headers),
+            'femme' => array_search('femme', $headers),
+            'anniversaire_femme' => array_search('anniversaire_femme', $headers),
+            'points_fidelite' => array_search('points_fidelite', $headers),
+            'cumul_cadeau' => array_search('cumul_cadeau', $headers),
+            'cumul_achats' => array_search('cumul_achats', $headers),
+            'cumul_achat_avant_cadeau' => array_search('cumul_achat_avant_cadeau', $headers),
+            'quantite_article' => array_search('quantite_article', $headers),
+            'nombre_ticket' => array_search('nombre_ticket', $headers),
+            'identifiant_ecommerce' => array_search('identifiant_ecommerce', $headers),
+            'valeur_coupon' => array_search('valeur_coupon', $headers),
+            'date_fin_validite_coupon' => array_search('date_fin_validite_coupon', $headers)
         ];
         
-        // Vérifier les colonnes requises
         if ($mapping['prenom'] === false || $mapping['nom'] === false || $mapping['email'] === false) {
             echo json_encode(['success' => false, 'error' => 'Colonnes requises manquantes: prenom, nom, email']);
             exit;
@@ -442,7 +601,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
         $errors = [];
         
         while (($row = fgetcsv($handle, 0, $separator)) !== false) {
-            // Nettoyer les lignes
             $row = array_map('trim', $row);
             
             $prenom = $mapping['prenom'] !== false ? trim($row[$mapping['prenom']] ?? '') : '';
@@ -451,14 +609,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
             $telephone = $mapping['telephone'] !== false ? trim($row[$mapping['telephone']] ?? '') : '';
             $dateNaissance = $mapping['date_naissance'] !== false ? trim($row[$mapping['date_naissance']] ?? '') : '';
             
+            $noClient = $mapping['no_client'] !== false ? trim($row[$mapping['no_client']] ?? '') : '';
+            $civilite = $mapping['civilite'] !== false ? trim($row[$mapping['civilite']] ?? '') : '';
+            $sexe = $mapping['sexe'] !== false ? trim($row[$mapping['sexe']] ?? '') : '';
+            $telPortable = $mapping['tel_portable'] !== false ? trim($row[$mapping['tel_portable']] ?? '') : '';
+            $commentaire = $mapping['commentaire'] !== false ? trim($row[$mapping['commentaire']] ?? '') : '';
+            $commentairePrive = $mapping['commentaire_prive'] !== false ? trim($row[$mapping['commentaire_prive']] ?? '') : '';
+            $enseigne = $mapping['enseigne'] !== false ? trim($row[$mapping['enseigne']] ?? '') : '';
+            $numeroSiret = $mapping['numero_siret'] !== false ? trim($row[$mapping['numero_siret']] ?? '') : '';
+            $mari = $mapping['mari'] !== false ? trim($row[$mapping['mari']] ?? '') : '';
+            $anniversaireMari = $mapping['anniversaire_mari'] !== false ? trim($row[$mapping['anniversaire_mari']] ?? '') : '';
+            $femme = $mapping['femme'] !== false ? trim($row[$mapping['femme']] ?? '') : '';
+            $anniversaireFemme = $mapping['anniversaire_femme'] !== false ? trim($row[$mapping['anniversaire_femme']] ?? '') : '';
+            $pointsFidelite = $mapping['points_fidelite'] !== false ? intval(trim($row[$mapping['points_fidelite']] ?? 0)) : 0;
+            $cumulCadeau = $mapping['cumul_cadeau'] !== false ? floatval(trim($row[$mapping['cumul_cadeau']] ?? 0)) : 0;
+            $cumulAchats = $mapping['cumul_achats'] !== false ? floatval(trim($row[$mapping['cumul_achats']] ?? 0)) : 0;
+            $cumulAchatAvantCadeau = $mapping['cumul_achat_avant_cadeau'] !== false ? floatval(trim($row[$mapping['cumul_achat_avant_cadeau']] ?? 0)) : 0;
+            $quantiteArticle = $mapping['quantite_article'] !== false ? intval(trim($row[$mapping['quantite_article']] ?? 0)) : 0;
+            $nombreTicket = $mapping['nombre_ticket'] !== false ? intval(trim($row[$mapping['nombre_ticket']] ?? 0)) : 0;
+            $identifiantEcommerce = $mapping['identifiant_ecommerce'] !== false ? trim($row[$mapping['identifiant_ecommerce']] ?? '') : '';
+            $valeurCoupon = $mapping['valeur_coupon'] !== false ? trim($row[$mapping['valeur_coupon']] ?? '') : '';
+            $dateFinValiditeCoupon = $mapping['date_fin_validite_coupon'] !== false ? trim($row[$mapping['date_fin_validite_coupon']] ?? '') : '';
+            
             if (empty($prenom) || empty($nom) || empty($email)) {
                 $errorCount++;
                 continue;
             }
             
-            // 🔥 CORRECTION : Convertir la date au format YYYY-MM-DD
             if (!empty($dateNaissance)) {
-                // Essayer de convertir différents formats
                 $dateFormats = ['d/m/Y', 'd-m-Y', 'Y-m-d', 'm/d/Y'];
                 $dateConverted = null;
                 
@@ -473,7 +651,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
                 if ($dateConverted) {
                     $dateNaissance = $dateConverted;
                 } else {
-                    // Si le format n'est pas reconnu, essayer strtotime
                     $timestamp = strtotime($dateNaissance);
                     if ($timestamp !== false) {
                         $dateNaissance = date('Y-m-d', $timestamp);
@@ -483,7 +660,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
                 }
             }
             
-            // Vérifier l'âge (18 ans minimum)
+            if (!empty($anniversaireMari)) {
+                $timestamp = strtotime($anniversaireMari);
+                if ($timestamp !== false) {
+                    $anniversaireMari = date('Y-m-d', $timestamp);
+                } else {
+                    $anniversaireMari = null;
+                }
+            }
+            
+            if (!empty($anniversaireFemme)) {
+                $timestamp = strtotime($anniversaireFemme);
+                if ($timestamp !== false) {
+                    $anniversaireFemme = date('Y-m-d', $timestamp);
+                } else {
+                    $anniversaireFemme = null;
+                }
+            }
+            
+            if (!empty($dateFinValiditeCoupon)) {
+                $timestamp = strtotime($dateFinValiditeCoupon);
+                if ($timestamp !== false) {
+                    $dateFinValiditeCoupon = date('Y-m-d', $timestamp);
+                } else {
+                    $dateFinValiditeCoupon = null;
+                }
+            }
+            
             if (!empty($dateNaissance)) {
                 if (!verifierAge($dateNaissance, 18)) {
                     $errorCount++;
@@ -491,20 +694,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
                 }
             }
             
-            // Vérifier si l'email existe déjà
             $existing = $db->select('contact', ['id_compte' => $idCompte, 'email' => $email]);
             if (!empty($existing)) {
                 $existingCount++;
                 continue;
             }
             
-            // Formater le téléphone
             $telephoneFormatted = null;
             if (!empty($telephone)) {
                 if (substr($telephone, 0, 3) === '261') {
                     $telephoneFormatted = $telephone;
                 } else {
                     $telephoneFormatted = formatPhoneNumber($telephone);
+                }
+            }
+            
+            $telPortableFormatted = null;
+            if (!empty($telPortable)) {
+                if (substr($telPortable, 0, 3) === '261') {
+                    $telPortableFormatted = $telPortable;
+                } else {
+                    $telPortableFormatted = formatPhoneNumber($telPortable);
                 }
             }
             
@@ -518,7 +728,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
                 'adresse' => $mapping['adresse'] !== false ? trim($row[$mapping['adresse']] ?? '') : null,
                 'code_postal' => $mapping['code_postal'] !== false ? trim($row[$mapping['code_postal']] ?? '') : null,
                 'pays' => $mapping['pays'] !== false ? trim($row[$mapping['pays']] ?? 'France') : 'France',
-                'date_naissance' => !empty($dateNaissance) ? $dateNaissance : null
+                'date_naissance' => !empty($dateNaissance) ? $dateNaissance : null,
+                'no_client' => !empty($noClient) ? $noClient : null,
+                'civilite' => !empty($civilite) ? $civilite : null,
+                'sexe' => !empty($sexe) ? $sexe : null,
+                'tel_portable' => $telPortableFormatted,
+                'commentaire' => !empty($commentaire) ? $commentaire : null,
+                'commentaire_prive' => !empty($commentairePrive) ? $commentairePrive : null,
+                'enseigne' => !empty($enseigne) ? $enseigne : null,
+                'numero_siret' => !empty($numeroSiret) ? $numeroSiret : null,
+                'mari' => !empty($mari) ? $mari : null,
+                'anniversaire_mari' => !empty($anniversaireMari) ? $anniversaireMari : null,
+                'femme' => !empty($femme) ? $femme : null,
+                'anniversaire_femme' => !empty($anniversaireFemme) ? $anniversaireFemme : null,
+                'points_fidelite' => $pointsFidelite,
+                'cumul_cadeau' => $cumulCadeau,
+                'cumul_achats' => $cumulAchats,
+                'cumul_achat_avant_cadeau' => $cumulAchatAvantCadeau,
+                'quantite_article' => $quantiteArticle,
+                'nombre_ticket' => $nombreTicket,
+                'identifiant_ecommerce' => !empty($identifiantEcommerce) ? $identifiantEcommerce : null,
+                'valeur_coupon' => !empty($valeurCoupon) ? $valeurCoupon : null,
+                'date_fin_validite_coupon' => !empty($dateFinValiditeCoupon) ? $dateFinValiditeCoupon : null
             ];
             
             try {
@@ -555,6 +786,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['fichier']) && isset(
     }
     exit;
 }
+
 // Messages flash
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
@@ -568,9 +800,6 @@ unset($_SESSION['flash_error']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mes contacts - <?= APP_NAME ?></title>
     <style>
-        /* ============================================
-           STYLES DE BASE
-           ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -600,15 +829,252 @@ unset($_SESSION['flash_error']);
             transform: scale(1) !important;
         }
         .contact-row.hidden-row { display: none; }
-        .modal-add-contact, .modal-import-csv, .modal-edit-contact, .modal-custom-field {
-            transition: all 0.3s ease;
-            transform: scale(0.95);
-            opacity: 0;
+        
+        #addContactModal,
+        #editContactModal,
+        #importModal,
+        #addCustomFieldModal {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background-color: rgba(0, 0, 0, 0.6) !important;
+            backdrop-filter: blur(3px);
+            z-index: 9999 !important;
+            display: none;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 20px !important;
+            margin: 0 !important;
+            overflow: hidden !important;
         }
-        .modal-add-contact.modal-show, .modal-import-csv.modal-show, .modal-edit-contact.modal-show, .modal-custom-field.modal-show {
-            opacity: 1 !important;
-            transform: scale(1) !important;
+
+        .modal-add-contact,
+        .modal-edit-contact,
+        .modal-import-csv,
+        .modal-custom-field {
+            position: relative !important;
+            width: 95% !important;
+            max-width: 1400px !important;
+            height: 92vh !important;
+            max-height: 92vh !important;
+            margin: 0 auto !important;
+            border-radius: 16px !important;
+            background: #f8fafc !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            z-index: 10000 !important;
+            animation: modalSlideIn 0.3s ease-out !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
         }
+
+        @keyframes modalSlideIn {
+            from { transform: translateY(30px) scale(0.98); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        .modal-add-contact .p-6,
+        .modal-edit-contact .p-6,
+        .modal-import-csv .p-6,
+        .modal-custom-field .p-6 {
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 !important;
+            min-height: 0 !important;
+            padding: 24px 32px !important;
+            overflow: hidden !important;
+            height: 100% !important;
+            width: 100% !important;
+        }
+
+        .modal-header-sticky {
+            flex-shrink: 0 !important;
+            background: white !important;
+            padding: 16px 24px !important;
+            margin: -24px -32px 16px -32px !important;
+            border-bottom: 2px solid #e5e7eb !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 20 !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+            border-radius: 16px 16px 0 0 !important;
+        }
+
+        .modal-scroll-content {
+            flex: 1 !important;
+            overflow-y: auto !important;
+            padding: 8px 4px 16px 4px !important;
+            min-height: 0 !important;
+            margin: 0 -4px !important;
+        }
+
+        .modal-scroll-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        .modal-scroll-content::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .modal-scroll-content::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .modal-scroll-content::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .modal-footer-sticky {
+            flex-shrink: 0 !important;
+            background: white !important;
+            padding: 16px 24px !important;
+            margin: 16px -32px -24px -32px !important;
+            border-top: 2px solid #e5e7eb !important;
+            position: sticky !important;
+            bottom: 0 !important;
+            z-index: 20 !important;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.06) !important;
+            border-radius: 0 0 16px 16px !important;
+        }
+
+        .modal-add-contact form,
+        .modal-edit-contact form,
+        .modal-import-csv form,
+        .modal-custom-field form {
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 !important;
+            min-height: 0 !important;
+            height: 100% !important;
+        }
+
+        .modal-scroll-content input,
+        .modal-scroll-content select,
+        .modal-scroll-content textarea {
+            background: white !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 8px !important;
+            padding: 10px 14px !important;
+            transition: all 0.2s ease !important;
+            width: 100% !important;
+        }
+
+        .modal-scroll-content input:focus,
+        .modal-scroll-content select:focus,
+        .modal-scroll-content textarea:focus {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+            outline: none !important;
+        }
+
+        .modal-scroll-content label {
+            font-weight: 500 !important;
+            color: #1e293b !important;
+            margin-bottom: 4px !important;
+            display: block !important;
+        }
+
+        .section-title {
+            font-size: 16px !important;
+            font-weight: 600 !important;
+            color: #1e293b !important;
+            margin: 16px 0 12px 0 !important;
+            padding-bottom: 8px !important;
+            border-bottom: 2px solid #e2e8f0 !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+        }
+
+        .enfant-item {
+            background: #f9fafb !important;
+            padding: 12px !important;
+            border-radius: 8px !important;
+            border: 1px solid #e5e7eb !important;
+            position: relative !important;
+        }
+
+        .enfant-item .remove-enfant {
+            position: absolute !important;
+            top: 6px !important;
+            right: 6px !important;
+            background: #fee2e2 !important;
+            color: #dc2626 !important;
+            border: none !important;
+            border-radius: 50% !important;
+            width: 24px !important;
+            height: 24px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        .enfant-item .remove-enfant:hover {
+            background: #fecaca !important;
+        }
+
+        .btn-primary {
+            background: #3b82f6 !important;
+            color: white !important;
+            padding: 10px 24px !important;
+            border-radius: 8px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease !important;
+            border: none !important;
+            cursor: pointer !important;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: white !important;
+            color: #1e293b !important;
+            padding: 10px 24px !important;
+            border-radius: 8px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease !important;
+            border: 1px solid #e2e8f0 !important;
+            cursor: pointer !important;
+        }
+
+        .btn-secondary:hover {
+            background: #f8fafc !important;
+            border-color: #cbd5e1 !important;
+        }
+
+        .btn-success {
+            background: #10b981 !important;
+            color: white !important;
+            padding: 12px 28px !important;
+            border-radius: 8px !important;
+            font-weight: 500 !important;
+            font-size: 15px !important;
+            transition: all 0.2s ease !important;
+            border: none !important;
+            cursor: pointer !important;
+        }
+
+        .btn-success:hover {
+            background: #059669 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-sm {
+            padding: 4px 12px !important;
+            font-size: 12px !important;
+        }
+
         .custom-field-badge {
             display: inline-block;
             background-color: #f3f4f6;
@@ -622,6 +1088,22 @@ unset($_SESSION['flash_error']);
             font-weight: 600;
             color: #4b5563;
         }
+
+        .child-badge {
+            display: inline-block;
+            background-color: #dbeafe;
+            border-radius: 9999px;
+            padding: 2px 8px;
+            font-size: 11px;
+            margin: 2px 4px 2px 0;
+            white-space: nowrap;
+        }
+
+        .child-badge strong {
+            font-weight: 600;
+            color: #1e40af;
+        }
+
         .phone-hint {
             font-size: 11px;
             color: #9ca3af;
@@ -632,139 +1114,36 @@ unset($_SESSION['flash_error']);
             color: #9ca3af;
             margin-top: 2px;
         }
-        .add-field-btn {
-            transition: all 0.2s ease;
-        }
-        .add-field-btn:hover {
-            transform: scale(1.05);
-        }
-        .new-field-highlight {
-            animation: highlightField 1s ease;
-        }
-        @keyframes highlightField {
-            0% { background-color: #bfdbfe; }
-            100% { background-color: transparent; }
-        }
-        .temp-field-badge {
-            display: inline-block;
-            background-color: #dbeafe;
-            color: #1e40af;
-            border-radius: 9999px;
-            padding: 2px 10px;
-            font-size: 11px;
-            margin: 2px 4px 2px 0;
-            border: 1px dashed #60a5fa;
-        }
-        .remove-temp-field {
-            cursor: pointer;
-            color: #ef4444;
-            margin-left: 4px;
-            font-weight: bold;
-        }
-        .remove-temp-field:hover {
-            color: #dc2626;
-        }
 
-        /* ============================================
-           STYLES POUR LE SCROLL DES MODALES - VERSION CORRIGÉE
-           ============================================ */
-        /* Conteneur des modales */
-        .modal-add-contact,
-        .modal-edit-contact,
-        .modal-import-csv,
-        .modal-custom-field {
-            max-height: 90vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            background: white;
-            border-radius: 1rem;
-        }
-
-        /* Le conteneur interne avec padding */
-        .modal-add-contact .p-6,
-        .modal-edit-contact .p-6,
-        .modal-import-csv .p-6,
-        .modal-custom-field .p-6 {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            min-height: 0;
-            padding: 20px;
-            overflow: hidden;
-        }
-
-        /* Header - collé en haut */
-        .modal-header-sticky {
-            flex-shrink: 0;
-            background: white;
-            padding-bottom: 12px;
-            margin-bottom: 12px;
-            border-bottom: 2px solid #e5e7eb;
-            position: relative;
-            z-index: 10;
-        }
-
-        /* Zone de contenu scrollable */
-        .modal-scroll-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 4px 4px 12px 4px;
-            min-height: 0;
-        }
-
-        /* Footer - collé en bas */
-        .modal-footer-sticky {
-            flex-shrink: 0;
-            background: white;
-            padding-top: 12px;
-            margin-top: 12px;
-            border-top: 2px solid #e5e7eb;
-            position: relative;
-            z-index: 10;
-        }
-
-        /* Le formulaire occupe tout l'espace */
-        .modal-add-contact form,
-        .modal-edit-contact form,
-        .modal-import-csv form,
-        .modal-custom-field form {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            min-height: 0;
-        }
-
-        /* Personnalisation de la scrollbar */
-        .modal-scroll-content::-webkit-scrollbar {
-            width: 6px;
-        }
-        .modal-scroll-content::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 3px;
-        }
-        .modal-scroll-content::-webkit-scrollbar-thumb {
-            background: #c1c1c1;
-            border-radius: 3px;
-        }
-        .modal-scroll-content::-webkit-scrollbar-thumb:hover {
-            background: #a8a8a8;
-        }
-
-        /* Version mobile */
         @media (max-width: 768px) {
+            #addContactModal,
+            #editContactModal,
+            #importModal,
+            #addCustomFieldModal {
+                padding: 8px !important;
+            }
             .modal-add-contact,
             .modal-edit-contact,
             .modal-import-csv,
             .modal-custom-field {
-                max-height: 95vh;
-                margin: 0 8px;
+                width: 100% !important;
+                height: 98vh !important;
+                max-height: 98vh !important;
+                border-radius: 12px !important;
             }
             .modal-add-contact .p-6,
             .modal-edit-contact .p-6,
             .modal-import-csv .p-6,
             .modal-custom-field .p-6 {
-                padding: 16px;
+                padding: 16px !important;
+            }
+            .modal-header-sticky {
+                padding: 12px 16px !important;
+                margin: -16px -16px 12px -16px !important;
+            }
+            .modal-footer-sticky {
+                padding: 12px 16px !important;
+                margin: 12px -16px -16px -16px !important;
             }
         }
     </style>
@@ -819,12 +1198,12 @@ unset($_SESSION['flash_error']);
             <table class="w-full">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ville</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Infos</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date d'inscription</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Enfants</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fidélité</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Inscription</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                     </tr>
@@ -842,6 +1221,7 @@ unset($_SESSION['flash_error']);
                         <?php foreach ($contacts as $contact): 
                             $isBlacklisted = in_array($contact['id_contact'], $blacklistedIds);
                             $customVals = $contactsCustomValues[$contact['id_contact']] ?? [];
+                            $enfants = $contactsEnfants[$contact['id_contact']] ?? [];
                         ?>
                             <tr class="contact-row hover:bg-gray-50 transition <?= $isBlacklisted ? 'bg-red-50' : '' ?>" 
                                 data-name="<?= strtolower(htmlspecialchars($contact['prenom'] . ' ' . $contact['nom'])) ?>"
@@ -852,17 +1232,77 @@ unset($_SESSION['flash_error']);
                                 data-has-phone="<?= !empty($contact['telephone']) ? 'true' : 'false' ?>"
                                 data-blacklisted="<?= $isBlacklisted ? 'true' : 'false' ?>"
                                 data-contact-id="<?= $contact['id_contact'] ?>">
-                                <td class="px-6 py-4"><div class="font-medium text-gray-800"><?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?></div></td>
-                                <td class="px-6 py-4"><?= htmlspecialchars($contact['email'] ?? '-') ?></td>
-                                <td class="px-6 py-4"><?= htmlspecialchars($contact['telephone'] ?? '-') ?></td>
-                                <td class="px-6 py-4"><?= htmlspecialchars($contact['ville'] ?? '-') ?></td>
                                 <td class="px-6 py-4">
+                                    <div class="font-medium text-gray-800"><?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?></div>
+                                    <?php if (!empty($contact['no_client'])): ?>
+                                        <div class="text-xs text-gray-500">N°: <?= htmlspecialchars($contact['no_client']) ?></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($contact['civilite']) || !empty($contact['sexe'])): ?>
+                                        <div class="text-xs text-gray-500">
+                                            <?= htmlspecialchars($contact['civilite'] ?? '') ?> 
+                                            <?= !empty($contact['sexe']) ? ($contact['sexe'] === 'M' ? '♂' : '♀') : '' ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="text-sm"><?= htmlspecialchars($contact['email'] ?? '-') ?></div>
+                                    <div class="text-sm"><?= htmlspecialchars($contact['telephone'] ?? '-') ?></div>
+                                    <?php if (!empty($contact['tel_portable'])): ?>
+                                        <div class="text-sm text-gray-500">P: <?= htmlspecialchars($contact['tel_portable']) ?></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <?php if (!empty($contact['enseigne'])): ?>
+                                        <div class="text-xs"><strong>Enseigne:</strong> <?= htmlspecialchars($contact['enseigne']) ?></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($contact['ville'])): ?>
+                                        <div class="text-xs"><?= htmlspecialchars($contact['ville']) ?></div>
+                                    <?php endif; ?>
                                     <?php if (!empty($customVals)): ?>
-                                        <?php foreach ($customVals as $field): ?>
+                                        <?php foreach (array_slice($customVals, 0, 2) as $field): ?>
                                             <span class="custom-field-badge">
-                                                <strong><?= htmlspecialchars($field['label']) ?>:</strong> <?= htmlspecialchars(substr($field['value'], 0, 30)) ?>
+                                                <strong><?= htmlspecialchars($field['label']) ?>:</strong> <?= htmlspecialchars(substr($field['value'], 0, 20)) ?>
                                             </span>
                                         <?php endforeach; ?>
+                                        <?php if (count($customVals) > 2): ?>
+                                            <span class="text-xs text-gray-400">+<?= count($customVals) - 2 ?></span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                    <?php if (!empty($contact['mari']) || !empty($contact['femme'])): ?>
+                                        <div class="text-xs text-gray-500 mt-1">
+                                            <?php if (!empty($contact['mari'])): ?>👨 <?= htmlspecialchars($contact['mari']) ?><?php endif; ?>
+                                            <?php if (!empty($contact['femme'])): ?>👩 <?= htmlspecialchars($contact['femme']) ?><?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <?php if (!empty($enfants)): ?>
+                                        <?php foreach ($enfants as $enfant): ?>
+                                            <span class="child-badge">
+                                                <?= htmlspecialchars($enfant['prenom']) ?> 
+                                                (<?= $enfant['sexe'] === 'M' ? '♂' : '♀' ?>)
+                                                <?php if (!empty($enfant['date_anniversaire'])): ?>
+                                                    <?= date('d/m/Y', strtotime($enfant['date_anniversaire'])) ?>
+                                                <?php endif; ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <span class="text-gray-400 text-xs">-</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <?php if ($contact['points_fidelite'] > 0 || $contact['cumul_achats'] > 0): ?>
+                                        <div class="text-xs">
+                                            <span class="font-medium">Points:</span> <?= $contact['points_fidelite'] ?>
+                                        </div>
+                                        <div class="text-xs">
+                                            <span class="font-medium">Achats:</span> <?= number_format($contact['cumul_achats'], 2) ?> €
+                                        </div>
+                                        <?php if (!empty($contact['valeur_coupon'])): ?>
+                                            <div class="text-xs text-green-600">
+                                                🎫 <?= htmlspecialchars($contact['valeur_coupon']) ?>
+                                            </div>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="text-gray-400 text-xs">-</span>
                                     <?php endif; ?>
@@ -871,10 +1311,10 @@ unset($_SESSION['flash_error']);
                                 <td class="px-6 py-4">
                                     <?php if ($isBlacklisted): ?>
                                         <button onclick="openUnblacklistModal('<?= $contact['id_contact'] ?>')" class="px-2 py-1 rounded text-xs bg-red-100 text-red-700 hover:bg-red-200 transition cursor-pointer flex items-center gap-1">
-                                             Blacklisté
+                                            <i class="fas fa-ban"></i> Blacklisté
                                         </button>
                                     <?php else: ?>
-                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700"> Normal</span>
+                                        <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700">Normal</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-6 py-4 space-x-2">
@@ -894,13 +1334,10 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
-<!-- ============================================ -->
-<!-- MODAL D'AJOUT DE CONTACT AVEC SCROLL -->
-<!-- ============================================ -->
-<div id="addContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-add-contact">
+<!-- MODAL AJOUT CONTACT -->
+<div id="addContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-[9999]" style="display: none;">
+    <div class="modal-add-contact">
         <div class="p-6">
-            <!-- HEADER - Toujours visible -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
@@ -909,95 +1346,208 @@ unset($_SESSION['flash_error']);
                         </div>
                         <h3 class="text-xl font-bold text-gray-800">Ajouter un contact</h3>
                     </div>
-                    <button type="button" onclick="closeAddContactModal()" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times text-xl"></i>
+                    <button type="button" onclick="closeAddContactModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
-            
-            <!-- FORMULAIRE -->
             <form id="addContactForm" method="POST">
                 <input type="hidden" name="action_add_contact" value="1">
                 <input type="hidden" id="tempCustomFields" name="temp_custom_fields" value="">
-                
-                <!-- CONTENU SCROLLABLE -->
                 <div class="modal-scroll-content">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="section-title"><i class="fas fa-id-card text-blue-500"></i> Identité</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Civilité</label>
+                            <select name="civilite" id="add_civilite" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                <option value="">--</option>
+                                <option value="M.">M.</option>
+                                <option value="Mme">Mme</option>
+                                <option value="Mlle">Mlle</option>
+                                <option value="Dr">Dr</option>
+                                <option value="Pr">Pr</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Sexe</label>
+                            <select name="sexe" id="add_sexe" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                <option value="">--</option>
+                                <option value="M">Masculin</option>
+                                <option value="F">Féminin</option>
+                            </select>
+                        </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label>
-                            <input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <input type="text" name="prenom" id="add_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
-                            <input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <input type="text" name="nom" id="add_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-phone text-green-500"></i> Coordonnées</div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                            <input type="email" name="email" id="add_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <input type="email" name="email" id="add_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
-                            <input type="tel" name="telephone" id="add_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                            <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone fixe</label>
+                            <input type="tel" name="telephone" id="add_telephone" placeholder="ex: 0612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
-                            <input type="date" name="date_naissance" id="add_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
-                            <p class="date-hint">📅 Le contact doit avoir au moins 18 ans. Les dates futures sont interdites.</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone portable</label>
+                            <input type="tel" name="tel_portable" id="add_tel_portable" placeholder="ex: 0612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Ville</label>
-                            <input type="text" name="ville" id="add_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                    <div class="section-title"><i class="fas fa-map-marker-alt text-red-500"></i> Adresse</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
+                            <input type="text" name="adresse" id="add_adresse" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label>
                             <input type="text" name="code_postal" id="add_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ville</label>
+                            <input type="text" name="ville" id="add_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Pays</label>
                             <input type="text" name="pays" id="add_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                     </div>
-                    
-                    <div class="mt-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
-                        <textarea name="adresse" id="add_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+                    <div class="section-title"><i class="fas fa-briefcase text-purple-500"></i> Informations client</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">N° client</label>
+                            <input type="text" name="no_client" id="add_no_client" placeholder="ex: CLT-2026-001" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Enseigne</label>
+                            <input type="text" name="enseigne" id="add_enseigne" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">N° SIRET</label>
+                            <input type="text" name="numero_siret" id="add_numero_siret" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ID E-commerce</label>
+                            <input type="text" name="identifiant_ecommerce" id="add_identifiant_ecommerce" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
                     </div>
-                    
-                    <!-- Champs personnalisés -->
-                    <div class="mt-6 pt-4 border-t border-gray-200">
-                        <div class="flex justify-between items-center mb-3">
-                            <h3 class="text-md font-semibold text-gray-700">
-                                <i class="fas fa-cog mr-2"></i>Champs personnalisés
-                            </h3>
-                            <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
-                                    class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
-                                <i class="fas fa-plus-circle"></i> Ajouter un champ
+                    <div class="section-title"><i class="fas fa-birthday-cake text-yellow-500"></i> Date de naissance</div>
+                    <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
+                            <input type="date" name="date_naissance" id="add_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
+                            <p class="date-hint">📅 Le contact doit avoir au moins 18 ans. Les dates futures sont interdites.</p>
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-heart text-pink-500"></i> Conjoint(e)</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nom du mari</label>
+                            <input type="text" name="mari" id="add_mari" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Anniversaire mari</label>
+                            <input type="date" name="anniversaire_mari" id="add_anniversaire_mari" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nom de la femme</label>
+                            <input type="text" name="femme" id="add_femme" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Anniversaire femme</label>
+                            <input type="date" name="anniversaire_femme" id="add_anniversaire_femme" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-child text-indigo-500"></i> Enfants</div>
+                    <div id="enfantsContainer" class="space-y-3">
+                        <div id="noEnfantsMessage" class="text-center py-3 text-gray-400 text-sm">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Aucun enfant enregistré.
+                            <button type="button" onclick="addEnfantRow('add')" class="text-blue-600 hover:underline">
+                                Ajouter un enfant
                             </button>
                         </div>
-                        <div id="addCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage">
-                                <i class="fas fa-info-circle mr-1"></i>
-                                Aucun champ personnalisé.
-                                <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
-                                        class="text-blue-600 hover:underline">
-                                    Ajouter votre premier champ
-                                </button>
-                            </div>
-                        </div>
-                        <div id="tempFieldsList" class="mt-3 flex flex-wrap gap-2"></div>
                     </div>
+                    <button type="button" onclick="addEnfantRow('add')" class="mt-2 text-sm text-blue-600 hover:text-blue-800 transition">
+                        <i class="fas fa-plus-circle mr-1"></i> Ajouter un enfant
+                    </button>
+                    <div class="section-title"><i class="fas fa-star text-yellow-500"></i> Programme de fidélité</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Points de fidélité</label>
+                            <input type="number" name="points_fidelite" id="add_points_fidelite" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cumul cadeau (€)</label>
+                            <input type="number" step="0.01" name="cumul_cadeau" id="add_cumul_cadeau" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cumul achats (€)</label>
+                            <input type="number" step="0.01" name="cumul_achats" id="add_cumul_achats" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cumul avant cadeau (€)</label>
+                            <input type="number" step="0.01" name="cumul_achat_avant_cadeau" id="add_cumul_achat_avant_cadeau" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Qté articles</label>
+                            <input type="number" name="quantite_article" id="add_quantite_article" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nb tickets</label>
+                            <input type="number" name="nombre_ticket" id="add_nombre_ticket" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Valeur coupon</label>
+                            <input type="text" name="valeur_coupon" id="add_valeur_coupon" placeholder="ex: 10,00 € ou 10€" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Fin validité coupon</label>
+                            <input type="date" name="date_fin_validite_coupon" id="add_date_fin_validite_coupon" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-comment text-gray-500"></i> Commentaires</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                            <textarea name="commentaire" id="add_commentaire" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Commentaire privé</label>
+                            <textarea name="commentaire_prive" id="add_commentaire_prive" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-cog text-gray-500"></i> Champs personnalisés <span class="text-xs text-gray-400 font-normal">(max 10)</span></div>
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm text-gray-500" id="customFieldCountAdd">0 / 10</span>
+                        <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
+                                class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
+                            <i class="fas fa-plus-circle"></i> Ajouter un champ
+                        </button>
+                    </div>
+                    <div id="addCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Aucun champ personnalisé.
+                            <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
+                                    class="text-blue-600 hover:underline">
+                                Ajouter votre premier champ
+                            </button>
+                        </div>
+                    </div>
+                    <div id="tempFieldsList" class="mt-3 flex flex-wrap gap-2"></div>
                 </div>
-                
-                <!-- FOOTER - Toujours visible -->
                 <div class="modal-footer-sticky">
-                    <div class="flex justify-end space-x-2">
-                        <button type="button" onclick="closeAddContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                            Annuler
-                        </button>
-                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                            Enregistrer
-                        </button>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="closeAddContactModal()" class="btn-secondary">Annuler</button>
+                        <button type="submit" class="btn-primary"><i class="fas fa-save mr-2"></i>Enregistrer</button>
                     </div>
                 </div>
             </form>
@@ -1005,13 +1555,10 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
-<!-- ============================================ -->
-<!-- MODAL DE MODIFICATION DE CONTACT AVEC SCROLL -->
-<!-- ============================================ -->
-<div id="editContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-edit-contact">
+<!-- MODAL MODIFICATION CONTACT -->
+<div id="editContactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-[9999]" style="display: none;">
+    <div class="modal-edit-contact">
         <div class="p-6">
-            <!-- HEADER -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
@@ -1020,85 +1567,199 @@ unset($_SESSION['flash_error']);
                         </div>
                         <h3 class="text-xl font-bold text-gray-800">Modifier le contact</h3>
                     </div>
-                    <button type="button" onclick="closeEditContactModal()" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times text-xl"></i>
+                    <button type="button" onclick="closeEditContactModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
-            
-            <!-- FORMULAIRE -->
             <form id="editContactForm" method="POST">
                 <input type="hidden" name="action_edit_contact" value="1">
                 <input type="hidden" name="id_contact" id="edit_id_contact">
-                
-                <!-- CONTENU SCROLLABLE -->
                 <div class="modal-scroll-content">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- MÊME STRUCTURE QUE LE MODAL AJOUT -->
+                    <div class="section-title"><i class="fas fa-id-card text-blue-500"></i> Identité</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Civilité</label>
+                            <select name="civilite" id="edit_civilite" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                <option value="">--</option>
+                                <option value="M.">M.</option>
+                                <option value="Mme">Mme</option>
+                                <option value="Mlle">Mlle</option>
+                                <option value="Dr">Dr</option>
+                                <option value="Pr">Pr</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Sexe</label>
+                            <select name="sexe" id="edit_sexe" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                                <option value="">--</option>
+                                <option value="M">Masculin</option>
+                                <option value="F">Féminin</option>
+                            </select>
+                        </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label>
-                            <input type="text" name="prenom" id="edit_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <input type="text" name="prenom" id="edit_prenom" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
-                            <input type="text" name="nom" id="edit_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <input type="text" name="nom" id="edit_nom" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-phone text-green-500"></i> Coordonnées</div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                            <input type="email" name="email" id="edit_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                            <input type="email" name="email" id="edit_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
-                            <input type="tel" name="telephone" id="edit_telephone" placeholder="ex: 0612345678 ou 261341234567" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                            <p class="phone-hint">Format accepté : 0612345678 (France) ou 261341234567 (International)</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone fixe</label>
+                            <input type="tel" name="telephone" id="edit_telephone" placeholder="ex: 0612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
-                            <input type="date" name="date_naissance" id="edit_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
-                            <p class="date-hint">📅 Le contact doit avoir au moins 18 ans. Les dates futures sont interdites.</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone portable</label>
+                            <input type="tel" name="tel_portable" id="edit_tel_portable" placeholder="ex: 0612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Ville</label>
-                            <input type="text" name="ville" id="edit_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                    <div class="section-title"><i class="fas fa-map-marker-alt text-red-500"></i> Adresse</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
+                            <input type="text" name="adresse" id="edit_adresse" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Code postal</label>
                             <input type="text" name="code_postal" id="edit_code_postal" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ville</label>
+                            <input type="text" name="ville" id="edit_ville" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Pays</label>
                             <input type="text" name="pays" id="edit_pays" value="France" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                     </div>
-                    
-                    <div class="mt-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
-                        <textarea name="adresse" id="edit_adresse" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+                    <div class="section-title"><i class="fas fa-briefcase text-purple-500"></i> Informations client</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">N° client</label>
+                            <input type="text" name="no_client" id="edit_no_client" placeholder="ex: CLT-2026-001" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Enseigne</label>
+                            <input type="text" name="enseigne" id="edit_enseigne" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">N° SIRET</label>
+                            <input type="text" name="numero_siret" id="edit_numero_siret" placeholder="14 chiffres" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ID E-commerce</label>
+                            <input type="text" name="identifiant_ecommerce" id="edit_identifiant_ecommerce" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
                     </div>
-                    
-                    <!-- Champs personnalisés dynamiques -->
-                    <div class="mt-6 pt-4 border-t border-gray-200" id="customFieldsSection">
-                        <div class="flex justify-between items-center mb-3">
-                            <h3 class="text-md font-semibold text-gray-700">
-                                <i class="fas fa-cog mr-2"></i>Informations supplémentaires
-                            </h3>
-                            <button type="button" onclick="openAddCustomFieldModalFromEdit()" 
-                                    class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
-                                <i class="fas fa-plus-circle"></i> Ajouter un champ
+                    <div class="section-title"><i class="fas fa-birthday-cake text-yellow-500"></i> Date de naissance</div>
+                    <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Date de naissance</label>
+                            <input type="date" name="date_naissance" id="edit_date_naissance" class="w-full border border-gray-300 rounded-lg px-3 py-2" max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
+                            <p class="date-hint">📅 Le contact doit avoir au moins 18 ans.</p>
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-heart text-pink-500"></i> Conjoint(e)</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nom du mari</label>
+                            <input type="text" name="mari" id="edit_mari" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Anniversaire mari</label>
+                            <input type="date" name="anniversaire_mari" id="edit_anniversaire_mari" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nom de la femme</label>
+                            <input type="text" name="femme" id="edit_femme" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Anniversaire femme</label>
+                            <input type="date" name="anniversaire_femme" id="edit_anniversaire_femme" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-child text-indigo-500"></i> Enfants</div>
+                    <div id="editEnfantsContainer" class="space-y-3">
+                        <div id="editNoEnfantsMessage" class="text-center py-3 text-gray-400 text-sm">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Aucun enfant enregistré.
+                            <button type="button" onclick="addEnfantRow('edit')" class="text-blue-600 hover:underline">
+                                Ajouter un enfant
                             </button>
                         </div>
-                        <div id="editCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                     </div>
+                    <button type="button" onclick="addEnfantRow('edit')" class="mt-2 text-sm text-blue-600 hover:text-blue-800 transition">
+                        <i class="fas fa-plus-circle mr-1"></i> Ajouter un enfant
+                    </button>
+                    <div class="section-title"><i class="fas fa-star text-yellow-500"></i> Programme de fidélité</div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Points de fidélité</label>
+                            <input type="number" name="points_fidelite" id="edit_points_fidelite" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cumul cadeau (€)</label>
+                            <input type="number" step="0.01" name="cumul_cadeau" id="edit_cumul_cadeau" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cumul achats (€)</label>
+                            <input type="number" step="0.01" name="cumul_achats" id="edit_cumul_achats" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cumul avant cadeau (€)</label>
+                            <input type="number" step="0.01" name="cumul_achat_avant_cadeau" id="edit_cumul_achat_avant_cadeau" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Qté articles</label>
+                            <input type="number" name="quantite_article" id="edit_quantite_article" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Nb tickets</label>
+                            <input type="number" name="nombre_ticket" id="edit_nombre_ticket" value="0" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Valeur coupon</label>
+                            <input type="text" name="valeur_coupon" id="edit_valeur_coupon" placeholder="ex: 10,00 € ou 10€" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Fin validité coupon</label>
+                            <input type="date" name="date_fin_validite_coupon" id="edit_date_fin_validite_coupon" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-comment text-gray-500"></i> Commentaires</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Commentaire public</label>
+                            <textarea name="commentaire" id="edit_commentaire" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Commentaire privé</label>
+                            <textarea name="commentaire_prive" id="edit_commentaire_prive" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+                        </div>
+                    </div>
+                    <div class="section-title"><i class="fas fa-cog text-gray-500"></i> Champs personnalisés <span class="text-xs text-gray-400 font-normal">(max 10)</span></div>
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sm text-gray-500" id="customFieldCountEdit">0 / 10</span>
+                        <button type="button" onclick="openAddCustomFieldModalFromEdit()" 
+                                class="text-sm text-blue-600 hover:text-blue-800 transition flex items-center gap-1 add-field-btn">
+                            <i class="fas fa-plus-circle"></i> Ajouter un champ
+                        </button>
+                    </div>
+                    <div id="editCustomFieldsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
-                
-                <!-- FOOTER -->
                 <div class="modal-footer-sticky">
-                    <div class="flex justify-end space-x-2">
-                        <button type="button" onclick="closeEditContactModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                            Annuler
-                        </button>
-                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                            Enregistrer
-                        </button>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="closeEditContactModal()" class="btn-secondary">Annuler</button>
+                        <button type="submit" class="btn-primary"><i class="fas fa-save mr-2"></i>Enregistrer</button>
                     </div>
                 </div>
             </form>
@@ -1106,55 +1767,49 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
-<!-- ============================================ -->
-<!-- MODALE DE CRÉATION DE CHAMP PERSONNALISÉ -->
-<!-- ============================================ -->
-<div id="addCustomFieldModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-[60] transition-all duration-300" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-custom-field">
+<!-- MODAL CHAMP PERSONNALISÉ -->
+<div id="addCustomFieldModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-[9999]" style="display: none;">
+    <div class="modal-custom-field">
         <div class="p-6">
-            <!-- HEADER -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
                         <div class="bg-blue-100 p-2 rounded-full mr-3">
                             <i class="fas fa-plus-circle text-blue-600 text-xl"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800">Ajouter un champ personnalisé</h3>
+                        <h3 class="text-2xl font-bold text-gray-800">Ajouter un champ personnalisé</h3>
                     </div>
-                    <button type="button" onclick="closeAddCustomFieldModal()" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times text-xl"></i>
+                    <button type="button" onclick="closeAddCustomFieldModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
-            
-            <!-- FORMULAIRE -->
             <form id="addCustomFieldForm">
                 <input type="hidden" id="custom_field_contact_id" value="">
                 <input type="hidden" id="custom_field_mode" value="temp">
-                
-                <!-- CONTENU SCROLLABLE -->
                 <div class="modal-scroll-content">
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                Nom technique <span class="text-red-500">*</span>
+                    <div class="max-w-2xl mx-auto" style="max-width: 100% !important; padding: 0 12px;">
+                        <div style="margin-bottom: 20px !important;">
+                            <label style="font-size: 15px !important; font-weight: 600 !important; color: #1e293b !important; margin-bottom: 6px !important; display: block !important;">
+                                Nom technique <span style="color: #ef4444; font-size: 16px !important;">*</span>
                             </label>
                             <input type="text" id="new_field_name" required 
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   style="width: 100% !important; padding: 12px 16px !important; font-size: 15px !important; border-radius: 10px !important; border: 1.5px solid #e2e8f0 !important; background: white !important;"
                                    placeholder="ex: societe, fonction">
-                            <p class="text-xs text-gray-500 mt-1">Sans accent, sans espace (utilisez _ )</p>
+                            <p style="font-size: 13px !important; color: #6b7280 !important; margin-top: 6px !important;">Sans accent, sans espace (utilisez _ )</p>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                Libellé <span class="text-red-500">*</span>
+                        <div style="margin-bottom: 20px !important;">
+                            <label style="font-size: 15px !important; font-weight: 600 !important; color: #1e293b !important; margin-bottom: 6px !important; display: block !important;">
+                                Libellé <span style="color: #ef4444; font-size: 16px !important;">*</span>
                             </label>
                             <input type="text" id="new_field_label" required 
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   style="width: 100% !important; padding: 12px 16px !important; font-size: 15px !important; border-radius: 10px !important; border: 1.5px solid #e2e8f0 !important; background: white !important;"
                                    placeholder="ex: Société, Fonction">
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Type de champ</label>
-                            <select id="new_field_type" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
+                        <div style="margin-bottom: 20px !important;">
+                            <label style="font-size: 15px !important; font-weight: 600 !important; color: #1e293b !important; margin-bottom: 6px !important; display: block !important;">Type de champ</label>
+                            <select id="new_field_type" 
+                                    style="width: 100% !important; padding: 12px 16px !important; font-size: 15px !important; border-radius: 10px !important; border: 1.5px solid #e2e8f0 !important; background: white !important;">
                                 <option value="text">Texte court</option>
                                 <option value="textarea">Zone texte</option>
                                 <option value="number">Nombre</option>
@@ -1164,35 +1819,29 @@ unset($_SESSION['flash_error']);
                                 <option value="select">Liste déroulante</option>
                             </select>
                         </div>
-                        <div id="new_field_options_div" style="display:none">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                Options <span class="text-red-500">*</span>
+                        <div id="new_field_options_div" style="display:none; margin-bottom: 20px !important;">
+                            <label style="font-size: 15px !important; font-weight: 600 !important; color: #1e293b !important; margin-bottom: 6px !important; display: block !important;">
+                                Options <span style="color: #ef4444; font-size: 16px !important;">*</span>
                             </label>
                             <input type="text" id="new_field_options" 
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   style="width: 100% !important; padding: 12px 16px !important; font-size: 15px !important; border-radius: 10px !important; border: 1.5px solid #e2e8f0 !important; background: white !important;"
                                    placeholder="ex: Option 1|Option 2|Option 3">
-                            <p class="text-xs text-gray-500 mt-1">Séparez les options par <strong>|</strong></p>
+                            <p style="font-size: 13px !important; color: #6b7280 !important; margin-top: 6px !important;">Séparez les options par <strong style="color: #3b82f6 !important;">|</strong></p>
                         </div>
-                        <div id="new_field_value_div">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                        <div id="new_field_value_div" style="margin-bottom: 20px !important;">
+                            <label style="font-size: 15px !important; font-weight: 600 !important; color: #1e293b !important; margin-bottom: 6px !important; display: block !important;">
                                 Valeur (optionnel)
                             </label>
                             <input type="text" id="new_field_value" 
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                                   style="width: 100% !important; padding: 12px 16px !important; font-size: 15px !important; border-radius: 10px !important; border: 1.5px solid #e2e8f0 !important; background: white !important;"
                                    placeholder="Valeur du champ">
                         </div>
                     </div>
                 </div>
-                
-                <!-- FOOTER -->
                 <div class="modal-footer-sticky">
-                    <div class="flex justify-end space-x-2">
-                        <button type="button" onclick="closeAddCustomFieldModal()" 
-                                class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                            Annuler
-                        </button>
-                        <button type="submit" id="createFieldBtn" 
-                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="closeAddCustomFieldModal()" class="btn-secondary" style="padding: 12px 28px !important; font-size: 15px !important;">Annuler</button>
+                        <button type="submit" id="createFieldBtn" class="btn-primary" style="padding: 12px 28px !important; font-size: 15px !important;">
                             <i class="fas fa-plus mr-2"></i>Ajouter le champ
                         </button>
                     </div>
@@ -1202,58 +1851,69 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
-<!-- ============================================ -->
-<!-- MODAL D'IMPORT CSV -->
-<!-- ============================================ -->
-<div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 modal-import-csv">
+<!-- MODAL IMPORT CSV -->
+<div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-[9999]" style="display: none;">
+    <div class="modal-import-csv">
         <div class="p-6">
-            <!-- HEADER -->
             <div class="modal-header-sticky">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center">
                         <div class="bg-green-100 p-2 rounded-full mr-3">
                             <i class="fas fa-file-import text-green-600 text-xl"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800">Importer des contacts</h3>
+                        <h3 class="text-2xl font-bold text-gray-800">Importer des contacts</h3>
                     </div>
-                    <button type="button" onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times text-xl"></i>
+                    <button type="button" onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
-            
-            <!-- FORMULAIRE -->
             <form id="importForm" method="POST" enctype="multipart/form-data">
-                <!-- CONTENU SCROLLABLE -->
                 <div class="modal-scroll-content">
-                    <div class="bg-blue-50 p-4 rounded mb-4">
-                        <h4 class="font-medium text-blue-800 mb-2">Format du fichier</h4>
-                        <ul class="text-sm text-blue-700 space-y-1">
-                            <li><i class="fas fa-check-circle mr-2"></i> Colonnes requises : <strong>prenom, nom, email</strong></li>
-                            <li><i class="fas fa-check-circle mr-2"></i> Colonnes optionnelles : telephone, ville, adresse, code_postal, pays, date_naissance</li>
-                            <li><i class="fas fa-check-circle mr-2"></i> Séparateur : point-virgule (;) ou virgule (,)</li>
-                            <li><i class="fas fa-check-circle mr-2"></i> Les contacts déjà existants (même email) sont ignorés</li>
-                            <li><i class="fas fa-info-circle mr-2"></i> La date de naissance doit être au format YYYY-MM-DD et le contact doit avoir au moins 18 ans</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV/Excel</label>
-                        <input type="file" name="fichier" id="importFile" accept=".csv,.xls,.xlsx" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500">
-                        <p class="text-xs text-gray-500 mt-1">Formats acceptés : CSV, XLS, XLSX (Taille max : 10MB)</p>
+                    <div style="max-width: 100% !important; padding: 0 12px;">
+                        <div class="import-info-box" style="background: #eff6ff !important; padding: 24px 28px !important; border-radius: 12px !important; margin-bottom: 24px !important; border: 1px solid #bfdbfe !important;">
+                            <h4 style="font-size: 18px !important; font-weight: 600 !important; color: #1e40af !important; margin-bottom: 12px !important;">
+                                <i class="fas fa-info-circle mr-2"></i>Format du fichier
+                            </h4>
+                            <ul style="font-size: 15px !important; color: #1e3a5f !important; list-style: none !important; padding: 0 !important; margin: 0 !important;">
+                                <li style="padding: 6px 0 !important; display: flex !important; align-items: flex-start !important; line-height: 1.5 !important;">
+                                    <i class="fas fa-check-circle text-green-500" style="margin-right: 10px !important; margin-top: 2px !important;"></i>
+                                    <span>Colonnes requises : <strong>prenom, nom, email</strong></span>
+                                </li>
+                                <li style="padding: 6px 0 !important; display: flex !important; align-items: flex-start !important; line-height: 1.5 !important;">
+                                    <i class="fas fa-check-circle text-green-500" style="margin-right: 10px !important; margin-top: 2px !important;"></i>
+                                    <span>Colonnes optionnelles : telephone, tel_portable, ville, adresse, code_postal, pays, date_naissance, no_client, civilite, sexe, enseigne, numero_siret, mari, anniversaire_mari, femme, anniversaire_femme, points_fidelite, cumul_cadeau, cumul_achats, cumul_achat_avant_cadeau, quantite_article, nombre_ticket, identifiant_ecommerce, valeur_coupon, date_fin_validite_coupon, commentaire, commentaire_prive</span>
+                                </li>
+                                <li style="padding: 6px 0 !important; display: flex !important; align-items: flex-start !important; line-height: 1.5 !important;">
+                                    <i class="fas fa-check-circle text-green-500" style="margin-right: 10px !important; margin-top: 2px !important;"></i>
+                                    <span>Séparateur : point-virgule (;) ou virgule (,)</span>
+                                </li>
+                                <li style="padding: 6px 0 !important; display: flex !important; align-items: flex-start !important; line-height: 1.5 !important;">
+                                    <i class="fas fa-check-circle text-green-500" style="margin-right: 10px !important; margin-top: 2px !important;"></i>
+                                    <span>Les contacts déjà existants (même email) sont ignorés</span>
+                                </li>
+                                <li style="padding: 6px 0 !important; display: flex !important; align-items: flex-start !important; line-height: 1.5 !important;">
+                                    <i class="fas fa-info-circle text-blue-500" style="margin-right: 10px !important; margin-top: 2px !important;"></i>
+                                    <span>La date de naissance doit être au format YYYY-MM-DD et le contact doit avoir au moins 18 ans</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="file-input-wrapper">
+                            <label style="display: block !important; font-size: 16px !important; font-weight: 600 !important; color: #1e293b !important; margin-bottom: 8px !important;">
+                                <i class="fas fa-file mr-2"></i>Fichier CSV/Excel
+                            </label>
+                            <input type="file" name="fichier" id="importFile" accept=".csv,.xls,.xlsx" required
+                                   style="width: 100% !important; padding: 16px 20px !important; font-size: 15px !important; min-height: 60px !important; border: 2px dashed #d1d5db !important; border-radius: 12px !important; background: #f9fafb !important; cursor: pointer !important;">
+                            <p class="file-hint" style="font-size: 14px !important; color: #6b7280 !important; margin-top: 8px !important;">
+                                <i class="fas fa-info-circle mr-1"></i>Formats acceptés : CSV, XLS, XLSX (Taille max : 10MB)
+                            </p>
+                        </div>
                     </div>
                 </div>
-                
-                <!-- FOOTER -->
                 <div class="modal-footer-sticky">
-                    <div class="flex justify-end space-x-2">
-                        <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                            Annuler
-                        </button>
-                        <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">
-                            Importer
-                        </button>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="closeImportModal()" class="btn-secondary" style="padding: 12px 28px !important; font-size: 15px !important;">Annuler</button>
+                        <button type="submit" id="importSubmitBtn" class="btn-success"><i class="fas fa-upload mr-2"></i>Importer</button>
                     </div>
                 </div>
             </form>
@@ -1261,10 +1921,8 @@ unset($_SESSION['flash_error']);
     </div>
 </div>
 
-<!-- ============================================ -->
-<!-- MODALE POUR DÉBLACKLISTER -->
-<!-- ============================================ -->
-<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+<!-- MODAL BLACKLIST -->
+<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-[9999]" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div class="p-6 text-center">
             <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
@@ -1275,22 +1933,16 @@ unset($_SESSION['flash_error']);
             <form method="POST" action="?page=contacts/unblacklist">
                 <input type="hidden" name="id_contact" id="unblacklistContactId">
                 <div class="flex space-x-3">
-                    <button type="button" onclick="closeUnblacklistModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                        Annuler
-                    </button>
-                    <button type="submit" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">
-                        Débloquer
-                    </button>
+                    <button type="button" onclick="closeUnblacklistModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                    <button type="submit" class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">Débloquer</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- ============================================ -->
-<!-- MODALE DE CONFIRMATION SUPPRESSION -->
-<!-- ============================================ -->
-<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
+<!-- MODAL SUPPRESSION -->
+<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-[9999]" style="display: none;">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
         <div class="p-6 text-center">
             <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
@@ -1300,21 +1952,14 @@ unset($_SESSION['flash_error']);
             <p class="text-gray-500 mb-6">Êtes-vous sûr de vouloir supprimer ce contact ?</p>
             <p class="text-sm text-gray-400 mb-6">Cette action est irréversible.</p>
             <div class="flex space-x-3">
-                <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                    Annuler
-                </button>
-                <a href="#" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">
-                    Supprimer
-                </a>
+                <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Annuler</button>
+                <a href="#" id="confirmDeleteBtn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-center">Supprimer</a>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-// ============================================
-// TOAST NOTIFICATION
-// ============================================
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
@@ -1326,44 +1971,75 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// Messages flash
 <?php if ($flashMessage): ?> showToast('<?= addslashes($flashMessage) ?>', 'success'); <?php endif; ?>
 <?php if ($flashError): ?> showToast('<?= addslashes($flashError) ?>', 'error'); <?php endif; ?>
 
-// ============================================
-// VARIABLES GLOBALES
-// ============================================
-let currentContactIdForField = null;
 let currentContactIdForEdit = null;
 let tempCustomFields = [];
-let isTempMode = false;
+let enfantCounter = 0;
 
-// ============================================
-// GESTION DES CHAMPS TEMPORAIRES
-// ============================================
+function addEnfantRow(mode) {
+    const containerId = mode === 'add' ? 'enfantsContainer' : 'editEnfantsContainer';
+    const noMsgId = mode === 'add' ? 'noEnfantsMessage' : 'editNoEnfantsMessage';
+    const container = document.getElementById(containerId);
+    const noMsg = document.getElementById(noMsgId);
+    if (noMsg) noMsg.remove();
+    const id = ++enfantCounter;
+    const div = document.createElement('div');
+    div.className = 'enfant-item grid grid-cols-1 md:grid-cols-4 gap-3';
+    div.dataset.enfantId = id;
+    div.innerHTML = `
+        <button type="button" class="remove-enfant" onclick="this.closest('.enfant-item').remove()">×</button>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom</label><input type="text" name="enfants[${id}][nom]" placeholder="Nom" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom</label><input type="text" name="enfants[${id}][prenom]" placeholder="Prénom" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Sexe</label><select name="enfants[${id}][sexe]" class="w-full border border-gray-300 rounded-lg px-3 py-2"><option value="">--</option><option value="M">Masculin</option><option value="F">Féminin</option></select></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Date anniversaire</label><input type="date" name="enfants[${id}][date_anniversaire]" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+    `;
+    container.appendChild(div);
+}
+
+function loadEnfants(mode, enfants) {
+    const containerId = mode === 'add' ? 'enfantsContainer' : 'editEnfantsContainer';
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    if (!enfants || enfants.length === 0) {
+        const noMsg = document.createElement('div');
+        noMsg.id = mode === 'add' ? 'noEnfantsMessage' : 'editNoEnfantsMessage';
+        noMsg.className = 'text-center py-3 text-gray-400 text-sm';
+        noMsg.innerHTML = `<i class="fas fa-info-circle mr-1"></i>Aucun enfant enregistré. <button type="button" onclick="addEnfantRow('${mode}')" class="text-blue-600 hover:underline">Ajouter un enfant</button>`;
+        container.appendChild(noMsg);
+        return;
+    }
+    enfants.forEach((enfant) => {
+        const id = ++enfantCounter;
+        const div = document.createElement('div');
+        div.className = 'enfant-item grid grid-cols-1 md:grid-cols-4 gap-3';
+        div.dataset.enfantId = id;
+        div.innerHTML = `
+            <button type="button" class="remove-enfant" onclick="this.closest('.enfant-item').remove()">×</button>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Nom</label><input type="text" name="enfants[${id}][nom]" value="${escapeHtml(enfant.nom || '')}" placeholder="Nom" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Prénom</label><input type="text" name="enfants[${id}][prenom]" value="${escapeHtml(enfant.prenom || '')}" placeholder="Prénom" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Sexe</label><select name="enfants[${id}][sexe]" class="w-full border border-gray-300 rounded-lg px-3 py-2"><option value="">--</option><option value="M" ${enfant.sexe === 'M' ? 'selected' : ''}>Masculin</option><option value="F" ${enfant.sexe === 'F' ? 'selected' : ''}>Féminin</option></select></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Date anniversaire</label><input type="date" name="enfants[${id}][date_anniversaire]" value="${escapeHtml(enfant.date_anniversaire || '')}" class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
+        `;
+        container.appendChild(div);
+    });
+}
 
 function addTempField(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue) {
-    // Vérifier si le champ existe déjà
-    const exists = tempCustomFields.some(f => f.field_name === fieldName);
-    if (exists) {
+    if (tempCustomFields.length >= 10) {
+        showToast('Nombre maximum de champs personnalisés atteint (10 max)', 'warning');
+        return false;
+    }
+    if (tempCustomFields.some(f => f.field_name === fieldName)) {
         showToast('Un champ avec ce nom existe déjà', 'warning');
         return false;
     }
-    
-    tempCustomFields.push({
-        field_name: fieldName,
-        field_label: fieldLabel,
-        field_type: fieldType,
-        field_options: fieldOptions || null,
-        field_value: fieldValue || '' // La valeur est bien conservée
-    });
-    
+    tempCustomFields.push({ field_name: fieldName, field_label: fieldLabel, field_type: fieldType, field_options: fieldOptions || null, field_value: fieldValue || '' });
     updateTempFieldsDisplay();
     updateTempFieldsInput();
-    
-
-    showToast(`Champ "${fieldLabel}" ajouté avec la valeur${fieldValue ? ' : ' + fieldValue : ''}`, 'success');
-    
+    updateCustomFieldCount('add');
+    showToast(`Champ "${fieldLabel}" ajouté`, 'success');
     return true;
 }
 
@@ -1371,59 +2047,59 @@ function removeTempField(index) {
     tempCustomFields.splice(index, 1);
     updateTempFieldsDisplay();
     updateTempFieldsInput();
+    updateCustomFieldCount('add');
 }
 
 function updateTempFieldsDisplay() {
     const container = document.getElementById('tempFieldsList');
     if (!container) return;
-    
-    if (tempCustomFields.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-    
+    if (tempCustomFields.length === 0) { container.innerHTML = ''; return; }
     container.innerHTML = tempCustomFields.map((field, index) => {
         const label = field.field_label || field.field_name;
         const value = field.field_value ? `: ${field.field_value}` : '';
-        return `<span class="temp-field-badge">
-            <i class="fas fa-tag mr-1"></i>
-            ${escapeHtml(label)}${escapeHtml(value)}
-            <span class="remove-temp-field" onclick="removeTempField(${index})" title="Supprimer ce champ">×</span>
-        </span>`;
+        return `<span class="temp-field-badge"><i class="fas fa-tag mr-1"></i>${escapeHtml(label)}${escapeHtml(value)}<span class="remove-temp-field" onclick="removeTempField(${index})">×</span></span>`;
     }).join('');
 }
 
 function updateTempFieldsInput() {
     const input = document.getElementById('tempCustomFields');
-    if (input) {
-        input.value = JSON.stringify(tempCustomFields);
-    }
+    if (input) input.value = JSON.stringify(tempCustomFields);
 }
 
-// ============================================
-// FONCTION POUR AJOUTER UN CHAMP DYNAMIQUEMENT DANS LE FORMULAIRE D'AJOUT
-// ============================================
-function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue) {
-    const noFieldsMsg = document.getElementById('noCustomFieldsMessage');
-    if (noFieldsMsg) {
-        noFieldsMsg.remove();
+function updateCustomFieldCount(mode) {
+    const countId = mode === 'add' ? 'customFieldCountAdd' : 'customFieldCountEdit';
+    const countEl = document.getElementById(countId);
+    if (!countEl) return;
+    let currentCount = 0;
+    if (mode === 'add') {
+        currentCount = tempCustomFields.length;
+        const container = document.getElementById('addCustomFieldsContainer');
+        if (container) currentCount += container.querySelectorAll('.custom-field-wrapper').length;
+    } else {
+        const container = document.getElementById('editCustomFieldsContainer');
+        if (container) currentCount = container.querySelectorAll('.custom-field-wrapper').length;
     }
-    
-    const container = document.getElementById('addCustomFieldsContainer');
+    countEl.textContent = `${currentCount} / 10`;
+}
+
+function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue, mode) {
+    const containerId = mode === 'add' ? 'addCustomFieldsContainer' : 'editCustomFieldsContainer';
+    const container = document.getElementById(containerId);
     if (!container) return;
-    
-    let fieldHtml = '';
+    const currentFields = container.querySelectorAll('.custom-field-wrapper').length;
+    if (mode === 'add') {
+        if (currentFields + tempCustomFields.length >= 10) { showToast('Maximum 10 champs', 'warning'); return; }
+    } else {
+        if (currentFields >= 10) { showToast('Maximum 10 champs', 'warning'); return; }
+    }
+    const noMsg = container.querySelector('.col-span-2.text-center');
+    if (noMsg) noMsg.remove();
     const fieldNameEscaped = escapeHtml(fieldName);
     const fieldLabelEscaped = escapeHtml(fieldLabel);
     const fieldValueEscaped = escapeHtml(fieldValue || '');
-    
+    let fieldHtml = '';
     if (fieldType === 'textarea') {
-        fieldHtml = `
-            <div class="custom-field-wrapper new-field-highlight">
-                <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <textarea name="custom_fields[${fieldNameEscaped}]" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">${fieldValueEscaped}</textarea>
-            </div>
-        `;
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><textarea name="custom_fields[${fieldNameEscaped}]" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">${fieldValueEscaped}</textarea></div>`;
     } else if (fieldType === 'select' && fieldOptions) {
         const options = fieldOptions.split('|');
         let optionsHtml = '<option value="">-- Sélectionner --</option>';
@@ -1432,97 +2108,80 @@ function ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOption
             const selected = fieldValue === optTrimmed ? 'selected' : '';
             optionsHtml += `<option value="${escapeHtml(optTrimmed)}" ${selected}>${escapeHtml(optTrimmed)}</option>`;
         });
-        fieldHtml = `
-            <div class="custom-field-wrapper new-field-highlight">
-                <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <select name="custom_fields[${fieldNameEscaped}]" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                    ${optionsHtml}
-                </select>
-            </div>
-        `;
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><select name="custom_fields[${fieldNameEscaped}]" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">${optionsHtml}</select></div>`;
     } else if (fieldType === 'date') {
-        fieldHtml = `
-            <div class="custom-field-wrapper new-field-highlight">
-                <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <input type="date" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-            </div>
-        `;
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><input type="date" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>`;
     } else if (fieldType === 'number') {
-        fieldHtml = `
-            <div class="custom-field-wrapper new-field-highlight">
-                <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <input type="number" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-            </div>
-        `;
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><input type="number" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>`;
     } else {
-        fieldHtml = `
-            <div class="custom-field-wrapper new-field-highlight">
-                <label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label>
-                <input type="text" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" placeholder="${fieldLabelEscaped}">
-            </div>
-        `;
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><input type="text" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" placeholder="${fieldLabelEscaped}"></div>`;
     }
-    
     container.insertAdjacentHTML('beforeend', fieldHtml);
-    
-    setTimeout(() => {
-        document.querySelectorAll('.new-field-highlight').forEach(el => {
-            el.classList.remove('new-field-highlight');
-        });
-    }, 2000);
+    updateCustomFieldCount(mode);
+    setTimeout(() => document.querySelectorAll('.new-field-highlight').forEach(el => el.classList.remove('new-field-highlight')), 2000);
 }
 
-// ============================================
-// MODALE D'AJOUT DE CHAMP PERSONNALISÉ (MODE TEMPORAIRE)
-// ============================================
+function ajouterChampDynamiquementDansEdit(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue) {
+    const container = document.getElementById('editCustomFieldsContainer');
+    if (!container) return;
+    if (container.querySelector(`.custom-field-wrapper[data-field-name="${fieldName}"]`)) {
+        showToast('Ce champ existe déjà', 'warning');
+        return;
+    }
+    const noMsg = container.querySelector('.col-span-2.text-center');
+    if (noMsg) noMsg.remove();
+    const fieldNameEscaped = escapeHtml(fieldName);
+    const fieldLabelEscaped = escapeHtml(fieldLabel);
+    const fieldValueEscaped = escapeHtml(fieldValue || '');
+    let fieldHtml = '';
+    if (fieldType === 'textarea') {
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight" data-field-name="${fieldNameEscaped}"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><textarea name="custom_fields[${fieldNameEscaped}]" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">${fieldValueEscaped}</textarea></div>`;
+    } else if (fieldType === 'select' && fieldOptions) {
+        const options = fieldOptions.split('|');
+        let optionsHtml = '<option value="">-- Sélectionner --</option>';
+        options.forEach(opt => {
+            const optTrimmed = opt.trim();
+            const selected = fieldValue === optTrimmed ? 'selected' : '';
+            optionsHtml += `<option value="${escapeHtml(optTrimmed)}" ${selected}>${escapeHtml(optTrimmed)}</option>`;
+        });
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight" data-field-name="${fieldNameEscaped}"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><select name="custom_fields[${fieldNameEscaped}]" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">${optionsHtml}</select></div>`;
+    } else if (fieldType === 'date') {
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight" data-field-name="${fieldNameEscaped}"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><input type="date" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>`;
+    } else if (fieldType === 'number') {
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight" data-field-name="${fieldNameEscaped}"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><input type="number" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"></div>`;
+    } else {
+        fieldHtml = `<div class="custom-field-wrapper new-field-highlight" data-field-name="${fieldNameEscaped}"><label class="block text-sm font-medium text-gray-700 mb-1">${fieldLabelEscaped}</label><input type="text" name="custom_fields[${fieldNameEscaped}]" value="${fieldValueEscaped}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" placeholder="${fieldLabelEscaped}"></div>`;
+    }
+    container.insertAdjacentHTML('beforeend', fieldHtml);
+    updateCustomFieldCount('edit');
+    setTimeout(() => document.querySelectorAll('.new-field-highlight').forEach(el => el.classList.remove('new-field-highlight')), 2000);
+}
+
 function openAddCustomFieldModalFromAddTemp() {
-    isTempMode = true;
     document.getElementById('custom_field_contact_id').value = 'temp';
     document.getElementById('custom_field_mode').value = 'temp';
     document.getElementById('new_field_value_div').style.display = 'block';
-    openAddCustomFieldModal();
+    document.getElementById('addCustomFieldModal').style.display = 'flex';
 }
 
 function openAddCustomFieldModalFromEdit() {
-    if (!currentContactIdForEdit) {
-        showToast('Contact non identifié', 'error');
-        return;
-    }
-    isTempMode = false;
+    if (!currentContactIdForEdit) { showToast('Contact non identifié', 'error'); return; }
     document.getElementById('custom_field_contact_id').value = currentContactIdForEdit;
     document.getElementById('custom_field_mode').value = 'edit';
     document.getElementById('new_field_value_div').style.display = 'none';
-    openAddCustomFieldModal();
-}
-
-function openAddCustomFieldModal() {
-    const modal = document.getElementById('addCustomFieldModal');
-    const modalContent = modal.querySelector('.modal-custom-field');
-    document.getElementById('addCustomFieldForm').reset();
-    document.getElementById('new_field_options_div').style.display = 'none';
-    document.getElementById('new_field_value').value = '';
-    modal.style.display = 'flex';
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
+    document.getElementById('addCustomFieldModal').style.display = 'flex';
 }
 
 function closeAddCustomFieldModal() {
-    const modal = document.getElementById('addCustomFieldModal');
-    const modalContent = modal.querySelector('.modal-custom-field');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => modal.style.display = 'none', 200);
+    document.getElementById('addCustomFieldModal').style.display = 'none';
 }
 
-// Afficher/masquer les options pour les listes
 document.getElementById('new_field_type')?.addEventListener('change', function() {
     document.getElementById('new_field_options_div').style.display = this.value === 'select' ? 'block' : 'none';
 });
 
-// ============================================
-// SOUMISSION DU FORMULAIRE DE CRÉATION DE CHAMP
-// ============================================
 document.getElementById('addCustomFieldForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
-    
     const fieldName = document.getElementById('new_field_name').value.trim();
     const fieldLabel = document.getElementById('new_field_label').value.trim();
     const fieldType = document.getElementById('new_field_type').value;
@@ -1530,332 +2189,141 @@ document.getElementById('addCustomFieldForm')?.addEventListener('submit', async 
     const fieldValue = document.getElementById('new_field_value').value.trim();
     const mode = document.getElementById('custom_field_mode').value;
     const contactId = document.getElementById('custom_field_contact_id').value;
-    
-    if (!fieldName || !fieldLabel) {
-        showToast('Veuillez remplir tous les champs obligatoires', 'warning');
-        return;
-    }
-    
+    if (!fieldName || !fieldLabel) { showToast('Veuillez remplir tous les champs obligatoires', 'warning'); return; }
     const btn = document.getElementById('createFieldBtn');
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Ajout...';
     btn.disabled = true;
-    
     try {
         if (mode === 'temp') {
-            // Mode temporaire : ajouter le champ à la liste temporaire
-            const success = addTempField(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue);
-            if (success) {
-                ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue);
+            if (addTempField(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue)) {
+                ajouterChampDynamiquement(fieldName, fieldLabel, fieldType, fieldOptions, fieldValue, 'add');
                 showToast('Champ ajouté temporairement', 'success');
                 closeAddCustomFieldModal();
             }
         } else if (mode === 'edit') {
-            // Mode édition : créer le champ directement dans la base
-            if (!contactId || contactId === 'temp') {
-                showToast('Contact non identifié', 'error');
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-                return;
-            }
-            
+            if (!contactId || contactId === 'temp') { showToast('Contact non identifié', 'error'); btn.innerHTML = originalText; btn.disabled = false; return; }
             const formData = new FormData();
             formData.append('action_create_custom_field', '1');
             formData.append('field_name', fieldName);
             formData.append('field_label', fieldLabel);
             formData.append('field_type', fieldType);
-            if (fieldOptions) {
-                formData.append('field_options', fieldOptions);
-            }
+            if (fieldOptions) formData.append('field_options', fieldOptions);
             formData.append('id_contact', contactId);
-            
-            const response = await fetch(window.location.href, {
-                method: 'POST',
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                body: formData
-            });
-            const result = await response.json();
-            
+            const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
+            const textResponse = await response.text();
+            let result;
+            try { result = JSON.parse(textResponse); } catch(e) { showToast('Erreur de parsing', 'error'); btn.innerHTML = originalText; btn.disabled = false; return; }
             if (result.success) {
                 showToast(result.message, 'success');
                 closeAddCustomFieldModal();
-                // Recharger le contact pour afficher le nouveau champ
-                if (currentContactIdForEdit) {
-                    openEditContactModal(currentContactIdForEdit);
-                }
+                ajouterChampDynamiquementDansEdit(fieldName, fieldLabel, fieldType, fieldOptions, '');
+                updateCustomFieldCount('edit');
+                currentContactIdForEdit = contactId;
             } else {
-                showToast(result.error, 'error');
+                showToast(result.error || 'Erreur inconnue', 'error');
             }
         }
-    } catch (error) {
-        showToast('Erreur réseau', 'error');
-    } finally {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }
+    } catch(error) { showToast('Erreur réseau: ' + error.message, 'error'); }
+    finally { btn.innerHTML = originalText; btn.disabled = false; }
 });
 
-// ============================================
-// MODAL D'AJOUT DE CONTACT
-// ============================================
 function openAddContactModal() {
     const modal = document.getElementById('addContactModal');
-    const modalContent = modal.querySelector('.modal-add-contact');
     document.getElementById('addContactForm').reset();
-    
-    // Réinitialiser les champs temporaires
     tempCustomFields = [];
     document.getElementById('tempCustomFields').value = '';
     document.getElementById('tempFieldsList').innerHTML = '';
-    
-    // Réinitialiser l'affichage des champs personnalisés
-    const container = document.getElementById('addCustomFieldsContainer');
-    container.innerHTML = `
-        <div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage">
-            <i class="fas fa-info-circle mr-1"></i>
-            Aucun champ personnalisé.
-            <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" 
-                    class="text-blue-600 hover:underline">
-                Ajouter votre premier champ
-            </button>
-        </div>
-    `;
-    
+    document.getElementById('addCustomFieldsContainer').innerHTML = `<div class="col-span-2 text-center py-3 text-gray-400 text-sm" id="noCustomFieldsMessage"><i class="fas fa-info-circle mr-1"></i>Aucun champ personnalisé. <button type="button" onclick="openAddCustomFieldModalFromAddTemp()" class="text-blue-600 hover:underline">Ajouter votre premier champ</button></div>`;
+    document.getElementById('enfantsContainer').innerHTML = `<div id="noEnfantsMessage" class="text-center py-3 text-gray-400 text-sm"><i class="fas fa-info-circle mr-1"></i>Aucun enfant enregistré. <button type="button" onclick="addEnfantRow('add')" class="text-blue-600 hover:underline">Ajouter un enfant</button></div>`;
+    updateCustomFieldCount('add');
     modal.style.display = 'flex';
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
 
-function closeAddContactModal() {
-    const modal = document.getElementById('addContactModal');
-    const modalContent = modal.querySelector('.modal-add-contact');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => modal.style.display = 'none', 200);
-}
+function closeAddContactModal() { document.getElementById('addContactModal').style.display = 'none'; }
 
-// ============================================
-// MODAL DE MODIFICATION DE CONTACT
-// ============================================
 async function openEditContactModal(contactId) {
     currentContactIdForEdit = contactId;
     const modal = document.getElementById('editContactModal');
-    const modalContent = modal.querySelector('.modal-edit-contact');
-    
     try {
-        const url = `index.php?page=contacts/index&action=get_contact&id=${contactId}`;
-        console.log('Chargement du contact:', url);
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-            const text = await response.text();
-            console.error('Erreur HTTP:', response.status, text);
-            showToast('Erreur serveur: ' + response.status, 'error');
-            return;
-        }
-        
+        const response = await fetch(`index.php?page=contacts/index&action=get_contact&id=${contactId}`);
+        if (!response.ok) { showToast('Erreur serveur: ' + response.status, 'error'); return; }
         const textResponse = await response.text();
-        console.log('Réponse brute:', textResponse);
-        
         let contact;
-        try {
-            contact = JSON.parse(textResponse);
-        } catch (e) {
-            console.error('Erreur de parsing JSON:', e);
-            showToast('Erreur de parsing: ' + textResponse.substring(0, 200), 'error');
-            return;
-        }
-        
-        if (contact.error) {
-            showToast(contact.error, 'error');
-            return;
-        }
-        
-        // Remplir les champs du formulaire
+        try { contact = JSON.parse(textResponse); } catch(e) { showToast('Erreur de parsing', 'error'); return; }
+        if (contact.error) { showToast(contact.error, 'error'); return; }
         document.getElementById('edit_id_contact').value = contact.id_contact;
+        document.getElementById('edit_civilite').value = contact.civilite || '';
+        document.getElementById('edit_sexe').value = contact.sexe || '';
         document.getElementById('edit_prenom').value = contact.prenom || '';
         document.getElementById('edit_nom').value = contact.nom || '';
         document.getElementById('edit_email').value = contact.email || '';
         document.getElementById('edit_telephone').value = contact.telephone || '';
-        document.getElementById('edit_date_naissance').value = contact.date_naissance || '';
-        document.getElementById('edit_ville').value = contact.ville || '';
-        document.getElementById('edit_code_postal').value = contact.code_postal || '';
-        document.getElementById('edit_pays').value = contact.pays || 'France';
+        document.getElementById('edit_tel_portable').value = contact.tel_portable || '';
         document.getElementById('edit_adresse').value = contact.adresse || '';
-        
+        document.getElementById('edit_code_postal').value = contact.code_postal || '';
+        document.getElementById('edit_ville').value = contact.ville || '';
+        document.getElementById('edit_pays').value = contact.pays || 'France';
+        document.getElementById('edit_date_naissance').value = contact.date_naissance || '';
+        document.getElementById('edit_no_client').value = contact.no_client || '';
+        document.getElementById('edit_enseigne').value = contact.enseigne || '';
+        document.getElementById('edit_numero_siret').value = contact.numero_siret || '';
+        document.getElementById('edit_identifiant_ecommerce').value = contact.identifiant_ecommerce || '';
+        document.getElementById('edit_mari').value = contact.mari || '';
+        document.getElementById('edit_anniversaire_mari').value = contact.anniversaire_mari || '';
+        document.getElementById('edit_femme').value = contact.femme || '';
+        document.getElementById('edit_anniversaire_femme').value = contact.anniversaire_femme || '';
+        document.getElementById('edit_points_fidelite').value = contact.points_fidelite || 0;
+        document.getElementById('edit_cumul_cadeau').value = contact.cumul_cadeau || 0;
+        document.getElementById('edit_cumul_achats').value = contact.cumul_achats || 0;
+        document.getElementById('edit_cumul_achat_avant_cadeau').value = contact.cumul_achat_avant_cadeau || 0;
+        document.getElementById('edit_quantite_article').value = contact.quantite_article || 0;
+        document.getElementById('edit_nombre_ticket').value = contact.nombre_ticket || 0;
+        document.getElementById('edit_valeur_coupon').value = contact.valeur_coupon || '';
+        document.getElementById('edit_date_fin_validite_coupon').value = contact.date_fin_validite_coupon || '';
+        document.getElementById('edit_commentaire').value = contact.commentaire || '';
+        document.getElementById('edit_commentaire_prive').value = contact.commentaire_prive || '';
         const container = document.getElementById('editCustomFieldsContainer');
         container.innerHTML = '';
-        
-        // Récupérer les champs personnalisés du contact
-        const fieldsUrl = `index.php?page=contacts/index&action=get_contact_fields&id=${contactId}`;
-        const fieldsResponse = await fetch(fieldsUrl);
+        const fieldsResponse = await fetch(`index.php?page=contacts/index&action=get_contact_fields&id=${contactId}`);
         const fieldsData = await fieldsResponse.json();
-        
         if (fieldsData.fields && fieldsData.fields.length > 0) {
-            document.getElementById('customFieldsSection').style.display = 'block';
-            
-            window.currentContactFields = fieldsData.fields;
-            
             for (const field of fieldsData.fields) {
                 const currentValue = field.value || '';
                 const required = field.is_required ? '<span class="text-red-500">*</span>' : '';
-                
-                let fieldHtml = '<div class="custom-field-wrapper" data-field-name="' + escapeHtml(field.field_name) + '">';
-                fieldHtml += '<label class="block text-sm font-medium text-gray-700 mb-1">' + escapeHtml(field.field_label) + ' ' + required + '</label>';
-                
+                let fieldHtml = `<div class="custom-field-wrapper" data-field-name="${escapeHtml(field.field_name)}"><label class="block text-sm font-medium text-gray-700 mb-1">${escapeHtml(field.field_label)} ${required}</label>`;
                 if (field.field_type === 'textarea') {
-                    fieldHtml += '<textarea name="custom_fields[' + escapeHtml(field.field_name) + ']" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">' + escapeHtml(currentValue) + '</textarea>';
-                } 
-                else if (field.field_type === 'select' && field.field_options) {
+                    fieldHtml += `<textarea name="custom_fields[${escapeHtml(field.field_name)}]" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">${escapeHtml(currentValue)}</textarea>`;
+                } else if (field.field_type === 'select' && field.field_options) {
                     const options = field.field_options.split('|');
-                    fieldHtml += '<select name="custom_fields[' + escapeHtml(field.field_name) + ']" class="w-full border border-gray-300 rounded-lg px-3 py-2">';
-                    fieldHtml += '<option value="">-- Sélectionner --</option>';
+                    fieldHtml += `<select name="custom_fields[${escapeHtml(field.field_name)}]" class="w-full border border-gray-300 rounded-lg px-3 py-2"><option value="">-- Sélectionner --</option>`;
                     for (const opt of options) {
                         const optTrimmed = opt.trim();
                         const selected = currentValue === optTrimmed ? 'selected' : '';
-                        fieldHtml += '<option value="' + escapeHtml(optTrimmed) + '" ' + selected + '>' + escapeHtml(optTrimmed) + '</option>';
+                        fieldHtml += `<option value="${escapeHtml(optTrimmed)}" ${selected}>${escapeHtml(optTrimmed)}</option>`;
                     }
-                    fieldHtml += '</select>';
+                    fieldHtml += `</select>`;
+                } else if (field.field_type === 'date') {
+                    fieldHtml += `<input type="date" name="custom_fields[${escapeHtml(field.field_name)}]" value="${escapeHtml(currentValue)}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">`;
+                } else if (field.field_type === 'number') {
+                    fieldHtml += `<input type="number" name="custom_fields[${escapeHtml(field.field_name)}]" value="${escapeHtml(currentValue)}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">`;
+                } else {
+                    fieldHtml += `<input type="text" name="custom_fields[${escapeHtml(field.field_name)}]" value="${escapeHtml(currentValue)}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">`;
                 }
-                else if (field.field_type === 'date') {
-                    fieldHtml += '<input type="date" name="custom_fields[' + escapeHtml(field.field_name) + ']" value="' + escapeHtml(currentValue) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">';
-                }
-                else if (field.field_type === 'number') {
-                    fieldHtml += '<input type="number" name="custom_fields[' + escapeHtml(field.field_name) + ']" value="' + escapeHtml(currentValue) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">';
-                }
-                else {
-                    fieldHtml += '<input type="text" name="custom_fields[' + escapeHtml(field.field_name) + ']" value="' + escapeHtml(currentValue) + '" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">';
-                }
-                
-                fieldHtml += '</div>';
+                fieldHtml += `</div>`;
                 container.innerHTML += fieldHtml;
             }
         } else {
-            document.getElementById('customFieldsSection').style.display = 'block';
-            container.innerHTML = `
-                <div class="col-span-2 text-center py-3 text-gray-400 text-sm">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Aucun champ personnalisé pour ce contact.
-                    <button type="button" onclick="openAddCustomFieldModalFromEdit()" 
-                            class="text-blue-600 hover:underline">
-                        Ajouter un champ
-                    </button>
-                </div>
-            `;
+            container.innerHTML = `<div class="col-span-2 text-center py-3 text-gray-400 text-sm"><i class="fas fa-info-circle mr-1"></i>Aucun champ personnalisé pour ce contact. <button type="button" onclick="openAddCustomFieldModalFromEdit()" class="text-blue-600 hover:underline">Ajouter un champ</button></div>`;
         }
-        
+        updateCustomFieldCount('edit');
+        loadEnfants('edit', contact.enfants || []);
         modal.style.display = 'flex';
-        setTimeout(() => modalContent.classList.add('modal-show'), 10);
-        
-    } catch (error) {
-        console.error('Erreur:', error);
-        showToast('Erreur lors du chargement du contact: ' + error.message, 'error');
-    }
+    } catch(error) { showToast('Erreur lors du chargement du contact', 'error'); }
 }
 
-function closeEditContactModal() {
-    const modal = document.getElementById('editContactModal');
-    const modalContent = modal.querySelector('.modal-edit-contact');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => modal.style.display = 'none', 200);
-}
+function closeEditContactModal() { document.getElementById('editContactModal').style.display = 'none'; }
 
-// ============================================
-// MODAL D'IMPORT
-// ============================================
-function openImportModal() {
-    const modal = document.getElementById('importModal');
-    const modalContent = modal.querySelector('.modal-import-csv');
-    document.getElementById('importForm').reset();
-    modal.style.display = 'flex';
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
-}
-
-function closeImportModal() {
-    const modal = document.getElementById('importModal');
-    const modalContent = modal.querySelector('.modal-import-csv');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => modal.style.display = 'none', 200);
-}
-
-// ============================================
-// MODALE BLACKLIST
-// ============================================
-function openUnblacklistModal(contactId) {
-    document.getElementById('unblacklistContactId').value = contactId;
-    document.getElementById('unblacklistModal').style.display = 'flex';
-}
-
-function closeUnblacklistModal() {
-    document.getElementById('unblacklistModal').style.display = 'none';
-}
-
-// ============================================
-// MODALE SUPPRESSION
-// ============================================
-function showDeleteModal(contactId) {
-    const modal = document.getElementById('deleteModal');
-    document.getElementById('confirmDeleteBtn').href = 'index.php?page=contacts/supprimer&id=' + contactId;
-    modal.style.display = 'flex';
-}
-
-function closeModal() {
-    document.getElementById('deleteModal').style.display = 'none';
-}
-
-// ============================================
-// SOUMISSION DES FORMULAIRES AJAX
-// ============================================
-
-// Ajout contact
-document.getElementById('addContactForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    const submitBtn = this.querySelector('button[type="submit"]');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = 'Envoi...';
-    submitBtn.disabled = true;
-    
-    try {
-        const response = await fetch(window.location.href, { 
-            method: 'POST', 
-            headers: { 
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            }, 
-            body: formData 
-        });
-        
-        const textResponse = await response.text();
-        console.log('Réponse brute:', textResponse);
-        
-        let result;
-        try {
-            result = JSON.parse(textResponse);
-        } catch (e) {
-            console.error('Erreur de parsing JSON:', e);
-            showToast('Erreur de parsing: ' + textResponse.substring(0, 200), 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-            return;
-        }
-        
-        if (result.success) {
-            showToast(result.message, 'success');
-            setTimeout(() => window.location.reload(), 2000);
-        } else {
-            showToast(result.error || 'Erreur inconnue', 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-        }
-    } catch (error) {
-        console.error('Erreur réseau:', error);
-        showToast('Erreur réseau: ' + error.message, 'error');
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    }
-});
-
-// Modification contact
 document.getElementById('editContactForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const formData = new FormData(this);
@@ -1863,49 +2331,40 @@ document.getElementById('editContactForm').addEventListener('submit', async func
     const originalText = submitBtn.innerHTML;
     submitBtn.innerHTML = 'Envoi...';
     submitBtn.disabled = true;
-    
     try {
-        const response = await fetch(window.location.href, { 
-            method: 'POST', 
-            headers: { 
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            }, 
-            body: formData 
-        });
-        
+        const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: formData });
         const textResponse = await response.text();
-        console.log('Réponse brute modification:', textResponse);
-        
         let result;
-        try {
-            result = JSON.parse(textResponse);
-        } catch (e) {
-            console.error('Erreur de parsing JSON modification:', e);
-            showToast('Erreur de parsing: ' + textResponse.substring(0, 200), 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-            return;
-        }
-        
-        if (result.success) {
-            showToast(result.message, 'success');
-            closeEditContactModal();
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showToast(result.error || 'Erreur inconnue', 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-        }
-    } catch (error) {
-        console.error('Erreur réseau modification:', error);
-        showToast('Erreur réseau: ' + error.message, 'error');
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    }
+        try { result = JSON.parse(textResponse); } catch(e) { showToast('Erreur de parsing', 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+        if (result.success) { showToast(result.message, 'success'); closeEditContactModal(); setTimeout(() => window.location.reload(), 1500); }
+        else { showToast(result.error || 'Erreur inconnue', 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; }
+    } catch(error) { showToast('Erreur réseau: ' + error.message, 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; }
 });
 
-// Import CSV
+function openImportModal() { document.getElementById('importModal').style.display = 'flex'; }
+function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
+function openUnblacklistModal(contactId) { document.getElementById('unblacklistContactId').value = contactId; document.getElementById('unblacklistModal').style.display = 'flex'; }
+function closeUnblacklistModal() { document.getElementById('unblacklistModal').style.display = 'none'; }
+function showDeleteModal(contactId) { document.getElementById('confirmDeleteBtn').href = 'index.php?page=contacts/supprimer&id=' + contactId; document.getElementById('deleteModal').style.display = 'flex'; }
+function closeModal() { document.getElementById('deleteModal').style.display = 'none'; }
+
+document.getElementById('addContactForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Envoi...';
+    submitBtn.disabled = true;
+    try {
+        const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, body: formData });
+        const textResponse = await response.text();
+        let result;
+        try { result = JSON.parse(textResponse); } catch(e) { showToast('Erreur de parsing', 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; return; }
+        if (result.success) { showToast(result.message, 'success'); setTimeout(() => window.location.reload(), 2000); }
+        else { showToast(result.error || 'Erreur inconnue', 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; }
+    } catch(error) { showToast('Erreur réseau: ' + error.message, 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; }
+});
+
 document.getElementById('importForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const fileInput = document.getElementById('importFile');
@@ -1918,26 +2377,11 @@ document.getElementById('importForm').addEventListener('submit', async function(
     try {
         const response = await fetch(window.location.href, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
         const result = await response.json();
-        if (result.success) {
-            showToast(result.message, 'success');
-            closeImportModal();
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showToast(result.error, 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-        }
-    } catch (error) {
-        console.error('Erreur réseau:', error);
-        showToast('Erreur réseau: ' + error.message, 'error');
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    }
+        if (result.success) { showToast(result.message, 'success'); closeImportModal(); setTimeout(() => window.location.reload(), 1500); }
+        else { showToast(result.error, 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; }
+    } catch(error) { showToast('Erreur réseau: ' + error.message, 'error'); submitBtn.innerHTML = originalText; submitBtn.disabled = false; }
 });
 
-// ============================================
-// FILTRES ET RECHERCHE
-// ============================================
 const searchInput = document.getElementById('searchInput');
 const filterBtns = document.querySelectorAll('.filter-btn');
 const contactsRows = document.querySelectorAll('.contact-row');
@@ -1955,22 +2399,16 @@ function filterContacts() {
         const hasEmail = row.getAttribute('data-has-email') === 'true';
         const hasPhone = row.getAttribute('data-has-phone') === 'true';
         const isBlacklisted = row.getAttribute('data-blacklisted') === 'true';
-        
         let filterMatch = true;
         if (currentFilter === 'email') filterMatch = hasEmail;
         else if (currentFilter === 'phone') filterMatch = hasPhone;
         else if (currentFilter === 'blacklisted') filterMatch = isBlacklisted;
-        
         let searchMatch = true;
-        if (searchTerm !== '') {
-            searchMatch = name.includes(searchTerm) || email.includes(searchTerm) || phone.includes(searchTerm) || city.includes(searchTerm);
-        }
-        
+        if (searchTerm !== '') searchMatch = name.includes(searchTerm) || email.includes(searchTerm) || phone.includes(searchTerm) || city.includes(searchTerm);
         if (filterMatch && searchMatch) { row.classList.remove('hidden-row'); visibleCount++; }
         else { row.classList.add('hidden-row'); }
     });
     if (filteredCountSpan) filteredCountSpan.textContent = `${visibleCount} contact(s) affiché(s)`;
-    
     let noResultRow = document.getElementById('noResultRow');
     if (visibleCount === 0 && contactsRows.length > 0) {
         if (!noResultRow) {
@@ -1990,10 +2428,7 @@ if (searchInput) searchInput.addEventListener('input', filterContacts);
 
 filterBtns.forEach(btn => {
     btn.addEventListener('click', function() {
-        filterBtns.forEach(b => {
-            b.classList.remove('bg-blue-600', 'text-white');
-            b.classList.add('bg-gray-200', 'text-gray-700');
-        });
+        filterBtns.forEach(b => { b.classList.remove('bg-blue-600', 'text-white'); b.classList.add('bg-gray-200', 'text-gray-700'); });
         this.classList.remove('bg-gray-200', 'text-gray-700');
         this.classList.add('bg-blue-600', 'text-white');
         currentFilter = this.getAttribute('data-filter');
@@ -2001,9 +2436,6 @@ filterBtns.forEach(btn => {
     });
 });
 
-// ============================================
-// FONCTIONS UTILITAIRES
-// ============================================
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -2011,7 +2443,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Fermeture des modales
 document.getElementById('addContactModal')?.addEventListener('click', function(e) { if (e.target === this) closeAddContactModal(); });
 document.getElementById('editContactModal')?.addEventListener('click', function(e) { if (e.target === this) closeEditContactModal(); });
 document.getElementById('importModal')?.addEventListener('click', function(e) { if (e.target === this) closeImportModal(); });

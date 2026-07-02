@@ -27,11 +27,11 @@ $isAdmin = isAdminForMenu();
 
 <aside
     id="sidebar"
-    class="w-64 min-h-screen bg-slate-900 text-white flex-shrink-0 transition-all duration-300 shadow-2xl border-r border-slate-800 overflow-y-auto"
+    class="w-64 min-h-screen bg-slate-900 text-white flex-shrink-0 transition-all duration-300 shadow-2xl border-r border-slate-800 overflow-y-auto flex flex-col"
 >
 
     <!-- Logo / Header -->
-    <div class="p-6 border-b border-slate-800">
+    <div class="p-6 border-b border-slate-800 flex-shrink-0">
         <div class="flex justify-center">
             <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
                 <i class="fas fa-paper-plane text-xl"></i>
@@ -47,8 +47,8 @@ $isAdmin = isAdminForMenu();
         </p>
     </div>
 
-    <nav class="py-4">
-
+    <!-- Navigation -->
+    <nav class="py-4 flex-1 overflow-y-auto">
         <!-- Dashboard -->
         <a href="index.php?page=dashboard"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
@@ -70,7 +70,7 @@ $isAdmin = isAdminForMenu();
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
             <i class="fas fa-history w-5 mr-3 text-cyan-400"></i>
-            <span class="menu-text">Historique</span>
+            <span class="menu-text">Historiques</span>
         </a>
 
         <a href="index.php?page=campagnes/creer"
@@ -119,24 +119,6 @@ $isAdmin = isAdminForMenu();
             <span class="menu-title">Configuration</span>
         </div>
 
-       <!-- <a href="index.php?page=canaux/index"
-           class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-           <?= $currentPage == 'canaux/index'
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-plug w-5 mr-3 text-yellow-400"></i>
-            <span class="menu-text">Canaux d'envoi</span>
-        </a>-->
-
-        <!--<a href="index.php?page=parametres/credits"
-           class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-           <?= $currentPage == 'parametres/credits'
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>"
-            <i class="fas fa-coins w-5 mr-3 text-amber-400"></i>
-            <span class="menu-text">Commander crédits</span>
-        </a> -->
-
         <a href="index.php?page=parametres/compte"
            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
            <?= $currentPage == 'parametres/compte'
@@ -145,27 +127,10 @@ $isAdmin = isAdminForMenu();
             <i class="fas fa-cog w-5 mr-3 text-slate-400"></i>
             <span class="menu-text">Paramétrage</span>
         </a>
-
-        <!-- Administration -->
-        <?php if ($isAdmin): ?>
-            <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
-                <span class="menu-title">Administration</span>
-            </div>
-
-            <a href="index.php?page=admin/users"
-            class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-            <?= $currentPage == 'admin/users'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-                <i class="fas fa-users-cog w-5 mr-3 text-indigo-400"></i>
-                <span class="menu-text">Gestion des comptes</span>
-            </a>
-
-        <?php endif; ?>
     </nav>
 
-    <!-- Footer -->
-    <div class="mt-auto border-t border-slate-800 p-4 bg-slate-950">
+    <!-- Footer - Collé en bas -->
+    <div class="border-t border-slate-800 p-4 bg-slate-950 flex-shrink-0">
         <div class="text-center">
             <div class="text-xs text-slate-400">
                 <i class="fas fa-shield-alt mr-1"></i>
@@ -193,13 +158,30 @@ document.addEventListener('DOMContentLoaded', function () {
             if (sidebar.classList.contains('w-20')) {
                 allTexts.forEach(text => text.classList.add('hidden'));
                 // Réduire les padding dans le header
-                sidebar.querySelector('.p-6').classList.add('p-3');
-                sidebar.querySelector('.p-6').classList.remove('p-6');
+                const header = sidebar.querySelector('.p-6');
+                if (header) {
+                    header.classList.add('p-3');
+                    header.classList.remove('p-6');
+                }
+                // Réduire le padding du footer
+                const footer = sidebar.querySelector('.border-t.border-slate-800.p-4');
+                if (footer) {
+                    footer.classList.add('p-2');
+                    footer.classList.remove('p-4');
+                }
             } else {
                 allTexts.forEach(text => text.classList.remove('hidden'));
                 // Restaurer les padding
-                sidebar.querySelector('.p-3').classList.add('p-6');
-                sidebar.querySelector('.p-3').classList.remove('p-3');
+                const header = sidebar.querySelector('.p-3');
+                if (header) {
+                    header.classList.add('p-6');
+                    header.classList.remove('p-3');
+                }
+                const footer = sidebar.querySelector('.p-2');
+                if (footer) {
+                    footer.classList.add('p-4');
+                    footer.classList.remove('p-2');
+                }
             }
         });
     }
@@ -278,5 +260,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
 #sidebar.w-20 .py-3 {
     justify-content: center;
+}
+
+/* Footer en bas */
+#sidebar {
+    display: flex;
+    flex-direction: column;
+}
+
+#sidebar nav {
+    flex: 1;
+    overflow-y: auto;
+}
+
+#sidebar .border-t.border-slate-800.p-4 {
+    flex-shrink: 0;
 }
 </style>

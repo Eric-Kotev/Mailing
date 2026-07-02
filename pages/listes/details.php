@@ -104,23 +104,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['retirer_contacts']) &
     exit;
 }
 
-// RETIRER UN SEUL CONTACT (via GET)
-if (isset($_GET['retirer'])) {
-    $id_contact = $_GET['retirer'];
-    try {
-        $db->deleteWithConditions('liste_contact', [
-            'id_liste' => $id_liste,
-            'id_contact' => $id_contact
-        ]);
-        $_SESSION['flash_message'] = "Contact retiré de la liste";
-    } catch (Exception $e) {
-        $_SESSION['flash_error'] = "Erreur lors du retrait";
-    }
-    ob_clean();
-    header("Location: index.php?page=listes/details&id=$id_liste");
-    exit;
-}
-
 ob_end_clean();
 
 // Messages flash
@@ -136,6 +119,9 @@ unset($_SESSION['flash_error']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Liste : <?= htmlspecialchars($liste['nom_liste']) ?> - <?= APP_NAME ?></title>
     <style>
+        /* ============================================
+           TOAST NOTIFICATION
+           ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -159,38 +145,168 @@ unset($_SESSION['flash_error']);
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.warning .toast-content { background: #f59e0b; }
         
-        .retire-checkbox { display: none; }
-        
-        /* Styles pour la recherche */
-        .search-input {
-            transition: all 0.2s ease;
-        }
-        .search-input:focus {
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
-        }
-        .contact-item.hide {
-            display: none;
-        }
-        .dropdown-search-input {
-            position: sticky;
-            top: 0;
-            background: white;
-            z-index: 10;
+        /* ============================================
+           DROPDOWN POUR L'AJOUT DE CONTACTS
+           ============================================ */
+        #dropdownMenu {
+            z-index: 1000 !important;
+            position: absolute !important;
+            top: 100% !important;
+            left: 0 !important;
+            right: 0 !important;
+            max-height: 400px !important;
+            overflow: hidden !important;
+            background: white !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 12px !important;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
+            margin-top: 4px !important;
         }
         
-        /* Hauteur minimale pour la table */
+        #dropdownMenu .dropdown-search-input {
+            position: sticky !important;
+            top: 0 !important;
+            background: white !important;
+            z-index: 10 !important;
+            padding: 10px !important;
+            border-bottom: 1px solid #e5e7eb !important;
+        }
+        
+        #dropdownMenu .max-h-64 {
+            max-height: 300px !important;
+            overflow-y: auto !important;
+        }
+        
+        /* ============================================
+           CONTENEUR DES CONTACTS
+           ============================================ */
         .table-container {
-            min-height: 300px;
+            min-height: 200px;
+            position: relative;
+            overflow-x: auto;
         }
         
-        /* Barre d'actions fixe en haut */
+        /* ============================================
+           BARRE D'ACTIONS
+           ============================================ */
         .action-bar {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-            background: white;
-            border-bottom: 1px solid #e5e7eb;
+            background: #f9fafb !important;
+            border-bottom: 1px solid #e5e7eb !important;
+            border-top: 1px solid #e5e7eb !important;
+            padding: 12px 16px !important;
+        }
+        
+        /* ============================================
+           CHECKBOXES POUR LE RETRAIT
+           ============================================ */
+        .retire-checkbox {
+            display: none !important;
+        }
+        .retire-checkbox.visible {
+            display: inline-block !important;
+        }
+        
+        /* ============================================
+           CONTACT ITEMS
+           ============================================ */
+        .contact-item.hide {
+            display: none !important;
+        }
+        
+        .contact-row.hide {
+            display: none !important;
+        }
+        
+        /* ============================================
+           DROPDOWN BUTTON
+           ============================================ */
+        #dropdownButton {
+            cursor: pointer !important;
+            user-select: none !important;
+        }
+        
+        #dropdownButton:hover {
+            border-color: #3b82f6 !important;
+        }
+        
+        /* ============================================
+           MODALES
+           ============================================ */
+        .modal-overlay {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            background-color: rgba(0, 0, 0, 0.6) !important;
+            backdrop-filter: blur(3px);
+            z-index: 9999 !important;
+            display: none;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 20px !important;
+        }
+        
+        .modal-content {
+            background: white !important;
+            border-radius: 16px !important;
+            max-width: 500px !important;
+            width: 100% !important;
+            padding: 32px !important;
+            animation: modalSlideIn 0.3s ease-out !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+        }
+        
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(30px) scale(0.98);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .modal-icon {
+            width: 72px !important;
+            height: 72px !important;
+            border-radius: 50% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin: 0 auto 16px auto !important;
+        }
+        
+        .modal-icon.bg-red-100 { background: #fee2e2 !important; }
+        .modal-icon.bg-red-100 i { color: #dc2626 !important; font-size: 28px !important; }
+        
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 768px) {
+            .action-bar {
+                flex-direction: column !important;
+                gap: 10px !important;
+                align-items: stretch !important;
+            }
+            
+            .action-bar .flex {
+                justify-content: center !important;
+            }
+            
+            #dropdownMenu {
+                max-height: 300px !important;
+            }
+            
+            #dropdownMenu .max-h-64 {
+                max-height: 200px !important;
+            }
+            
+            .modal-content {
+                padding: 24px !important;
+                margin: 16px !important;
+            }
         }
     </style>
 </head>
@@ -217,7 +333,7 @@ unset($_SESSION['flash_error']);
     <?php endif; ?>
 
     <!-- AJOUT AVEC DROPDOWN À CHECKBOXES ET RECHERCHE -->
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white rounded-lg shadow p-6" style="position: relative; z-index: 10;">
         <h2 class="text-lg font-bold mb-4">Ajouter des contacts à la liste</h2>
         
         <?php if (empty($contactsDisponibles)): ?>
@@ -233,7 +349,7 @@ unset($_SESSION['flash_error']);
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Sélectionner les contacts à ajouter :</label>
                     
-                    <div class="relative" id="dropdownContainer">
+                    <div class="relative" id="dropdownContainer" style="z-index: 1000;">
                         <button type="button" id="dropdownButton" 
                                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-left bg-white flex justify-between items-center focus:outline-none focus:border-blue-500">
                             <span id="selectedCount">Aucun contact sélectionné</span>
@@ -241,9 +357,10 @@ unset($_SESSION['flash_error']);
                         </button>
                         
                         <div id="dropdownMenu" 
-                             class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+                             class="hidden" 
+                             style="z-index: 1000 !important; position: absolute !important; top: 100% !important; left: 0 !important; right: 0 !important; background: white !important; border: 1px solid #e2e8f0 !important; border-radius: 12px !important; box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important; margin-top: 4px !important;">
                             <!-- Barre de recherche -->
-                            <div class="dropdown-search-input p-2 border-b bg-white rounded-t-lg">
+                            <div class="dropdown-search-input" style="position: sticky !important; top: 0 !important; background: white !important; z-index: 10 !important; padding: 10px !important; border-bottom: 1px solid #e5e7eb !important;">
                                 <div class="relative">
                                     <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
                                     <input type="text" 
@@ -253,7 +370,7 @@ unset($_SESSION['flash_error']);
                                 </div>
                             </div>
                             <!-- Liste des contacts avec scroll -->
-                            <div class="max-h-64 overflow-y-auto" id="contactsListContainer">
+                            <div class="max-h-64" style="max-height: 300px !important; overflow-y: auto !important;">
                                 <?php foreach ($contactsDisponibles as $contact): ?>
                                     <label class="contact-item flex items-center p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
                                            data-nom="<?= strtolower(htmlspecialchars($contact['prenom'] . ' ' . $contact['nom'])) ?>"
@@ -306,16 +423,18 @@ unset($_SESSION['flash_error']);
             </div>
         </div>
         
-        <!-- Barre d'actions (Sélectionner + Retirer) - TOUJOURS VISIBLE -->
+        <!-- Barre d'actions - Position normale (non sticky) -->
         <?php if (!empty($contacts)): ?>
-            <div class="action-bar px-4 py-3 bg-gray-50 flex justify-between items-center">
-                <button type="button" id="toggleSelectRetire" 
-                        class="text-sm bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-800 px-4 py-2 rounded-lg transition flex items-center gap-2">
-                    <i class="fas fa-check-square"></i> Sélectionner pour retirer
-                </button>
+            <div class="action-bar flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                    <button type="button" id="toggleSelectRetire" 
+                            class="text-sm bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-800 px-4 py-2 rounded-lg transition flex items-center gap-2">
+                        <i class="fas fa-check-square"></i> Sélectionner pour retirer
+                    </button>
+                    <span id="selectedRetireCount" class="text-sm text-gray-500 ml-2" style="display: none;">0 sélectionné(s)</span>
+                </div>
                 
-                <button type="submit" id="retirerContactsBtn" 
-                        form="removeContactsForm"
+                <button type="button" id="retirerContactsBtn" 
                         class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
                     <i class="fas fa-trash-alt mr-2"></i>Retirer les contacts sélectionnés
                 </button>
@@ -329,7 +448,7 @@ unset($_SESSION['flash_error']);
                         <tr>
                             <?php if (!empty($contacts)): ?>
                                 <th class="px-2 py-3 text-center w-10">
-                                    <input type="checkbox" id="selectAllRetire" class="w-4 h-4">
+                                    <input type="checkbox" id="selectAllRetire" class="w-4 h-4" style="display: none;">
                                 </th>
                             <?php endif; ?>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
@@ -345,7 +464,7 @@ unset($_SESSION['flash_error']);
                                 <td colspan="6" class="px-6 py-8 text-center text-gray-500">
                                     <i class="fas fa-users text-3xl mb-2 block text-gray-300"></i>
                                     Aucun contact dans cette liste
-                                  </td>
+                                </td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($contacts as $contact): ?>
@@ -358,7 +477,9 @@ unset($_SESSION['flash_error']);
                                         <td class="px-2 py-4 text-center">
                                             <input type="checkbox" name="selected_retire_contacts[]" 
                                                    value="<?= $contact['id_contact'] ?>" 
-                                                   class="retire-checkbox w-4 h-4 text-red-600 rounded">
+                                                   class="retire-checkbox w-4 h-4 text-red-600 rounded"
+                                                   data-nom="<?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?>"
+                                                   onchange="updateRetireSelectedCount()">
                                         </td>
                                     <?php endif; ?>
                                     <td class="px-6 py-4 font-medium"><?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?></td>
@@ -366,7 +487,7 @@ unset($_SESSION['flash_error']);
                                     <td class="px-6 py-4"><?= htmlspecialchars($contact['telephone'] ?? '-') ?></td>
                                     <td class="px-6 py-4"><?= htmlspecialchars($contact['ville'] ?? '-') ?></td>
                                     <td class="px-6 py-4">
-                                        <button type="button" onclick="retirerUnContact('<?= $contact['id_contact'] ?>')" 
+                                        <button type="button" onclick="openRemoveSingleModal('<?= $contact['id_contact'] ?>', '<?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom'], ENT_QUOTES) ?>')" 
                                                 class="text-red-600 hover:text-red-800">
                                             <i class="fas fa-times"></i> Retirer
                                         </button>
@@ -378,6 +499,59 @@ unset($_SESSION['flash_error']);
                 </table>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALE RETRAIT UNIQUE -->
+<!-- ============================================ -->
+<div id="removeSingleModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="text-center">
+            <div class="modal-icon bg-red-100">
+                <i class="fas fa-user-minus"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">Retirer le contact</h3>
+            <p class="text-gray-500 mb-2 text-base">Êtes-vous sûr de vouloir retirer</p>
+            <p class="text-lg font-semibold text-gray-800 mb-1" id="removeSingleContactName"></p>
+            <p class="text-gray-500 mb-6 text-base">de la liste <strong id="removeSingleListName"><?= htmlspecialchars($liste['nom_liste']) ?></strong> ?</p>
+            
+            <div class="flex justify-center space-x-3">
+                <button type="button" onclick="closeRemoveSingleModal()" class="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition font-medium">
+                    Annuler
+                </button>
+                <button type="button" onclick="confirmRemoveSingle()" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium">
+                    <i class="fas fa-user-minus mr-2"></i>Retirer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALE RETRAIT MULTIPLE -->
+<!-- ============================================ -->
+<div id="removeMultipleModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="text-center">
+            <div class="modal-icon bg-red-100">
+                <i class="fas fa-users-minus"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">Retirer les contacts sélectionnés</h3>
+            <p class="text-gray-500 mb-2 text-base">Êtes-vous sûr de vouloir retirer</p>
+            <p class="text-2xl font-bold text-red-600 mb-1" id="removeMultipleCount">0</p>
+            <p class="text-gray-500 mb-2 text-base">contact(s) sélectionné(s) de la liste</p>
+            <p class="text-lg font-semibold text-gray-800 mb-6" id="removeMultipleListName"><?= htmlspecialchars($liste['nom_liste']) ?></p>
+            
+            <div class="flex justify-center space-x-3">
+                <button type="button" onclick="closeRemoveMultipleModal()" class="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition font-medium">
+                    Annuler
+                </button>
+                <button type="button" onclick="confirmRemoveMultiple()" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium">
+                    <i class="fas fa-users-minus mr-2"></i>Retirer tous
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -397,18 +571,25 @@ function showToast(message, type = 'success') {
 }
 
 // ============================================
+// VARIABLES POUR LES MODALES
+// ============================================
+let singleContactId = null;
+let multipleContactIds = [];
+
+// ============================================
 // DROPDOWN POUR L'AJOUT
 // ============================================
 const dropdownButton = document.getElementById('dropdownButton');
 const dropdownMenu = document.getElementById('dropdownMenu');
 
 if (dropdownButton) {
-    dropdownButton.addEventListener('click', function() {
+    dropdownButton.addEventListener('click', function(e) {
+        e.stopPropagation();
         dropdownMenu.classList.toggle('hidden');
         if (!dropdownMenu.classList.contains('hidden')) {
             const searchInput = document.getElementById('searchContactInput');
             if (searchInput) {
-                searchInput.focus();
+                setTimeout(() => searchInput.focus(), 100);
                 searchInput.value = '';
                 filterContacts('');
             }
@@ -416,8 +597,11 @@ if (dropdownButton) {
     });
 }
 
+// Fermer le dropdown en cliquant ailleurs
 document.addEventListener('click', function(event) {
-    if (dropdownButton && dropdownMenu && !dropdownButton.contains(event.target) && !dropdownMenu.contains(event.target)) {
+    if (dropdownButton && dropdownMenu && 
+        !dropdownButton.contains(event.target) && 
+        !dropdownMenu.contains(event.target)) {
         dropdownMenu.classList.add('hidden');
     }
 });
@@ -433,17 +617,26 @@ function updateSelectedCount() {
     }
 }
 
-function selectAll() {
-    document.querySelectorAll('.contact-checkbox:not(.hide)').forEach(cb => cb.checked = true);
-    updateSelectedCount();
+// ============================================
+// COMPTEUR DES SÉLECTIONS POUR LE RETRAIT
+// ============================================
+function updateRetireSelectedCount() {
+    const checkboxes = document.querySelectorAll('.retire-checkbox.visible:checked');
+    const count = checkboxes.length;
+    const countSpan = document.getElementById('selectedRetireCount');
+    if (countSpan) {
+        if (count === 0) {
+            countSpan.style.display = 'none';
+        } else {
+            countSpan.style.display = 'inline';
+            countSpan.textContent = count + ' sélectionné(s)';
+        }
+    }
 }
 
-function selectNone() {
-    document.querySelectorAll('.contact-checkbox').forEach(cb => cb.checked = false);
-    updateSelectedCount();
-}
-
-// Recherche dans le dropdown
+// ============================================
+// RECHERCHE DANS LE DROPDOWN
+// ============================================
 const searchContactInput = document.getElementById('searchContactInput');
 if (searchContactInput) {
     searchContactInput.addEventListener('input', function(e) {
@@ -473,13 +666,15 @@ function filterContacts(searchTerm) {
     const container = document.getElementById('contactsListContainer');
     const existingNoResult = document.getElementById('noResultMessage');
     
-    if (visibleCount === 0 && !existingNoResult) {
-        const noResultMsg = document.createElement('div');
-        noResultMsg.id = 'noResultMessage';
-        noResultMsg.className = 'p-4 text-center text-gray-500';
-        noResultMsg.innerHTML = '<i class="fas fa-search"></i> Aucun contact trouvé';
-        container.appendChild(noResultMsg);
-    } else if (visibleCount > 0 && existingNoResult) {
+    if (visibleCount === 0) {
+        if (!existingNoResult && container) {
+            const noResultMsg = document.createElement('div');
+            noResultMsg.id = 'noResultMessage';
+            noResultMsg.className = 'p-4 text-center text-gray-500';
+            noResultMsg.innerHTML = '<i class="fas fa-search"></i> Aucun contact trouvé';
+            container.appendChild(noResultMsg);
+        }
+    } else if (existingNoResult) {
         existingNoResult.remove();
     }
 }
@@ -554,57 +749,26 @@ document.getElementById('addContactsForm')?.addEventListener('submit', async fun
 });
 
 // ============================================
-// RETRAIT DE CONTACTS (AJAX)
+// MODALE RETRAIT UNIQUE
 // ============================================
-document.getElementById('removeContactsForm')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const selectedRetire = Array.from(document.querySelectorAll('.retire-checkbox:checked')).map(cb => cb.value);
-    
-    if (selectedRetire.length === 0) {
-        showToast('Veuillez sélectionner au moins un contact à retirer', 'warning');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('retirer_contacts', '1');
-    selectedRetire.forEach(id => formData.append('selected_retire_contacts[]', id));
-    
-    const submitBtn = document.getElementById('retirerContactsBtn');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = 'Retrait en cours...';
-    submitBtn.disabled = true;
-    
-    try {
-        const response = await fetch(window.location.href, {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: formData
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-            showToast(result.message, 'success');
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showToast(result.error, 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-        }
-    } catch (error) {
-        showToast('Erreur réseau', 'error');
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    }
-});
+function openRemoveSingleModal(contactId, contactName) {
+    singleContactId = contactId;
+    document.getElementById('removeSingleContactName').textContent = contactName;
+    document.getElementById('removeSingleListName').textContent = '<?= htmlspecialchars($liste['nom_liste']) ?>';
+    document.getElementById('removeSingleModal').style.display = 'flex';
+}
 
-// ============================================
-// RETRAIT D'UN SEUL CONTACT
-// ============================================
-function retirerUnContact(contactId) {
+function closeRemoveSingleModal() {
+    document.getElementById('removeSingleModal').style.display = 'none';
+    singleContactId = null;
+}
+
+function confirmRemoveSingle() {
+    if (!singleContactId) return;
+    
     const formData = new FormData();
     formData.append('retirer_contacts', '1');
-    formData.append('selected_retire_contacts[]', contactId);
+    formData.append('selected_retire_contacts[]', singleContactId);
     
     fetch(window.location.href, {
         method: 'POST',
@@ -613,6 +777,7 @@ function retirerUnContact(contactId) {
     })
     .then(res => res.json())
     .then(result => {
+        closeRemoveSingleModal();
         if (result.success) {
             showToast(result.message, 'success');
             setTimeout(() => window.location.reload(), 1500);
@@ -620,7 +785,61 @@ function retirerUnContact(contactId) {
             showToast(result.error, 'error');
         }
     })
-    .catch(() => showToast('Erreur réseau', 'error'));
+    .catch(() => {
+        closeRemoveSingleModal();
+        showToast('Erreur réseau', 'error');
+    });
+}
+
+// ============================================
+// MODALE RETRAIT MULTIPLE
+// ============================================
+function openRemoveMultipleModal() {
+    const selectedCheckboxes = document.querySelectorAll('.retire-checkbox.visible:checked');
+    const count = selectedCheckboxes.length;
+    
+    if (count === 0) {
+        showToast('Veuillez sélectionner au moins un contact à retirer', 'warning');
+        return;
+    }
+    
+    multipleContactIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+    document.getElementById('removeMultipleCount').textContent = count;
+    document.getElementById('removeMultipleListName').textContent = '<?= htmlspecialchars($liste['nom_liste']) ?>';
+    document.getElementById('removeMultipleModal').style.display = 'flex';
+}
+
+function closeRemoveMultipleModal() {
+    document.getElementById('removeMultipleModal').style.display = 'none';
+    multipleContactIds = [];
+}
+
+function confirmRemoveMultiple() {
+    if (multipleContactIds.length === 0) return;
+    
+    const formData = new FormData();
+    formData.append('retirer_contacts', '1');
+    multipleContactIds.forEach(id => formData.append('selected_retire_contacts[]', id));
+    
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(res => res.json())
+    .then(result => {
+        closeRemoveMultipleModal();
+        if (result.success) {
+            showToast(result.message, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(result.error, 'error');
+        }
+    })
+    .catch(() => {
+        closeRemoveMultipleModal();
+        showToast('Erreur réseau', 'error');
+    });
 }
 
 // ============================================
@@ -629,19 +848,34 @@ function retirerUnContact(contactId) {
 const toggleSelectRetire = document.getElementById('toggleSelectRetire');
 const selectAllRetire = document.getElementById('selectAllRetire');
 let retireCheckboxes = document.querySelectorAll('.retire-checkbox');
+const selectedRetireCount = document.getElementById('selectedRetireCount');
 
 if (toggleSelectRetire) {
     toggleSelectRetire.addEventListener('click', function() {
-        const isVisible = retireCheckboxes[0]?.style.display !== 'none';
+        const isVisible = retireCheckboxes[0]?.classList.contains('visible');
+        
         retireCheckboxes.forEach(cb => {
-            cb.style.display = isVisible ? 'none' : 'inline-block';
-            cb.checked = false;
+            if (isVisible) {
+                cb.classList.remove('visible');
+                cb.checked = false;
+            } else {
+                cb.classList.add('visible');
+            }
         });
-        if (selectAllRetire) selectAllRetire.checked = false;
+        
+        if (selectAllRetire) {
+            selectAllRetire.checked = false;
+            selectAllRetire.style.display = isVisible ? 'none' : 'inline-block';
+        }
+        
+        if (selectedRetireCount) {
+            selectedRetireCount.style.display = 'none';
+        }
+        
         this.innerHTML = isVisible ? 
             '<i class="fas fa-check-square"></i> Sélectionner pour retirer' : 
             '<i class="fas fa-check-square"></i> Masquer la sélection';
-        // Ajuster le style du bouton
+        
         if (isVisible) {
             this.classList.remove('bg-blue-100');
             this.classList.add('bg-blue-50');
@@ -649,28 +883,66 @@ if (toggleSelectRetire) {
             this.classList.remove('bg-blue-50');
             this.classList.add('bg-blue-100');
         }
+        
+        updateRetireSelectedCount();
     });
 }
 
-retireCheckboxes.forEach(cb => cb.style.display = 'none');
+// Cacher les checkboxes au chargement
+retireCheckboxes.forEach(cb => cb.classList.remove('visible'));
+if (selectAllRetire) selectAllRetire.style.display = 'none';
+if (selectedRetireCount) selectedRetireCount.style.display = 'none';
 
 if (selectAllRetire) {
     selectAllRetire.addEventListener('change', function() {
         retireCheckboxes.forEach(cb => {
-            if (cb.style.display !== 'none') {
+            if (cb.classList.contains('visible')) {
                 cb.checked = this.checked;
             }
         });
+        updateRetireSelectedCount();
     });
 }
 
-// Initialisation
+// ============================================
+// BOUTON RETIRER MULTIPLE
+// ============================================
+document.getElementById('retirerContactsBtn')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    openRemoveMultipleModal();
+});
+
+// ============================================
+// INITIALISATION
+// ============================================
 document.addEventListener('DOMContentLoaded', function() {
     updateSelectedCount();
-    // Recharger les checkboxes après chaque mise à jour
-    setInterval(() => {
+    
+    // Mettre à jour la liste des checkboxes après chaque modification
+    const observer = new MutationObserver(function() {
         retireCheckboxes = document.querySelectorAll('.retire-checkbox');
-    }, 500);
+    });
+    
+    const targetNode = document.getElementById('contactsListBody');
+    if (targetNode) {
+        observer.observe(targetNode, { childList: true, subtree: true });
+    }
+});
+
+// Fermeture des modales en cliquant sur l'overlay
+document.getElementById('removeSingleModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeRemoveSingleModal();
+});
+document.getElementById('removeMultipleModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeRemoveMultipleModal();
+});
+
+// Fermeture des modales avec Echap
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeRemoveSingleModal();
+        closeRemoveMultipleModal();
+    }
 });
 </script>
 

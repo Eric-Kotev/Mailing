@@ -19,7 +19,7 @@ $allowedPages = [
     'dashboard',
     'contacts/index', 'contacts/get_contact', 'contacts/supprimer', 'contacts/unblacklist',
     'listes/index', 'listes/details', 'listes/supprimer',
-    'campagnes/index', 'campagnes/choix','campagnes/config_whatsapp','campagnes/nouvelle','campagnes/envoyer_whatsapp','campagnes/envoyer_sms','campagnes/historique','campagnes/creer','campagnes/index','campagnes/details',
+    'campagnes/index', 'campagnes/choix','campagnes/choix_type','campagnes/composer_whatsapp','campagnes/composer_email','campagnes/composer_sms','campagnes/configurer_message','campagnes/choix_provider_sms','campagnes/choix_appareil_sms','campagnes/choix_provider_whatsapp','campagnes/choix_session_whatsapp','campagnes/config_whatsapp','campagnes/nouvelle','campagnes/envoyer_whatsapp','campagnes/envoyer_sms','campagnes/historique','campagnes/creer','campagnes/index','campagnes/details',
     'canaux/index', 'canaux/ajouter', 'canaux/supprimer',
     'blacklist/index',
     'parametres/compte', 'parametres/credits',

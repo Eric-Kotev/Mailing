@@ -5,16 +5,16 @@ $idCompte = $_SESSION['user_id'];
 $campagneId = $_GET['campagne_id'] ?? null;
 $searchTerm = $_GET['search'] ?? '';
 $export = $_GET['export'] ?? null;
-$typeFiltre = $_GET['type_filtre'] ?? ''; // Ajout du filtre par type
+$typeFiltre = $_GET['type_filtre'] ?? '';
+$statutFiltre = $_GET['statut_filtre'] ?? '';
 
 // ============================================
-// FILTRES PAR PÉRIODE
+// FILTRES PAR PÉRIODE (POUR LES CAMPAGNES)
 // ============================================
 $dateDebut = $_GET['date_debut'] ?? '';
 $dateFin = $_GET['date_fin'] ?? '';
-$errorMessage = ''; // Variable pour les messages d'erreur
+$errorMessage = '';
 
-// Vérification des dates
 if (!empty($dateDebut) && !empty($dateFin)) {
     if (strtotime($dateDebut) > strtotime($dateFin)) {
         $errorMessage = 'La date de début ne peut pas être postérieure à la date de fin.';
@@ -23,37 +23,29 @@ if (!empty($dateDebut) && !empty($dateFin)) {
     }
 }
 
+// ============================================
+// FILTRES PAR PÉRIODE POUR LES ENVOIS (DÉTAILS CAMPAGNE)
+// ============================================
+$dateDebutEnvoi = $_GET['date_debut_envoi'] ?? '';
+$dateFinEnvoi = $_GET['date_fin_envoi'] ?? '';
+$errorMessageEnvoi = '';
+
+if (!empty($dateDebutEnvoi) && !empty($dateFinEnvoi)) {
+    if (strtotime($dateDebutEnvoi) > strtotime($dateFinEnvoi)) {
+        $errorMessageEnvoi = 'La date de début ne peut pas être postérieure à la date de fin.';
+        $dateDebutEnvoi = '';
+        $dateFinEnvoi = '';
+    }
+}
+
 // Construction de la requête WHERE pour les filtres
 $whereConditions = ['id_compte' => $idCompte];
 $orderBy = 'created_at DESC';
 
-// Filtre par recherche de nom
-$searchCondition = '';
-if (!empty($searchTerm)) {
-    $searchCondition = $searchTerm;
-}
-
-// Filtre par période
-$periodCondition = '';
-if (!empty($dateDebut) && !empty($dateFin)) {
-    // Convertir les dates au format Y-m-d pour la comparaison
-    $dateDebutFormatted = date('Y-m-d H:i:s', strtotime($dateDebut . ' 00:00:00'));
-    $dateFinFormatted = date('Y-m-d H:i:s', strtotime($dateFin . ' 23:59:59'));
-    $periodCondition = [
-        'created_at >= ? AND created_at <= ?' => [$dateDebutFormatted, $dateFinFormatted]
-    ];
-} elseif (!empty($dateDebut)) {
-    $dateDebutFormatted = date('Y-m-d H:i:s', strtotime($dateDebut . ' 00:00:00'));
-    $periodCondition = ['created_at >= ?' => $dateDebutFormatted];
-} elseif (!empty($dateFin)) {
-    $dateFinFormatted = date('Y-m-d H:i:s', strtotime($dateFin . ' 23:59:59'));
-    $periodCondition = ['created_at <= ?' => $dateFinFormatted];
-}
-
-// Récupérer les campagnes avec les filtres
+// Récupérer toutes les campagnes
 $allCampagnes = $db->select('campagne_config', $whereConditions, '*', $orderBy);
 
-// Appliquer les filtres supplémentaires (recherche et période)
+// Appliquer les filtres supplémentaires
 $campagnes = [];
 foreach ($allCampagnes as $c) {
     $match = true;
@@ -63,7 +55,12 @@ foreach ($allCampagnes as $c) {
         $match = false;
     }
     
-    // Filtre par période (déjà appliqué en SQL, mais on garde pour sécurité)
+    // Filtre par statut
+    if (!empty($statutFiltre) && $c['statut'] !== $statutFiltre) {
+        $match = false;
+    }
+    
+    // Filtre par période
     if ($match && !empty($dateDebut) && !empty($dateFin)) {
         $dateCreation = strtotime($c['created_at']);
         $debut = strtotime($dateDebut . ' 00:00:00');
@@ -90,15 +87,25 @@ foreach ($allCampagnes as $c) {
     }
 }
 
-// Compter les envois pour chaque campagne
+// 🔥 RÉCUPÉRER LES TYPES DE MESSAGES POUR CHAQUE CAMPAGNE
 foreach ($campagnes as $key => $campagne) {
     $envois = $db->select('campagne', ['id_campagne_config' => $campagne['id_campagne_config']]);
     $campagnes[$key]['nb_envois'] = count($envois);
+    
+    // 🔥 RÉCUPÉRER TOUS LES TYPES DE MESSAGES UNIQUES
+    $typesMessages = [];
+    foreach ($envois as $e) {
+        if (!empty($e['type_campagne']) && !in_array($e['type_campagne'], $typesMessages)) {
+            $typesMessages[] = $e['type_campagne'];
+        }
+    }
+    $campagnes[$key]['types_messages'] = $typesMessages;
 }
 
 // Si une campagne est sélectionnée, récupérer les détails des envois
 $campagneSelectionnee = null;
 $envoisListe = [];
+$totalEnvoisFiltres = 0;
 if ($campagneId) {
     $campagneSelectionnee = $db->select('campagne_config', [
         'id_campagne_config' => $campagneId,
@@ -106,19 +113,47 @@ if ($campagneId) {
     ]);
     if ($campagneSelectionnee) {
         $campagneSelectionnee = $campagneSelectionnee[0];
-        // Récupérer tous les envois
         $allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
         
-        // Appliquer le filtre par type
-        if (!empty($typeFiltre)) {
-            $envoisListe = array_filter($allEnvois, function($envoi) use ($typeFiltre) {
-                return $envoi['type_campagne'] === $typeFiltre;
-            });
-            // Réindexer le tableau
-            $envoisListe = array_values($envoisListe);
-        } else {
-            $envoisListe = $allEnvois;
+        // Appliquer les filtres sur les envois
+        $envoisFiltres = [];
+        foreach ($allEnvois as $envoi) {
+            $match = true;
+            
+            // Filtre par type
+            if (!empty($typeFiltre) && $envoi['type_campagne'] !== $typeFiltre) {
+                $match = false;
+            }
+            
+            // Filtre par période pour les envois
+            if ($match && !empty($dateDebutEnvoi) && !empty($dateFinEnvoi)) {
+                $dateCreation = strtotime($envoi['created_at']);
+                $debut = strtotime($dateDebutEnvoi . ' 00:00:00');
+                $fin = strtotime($dateFinEnvoi . ' 23:59:59');
+                if ($dateCreation < $debut || $dateCreation > $fin) {
+                    $match = false;
+                }
+            } elseif ($match && !empty($dateDebutEnvoi)) {
+                $dateCreation = strtotime($envoi['created_at']);
+                $debut = strtotime($dateDebutEnvoi . ' 00:00:00');
+                if ($dateCreation < $debut) {
+                    $match = false;
+                }
+            } elseif ($match && !empty($dateFinEnvoi)) {
+                $dateCreation = strtotime($envoi['created_at']);
+                $fin = strtotime($dateFinEnvoi . ' 23:59:59');
+                if ($dateCreation > $fin) {
+                    $match = false;
+                }
+            }
+            
+            if ($match) {
+                $envoisFiltres[] = $envoi;
+            }
         }
+        
+        $envoisListe = $envoisFiltres;
+        $totalEnvoisFiltres = count($envoisListe);
     }
 }
 
@@ -130,11 +165,8 @@ if ($export === 'csv' && $campagneId && !empty($envoisListe)) {
     header('Content-Disposition: attachment; filename="campagne_' . $campagneId . '_' . date('Y-m-d') . '.csv"');
     
     $output = fopen('php://output', 'w');
-    
-    // Ajouter BOM UTF-8 pour gérer les accents correctement dans Excel
     fwrite($output, "\xEF\xBB\xBF");
     
-    // En-têtes CSV
     fputcsv($output, [
         'Date d\'envoi',
         'Type',
@@ -147,16 +179,10 @@ if ($export === 'csv' && $campagneId && !empty($envoisListe)) {
         'Destinataires'
     ]);
     
-    // Données
     foreach ($envoisListe as $envoi) {
-        // Décoder les destinataires
         $destinataires = json_decode($envoi['destinataires'], true);
         $destinatairesTexte = is_array($destinataires) ? implode('; ', $destinataires) : $envoi['destinataires'];
-        
-        // Traduire le type
         $typeTexte = $envoi['type_campagne'] == 'whatsapp' ? 'WhatsApp' : 'SMS';
-        
-        // Traduire le statut
         $statutTexte = $envoi['statut'] == 'envoye' ? 'Envoyé' : 'Échoué';
         
         fputcsv($output, [
@@ -176,42 +202,38 @@ if ($export === 'csv' && $campagneId && !empty($envoisListe)) {
     exit;
 }
 
-// Export de toutes les campagnes filtrées
 if ($export === 'all_csv' && empty($campagneId)) {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="toutes_campagnes_' . date('Y-m-d') . '.csv"');
     
     $output = fopen('php://output', 'w');
-    
-    // Ajouter BOM UTF-8 pour gérer les accents correctement dans Excel
     fwrite($output, "\xEF\xBB\xBF");
     
-    // En-têtes CSV
     fputcsv($output, [
         'ID',
         'Nom de la campagne',
         'Nombre d\'envois',
         'Statut',
+        'Types de messages',
         'Date de création'
     ]);
     
-    // Données
     foreach ($campagnes as $campagne) {
-        // Traduire le statut
         $statutTexte = '';
         switch ($campagne['statut']) {
-            case 'brouillon': $statutTexte = 'Brouillon'; break;
             case 'planifiee': $statutTexte = 'Planifiée'; break;
             case 'envoyee': $statutTexte = 'Envoyée'; break;
-            case 'annulee': $statutTexte = 'Annulée'; break;
             default: $statutTexte = $campagne['statut'];
         }
+        
+        $typesTexte = !empty($campagne['types_messages']) ? implode(', ', $campagne['types_messages']) : 'Aucun';
         
         fputcsv($output, [
             $campagne['id_campagne_config'],
             $campagne['nom_campagne'],
             $campagne['nb_envois'],
             $statutTexte,
+            $typesTexte,
             date('d/m/Y H:i', strtotime($campagne['created_at']))
         ]);
     }
@@ -282,6 +304,27 @@ if ($export === 'all_csv' && empty($campagneId)) {
         }
         
         /* ============================================
+           TYPES DE MESSAGES
+           ============================================ */
+        .type-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .type-badge-sms { background: #dbeafe; color: #1e40af; }
+        .type-badge-whatsapp { background: #dcfce7; color: #166534; }
+        .type-badge-email { background: #fef3c7; color: #92400e; }
+        
+        .types-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        
+        /* ============================================
            FILTRES
            ============================================ */
         .filter-container {
@@ -315,6 +358,23 @@ if ($export === 'all_csv' && empty($campagneId)) {
         .filter-container input[type="date"].error {
             border-color: #ef4444;
             box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+        .filter-container select {
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .filter-container select:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .filter-container select option {
+            padding: 4px 8px;
         }
         .filter-container .btn-filter {
             background: #8b5cf6;
@@ -353,7 +413,7 @@ if ($export === 'all_csv' && empty($campagneId)) {
         }
 
         /* ============================================
-           FILTRE PAR TYPE (DANS LES DÉTAILS)
+           FILTRE PAR TYPE ET PÉRIODE (DANS LES DÉTAILS)
            ============================================ */
         .type-filter-container {
             display: flex;
@@ -371,6 +431,23 @@ if ($export === 'all_csv' && empty($campagneId)) {
             color: #4b5563;
             margin-right: 4px;
         }
+        .type-filter-container input[type="date"] {
+            padding: 5px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            transition: all 0.2s;
+        }
+        .type-filter-container input[type="date"]:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .type-filter-container input[type="date"].error {
+            border-color: #ef4444;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
         .type-filter-container select {
             padding: 5px 10px;
             border: 1px solid #d1d5db;
@@ -384,6 +461,9 @@ if ($export === 'all_csv' && empty($campagneId)) {
             outline: none;
             border-color: #8b5cf6;
             box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .type-filter-container select option {
+            padding: 4px 8px;
         }
         .type-filter-container .btn-filter-type {
             background: #8b5cf6;
@@ -419,6 +499,64 @@ if ($export === 'all_csv' && empty($campagneId)) {
         }
         .type-filter-container .filter-type-info strong {
             color: #374151;
+        }
+
+        /* ============================================
+           BADGE POUR LE FILTRE ACTIF
+           ============================================ */
+        .filter-badge {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            padding: 4px 12px !important;
+            border-radius: 20px !important;
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            background: #e5e7eb !important;
+            color: #4b5563 !important;
+            border: 1px solid #d1d5db !important;
+            white-space: nowrap !important;
+        }
+        .filter-badge i {
+            font-size: 14px !important;
+        }
+        .filter-badge-whatsapp {
+            background: #d1fae5 !important;
+            color: #065f46 !important;
+            border-color: #6ee7b7 !important;
+        }
+        .filter-badge-whatsapp i {
+            color: #25D366 !important;
+        }
+        .filter-badge-sms {
+            background: #dbeafe !important;
+            color: #1e40af !important;
+            border-color: #93c5fd !important;
+        }
+        .filter-badge-sms i {
+            color: #3b82f6 !important;
+        }
+        .filter-badge-planifiee {
+            background: #fef3c7 !important;
+            color: #92400e !important;
+            border-color: #fcd34d !important;
+        }
+        .filter-badge-planifiee i {
+            color: #d97706 !important;
+        }
+        .filter-badge-envoyee {
+            background: #dcfce7 !important;
+            color: #166534 !important;
+            border-color: #86efac !important;
+        }
+        .filter-badge-envoyee i {
+            color: #16a34a !important;
+        }
+
+        .filter-badge-wrapper {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
         }
 
         /* ============================================
@@ -558,12 +696,12 @@ if ($export === 'all_csv' && empty($campagneId)) {
         </div>
         <div class="flex gap-2 flex-wrap">
             <?php if ($campagneId && !empty($envoisListe)): ?>
-                <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv<?= !empty($typeFiltre) ? '&type_filtre=' . urlencode($typeFiltre) : '' ?>" 
+                <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv<?= !empty($typeFiltre) ? '&type_filtre=' . urlencode($typeFiltre) : '' ?><?= !empty($dateDebutEnvoi) ? '&date_debut_envoi=' . urlencode($dateDebutEnvoi) : '' ?><?= !empty($dateFinEnvoi) ? '&date_fin_envoi=' . urlencode($dateFinEnvoi) : '' ?>" 
                    class="btn-export">
                     <i class="fas fa-download"></i> Exporter cette campagne (CSV)
                 </a>
             <?php elseif (empty($campagneId) && !empty($campagnes)): ?>
-                <a href="?page=campagnes/historique&export=all_csv<?= !empty($dateDebut) ? '&date_debut=' . urlencode($dateDebut) : '' ?><?= !empty($dateFin) ? '&date_fin=' . urlencode($dateFin) : '' ?><?= !empty($searchTerm) ? '&search=' . urlencode($searchTerm) : '' ?>" 
+                <a href="?page=campagnes/historique&export=all_csv<?= !empty($dateDebut) ? '&date_debut=' . urlencode($dateDebut) : '' ?><?= !empty($dateFin) ? '&date_fin=' . urlencode($dateFin) : '' ?><?= !empty($searchTerm) ? '&search=' . urlencode($searchTerm) : '' ?><?= !empty($statutFiltre) ? '&statut_filtre=' . urlencode($statutFiltre) : '' ?>" 
                    class="btn-export">
                     <i class="fas fa-download"></i> Exporter les résultats (CSV)
                 </a>
@@ -596,10 +734,8 @@ if ($export === 'all_csv' && empty($campagneId)) {
                     <span class="status-badge status-<?= $campagneSelectionnee['statut'] ?>">
                         <?php
                         $statusText = [
-                            'brouillon' => 'Brouillon',
                             'planifiee' => 'Planifiée',
                             'envoyee' => 'Envoyée',
-                            'annulee' => 'Annulée'
                         ];
                         echo $statusText[$campagneSelectionnee['statut']] ?? $campagneSelectionnee['statut'];
                         ?>
@@ -620,36 +756,70 @@ if ($export === 'all_csv' && empty($campagneId)) {
                         Envois réalisés (<?= count($envoisListe) ?>)
                     </h3>
                     <?php if (!empty($envoisListe)): ?>
-                        <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv<?= !empty($typeFiltre) ? '&type_filtre=' . urlencode($typeFiltre) : '' ?>" 
+                        <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>&export=csv<?= !empty($typeFiltre) ? '&type_filtre=' . urlencode($typeFiltre) : '' ?><?= !empty($dateDebutEnvoi) ? '&date_debut_envoi=' . urlencode($dateDebutEnvoi) : '' ?><?= !empty($dateFinEnvoi) ? '&date_fin_envoi=' . urlencode($dateFinEnvoi) : '' ?>" 
                            class="text-sm text-green-600 hover:text-green-800">
                             <i class="fas fa-file-csv mr-1"></i> Exporter en CSV
                         </a>
                     <?php endif; ?>
                 </div>
                 
-                <!-- Filtre par type pour les détails de la campagne -->
+                <!-- Filtres pour les détails de la campagne -->
                 <div class="type-filter-container">
-                    <label for="type_filtre">Filtrer par type :</label>
-                    <form method="GET" action="" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;" id="typeFilterForm">
+                    <form method="GET" action="" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;" id="detailFilterForm">
                         <input type="hidden" name="page" value="campagnes/historique">
                         <input type="hidden" name="campagne_id" value="<?= $campagneId ?>">
-                        <select name="type_filtre" id="type_filtre">
+                        
+                        <label for="type_filtre">Type :</label>
+                        <select name="type_filtre" id="type_filtre" style="min-width: 140px;">
                             <option value="">Tous les types</option>
                             <option value="whatsapp" <?= $typeFiltre === 'whatsapp' ? 'selected' : '' ?>>WhatsApp</option>
                             <option value="sms" <?= $typeFiltre === 'sms' ? 'selected' : '' ?>>SMS</option>
                         </select>
+                        
+                        <?php if (!empty($typeFiltre)): ?>
+                            <span class="filter-badge filter-badge-<?= $typeFiltre ?>">
+                                <i class="<?= $typeFiltre === 'whatsapp' ? 'fab fa-whatsapp' : 'fas fa-sms' ?>"></i>
+                                <?= $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS' ?>
+                            </span>
+                        <?php endif; ?>
+                        
+                        <label for="date_debut_envoi">Du :</label>
+                        <input type="date" name="date_debut_envoi" id="date_debut_envoi" value="<?= htmlspecialchars($dateDebutEnvoi) ?>" class="<?= !empty($errorMessageEnvoi) ? 'error' : '' ?>">
+                        
+                        <label for="date_fin_envoi">Au :</label>
+                        <input type="date" name="date_fin_envoi" id="date_fin_envoi" value="<?= htmlspecialchars($dateFinEnvoi) ?>" class="<?= !empty($errorMessageEnvoi) ? 'error' : '' ?>">
+                        
                         <button type="submit" class="btn-filter-type">
                             <i class="fas fa-filter mr-1"></i> Filtrer
                         </button>
-                        <?php if (!empty($typeFiltre)): ?>
+                        
+                        <?php if (!empty($typeFiltre) || !empty($dateDebutEnvoi) || !empty($dateFinEnvoi)): ?>
                             <a href="?page=campagnes/historique&campagne_id=<?= $campagneId ?>" class="btn-clear-type">
                                 <i class="fas fa-times mr-1"></i> Effacer
                             </a>
                         <?php endif; ?>
+                        
                         <div class="filter-type-info">
-                            <?php if (!empty($typeFiltre)): ?>
-                                Affichage des envois de type <strong><?= $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS' ?></strong>
-                            <?php endif; ?>
+                            <?php
+                            $filtresActifs = [];
+                            if (!empty($typeFiltre)) {
+                                $typeLabel = $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS';
+                                $typeIcon = $typeFiltre === 'whatsapp' ? 'fab fa-whatsapp' : 'fas fa-sms';
+                                $filtresActifs[] = 'type <strong><i class="' . $typeIcon . '"></i> ' . $typeLabel . '</strong>';
+                            }
+                            if (!empty($dateDebutEnvoi) && !empty($dateFinEnvoi)) {
+                                $filtresActifs[] = 'du <strong>' . date('d/m/Y', strtotime($dateDebutEnvoi)) . '</strong> au <strong>' . date('d/m/Y', strtotime($dateFinEnvoi)) . '</strong>';
+                            } elseif (!empty($dateDebutEnvoi)) {
+                                $filtresActifs[] = 'à partir du <strong>' . date('d/m/Y', strtotime($dateDebutEnvoi)) . '</strong>';
+                            } elseif (!empty($dateFinEnvoi)) {
+                                $filtresActifs[] = 'jusqu\'au <strong>' . date('d/m/Y', strtotime($dateFinEnvoi)) . '</strong>';
+                            }
+                            if (!empty($filtresActifs)) {
+                                echo 'Filtres : ' . implode(' - ', $filtresActifs);
+                            } else {
+                                echo count($envoisListe) . ' envoi(s)';
+                            }
+                            ?>
                         </div>
                     </form>
                 </div>
@@ -657,15 +827,10 @@ if ($export === 'all_csv' && empty($campagneId)) {
                 <?php if (empty($envoisListe)): ?>
                     <div class="text-center py-8 text-gray-500">
                         <i class="fas fa-inbox text-3xl mb-2 block"></i>
-                        <?php if (!empty($typeFiltre)): ?>
-                            Aucun envoi de type <strong><?= $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS' ?></strong> pour cette campagne.
+                        <?php if (!empty($typeFiltre) || !empty($dateDebutEnvoi) || !empty($dateFinEnvoi)): ?>
+                            Aucun envoi ne correspond aux filtres sélectionnés.
                         <?php else: ?>
                             Aucun envoi pour cette campagne.
-                        <?php endif; ?>
-                        <?php if ($campagneSelectionnee['statut'] == 'brouillon'): ?>
-                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagneId ?>" class="text-green-600 block mt-2">
-                                <i class="fas fa-plus mr-1"></i>Envoyer un message
-                            </a>
                         <?php endif; ?>
                     </div>
                 <?php else: ?>
@@ -690,9 +855,13 @@ if ($export === 'all_csv' && empty($campagneId)) {
                                         </td>
                                         <td class="px-4 py-2">
                                             <?php if ($envoi['type_campagne'] == 'whatsapp'): ?>
-                                                <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">WhatsApp</span>
+                                                <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">
+                                                    <i class="fab fa-whatsapp mr-1"></i> WhatsApp
+                                                </span>
                                             <?php else: ?>
-                                                <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">SMS</span>
+                                                <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">
+                                                    <i class="fas fa-sms mr-1"></i> SMS
+                                                </span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="px-4 py-2">
@@ -762,7 +931,7 @@ if ($export === 'all_csv' && empty($campagneId)) {
         
     <?php else: ?>
         <!-- ============================================
-             BARRE DE RECHERCHE ET FILTRES DE PÉRIODE
+             BARRE DE RECHERCHE ET FILTRES
              ============================================ -->
         <div class="bg-white rounded-lg shadow p-4">
             <form method="GET" action="" id="filterForm">
@@ -775,13 +944,13 @@ if ($export === 'all_csv' && empty($campagneId)) {
                            placeholder="Rechercher par nom de campagne..." 
                            class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500">
                     <?php if (!empty($searchTerm)): ?>
-                        <a href="index.php?page=campagnes/historique<?= !empty($dateDebut) ? '&date_debut=' . urlencode($dateDebut) : '' ?><?= !empty($dateFin) ? '&date_fin=' . urlencode($dateFin) : '' ?>" class="search-clear">
+                        <a href="index.php?page=campagnes/historique<?= !empty($dateDebut) ? '&date_debut=' . urlencode($dateDebut) : '' ?><?= !empty($dateFin) ? '&date_fin=' . urlencode($dateFin) : '' ?><?= !empty($statutFiltre) ? '&statut_filtre=' . urlencode($statutFiltre) : '' ?>" class="search-clear">
                             <i class="fas fa-times-circle"></i>
                         </a>
                     <?php endif; ?>
                 </div>
                 
-                <!-- Filtres par période -->
+                <!-- Filtres par période, statut et type -->
                 <div class="filter-container">
                     <label for="date_debut">Du :</label>
                     <input type="date" name="date_debut" id="date_debut" value="<?= htmlspecialchars($dateDebut) ?>" class="<?= !empty($errorMessage) ? 'error' : '' ?>">
@@ -789,11 +958,25 @@ if ($export === 'all_csv' && empty($campagneId)) {
                     <label for="date_fin">Au :</label>
                     <input type="date" name="date_fin" id="date_fin" value="<?= htmlspecialchars($dateFin) ?>" class="<?= !empty($errorMessage) ? 'error' : '' ?>">
                     
+                    <label for="statut_filtre">Statut :</label>
+                    <select name="statut_filtre" id="statut_filtre" style="min-width: 140px;">
+                        <option value="">Tous les statuts</option>
+                        <option value="planifiee" <?= $statutFiltre === 'planifiee' ? 'selected' : '' ?>>Planifiée</option>
+                        <option value="envoyee" <?= $statutFiltre === 'envoyee' ? 'selected' : '' ?>>Envoyée</option>
+                    </select>
+                    
+                    <?php if (!empty($statutFiltre)): ?>
+                        <span class="filter-badge filter-badge-<?= $statutFiltre ?>">
+                            <i class="fas <?= $statutFiltre === 'planifiee' ? 'fa-calendar' : 'fa-check-circle' ?>"></i>
+                            <?= $statutFiltre === 'planifiee' ? 'Planifiée' : 'Envoyée' ?>
+                        </span>
+                    <?php endif; ?>
+                    
                     <button type="submit" class="btn-filter">
                         <i class="fas fa-filter mr-1"></i> Filtrer
                     </button>
                     
-                    <?php if (!empty($dateDebut) || !empty($dateFin) || !empty($searchTerm)): ?>
+                    <?php if (!empty($dateDebut) || !empty($dateFin) || !empty($searchTerm) || !empty($statutFiltre)): ?>
                         <a href="index.php?page=campagnes/historique" class="btn-clear">
                             <i class="fas fa-times mr-1"></i> Effacer les filtres
                         </a>
@@ -805,11 +988,20 @@ if ($export === 'all_csv' && empty($campagneId)) {
                         if (!empty($searchTerm)) $totalFiltres++;
                         if (!empty($dateDebut)) $totalFiltres++;
                         if (!empty($dateFin)) $totalFiltres++;
+                        if (!empty($statutFiltre)) $totalFiltres++;
                         
                         if ($totalFiltres > 0) {
                             echo count($campagnes) . ' résultat(s)';
                             if (!empty($searchTerm)) {
                                 echo ' pour "<strong>' . htmlspecialchars($searchTerm) . '</strong>"';
+                            }
+                            if (!empty($statutFiltre)) {
+                                $statutTexte = [
+                                    'planifiee' => 'Planifiée',
+                                    'envoyee' => 'Envoyée'
+                                ];
+                                $statutIcon = $statutFiltre === 'planifiee' ? 'fa-calendar' : 'fa-check-circle';
+                                echo ' avec statut <strong><i class="fas ' . $statutIcon . '"></i> ' . ($statutTexte[$statutFiltre] ?? $statutFiltre) . '</strong>';
                             }
                             if (!empty($dateDebut) && !empty($dateFin)) {
                                 echo ' du <strong>' . date('d/m/Y', strtotime($dateDebut)) . '</strong> au <strong>' . date('d/m/Y', strtotime($dateFin)) . '</strong>';
@@ -844,6 +1036,7 @@ if ($export === 'all_csv' && empty($campagneId)) {
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
                             <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Envois</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Types</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date création</th>
                             <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                         </tr>
@@ -851,9 +1044,9 @@ if ($export === 'all_csv' && empty($campagneId)) {
                     <tbody>
                         <?php if (empty($campagnes)): ?>
                             <tr>
-                                <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                                <td colspan="6" class="px-6 py-8 text-center text-gray-500">
                                     <i class="fas fa-bullhorn text-4xl mb-2 block"></i>
-                                    <?php if (!empty($searchTerm) || !empty($dateDebut) || !empty($dateFin)): ?>
+                                    <?php if (!empty($searchTerm) || !empty($dateDebut) || !empty($dateFin) || !empty($statutFiltre)): ?>
                                         Aucune campagne ne correspond aux filtres sélectionnés.
                                         <div class="mt-2">
                                             <a href="index.php?page=campagnes/historique" class="text-purple-600">Réinitialiser les filtres</a>
@@ -884,25 +1077,41 @@ if ($export === 'all_csv' && empty($campagneId)) {
                                         <span class="status-badge status-<?= $campagne['statut'] ?>">
                                             <?php
                                             $statusText = [
-                                                'brouillon' => 'Brouillon',
                                                 'planifiee' => 'Planifiée',
-                                                'envoyee' => 'Envoyée',
-                                                'annulee' => 'Annulée'
+                                                'envoyee' => 'Envoyée'
                                             ];
                                             echo $statusText[$campagne['statut']] ?? $campagne['statut'];
                                             ?>
                                         </span>
                                     </td>
+                                    <td class="px-6 py-4">
+                                        <?php 
+                                        $types = $campagne['types_messages'] ?? [];
+                                        if (empty($types)): 
+                                        ?>
+                                            <span class="text-gray-400 text-xs">Aucun message</span>
+                                        <?php else: 
+                                            $typeLabels = [
+                                                'sms' => ['label' => 'SMS', 'class' => 'type-badge-sms'],
+                                                'whatsapp' => ['label' => 'WhatsApp', 'class' => 'type-badge-whatsapp'],
+                                                'email' => ['label' => 'Email', 'class' => 'type-badge-email']
+                                            ];
+                                        ?>
+                                            <div class="types-container">
+                                                <?php foreach ($types as $type): 
+                                                    $info = $typeLabels[$type] ?? ['label' => ucfirst($type), 'class' => 'type-badge-sms'];
+                                                ?>
+                                                    <span class="type-badge <?= $info['class'] ?>">
+                                                        <?= $info['label'] ?>
+                                                    </span>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td class="px-6 py-4 text-sm text-gray-500">
                                         <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
                                     </td>
                                     <td class="px-6 py-4 text-center whitespace-nowrap" onclick="event.stopPropagation()">
-                                        <?php if ($campagne['statut'] == 'brouillon'): ?>
-                                            <a href="index.php?page=campagnes/choix&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
-                                               class="text-green-600 hover:text-green-800 inline-flex items-center mx-1" title="Envoyer">
-                                                <i class="fas fa-paper-plane"></i>
-                                            </a>
-                                        <?php endif; ?>
                                         <a href="index.php?page=campagnes/historique&campagne_id=<?= $campagne['id_campagne_config'] ?>" 
                                            class="text-blue-600 hover:text-blue-800 inline-flex items-center mx-1" title="Voir les envois">
                                             <i class="fas fa-eye"></i>
@@ -925,7 +1134,6 @@ if ($export === 'all_csv' && empty($campagneId)) {
 function showToast(title, message, type = 'info', duration = 5000) {
     const container = document.getElementById('toastContainer');
     
-    // Icônes par type
     const icons = {
         error: 'fas fa-times-circle',
         success: 'fas fa-check-circle',
@@ -933,7 +1141,6 @@ function showToast(title, message, type = 'info', duration = 5000) {
         info: 'fas fa-info-circle'
     };
     
-    // Créer le toast
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.innerHTML = `
@@ -951,7 +1158,6 @@ function showToast(title, message, type = 'info', duration = 5000) {
     
     container.appendChild(toast);
     
-    // Supprimer automatiquement après la durée
     setTimeout(() => {
         if (toast.parentNode) {
             toast.classList.add('hide');
@@ -963,42 +1169,59 @@ function showToast(title, message, type = 'info', duration = 5000) {
 // ============================================
 // VALIDATION DES DATES AVEC TOAST
 // ============================================
-const dateDebut = document.getElementById('date_debut');
-const dateFin = document.getElementById('date_fin');
-
-if (dateDebut && dateFin) {
-    dateDebut.addEventListener('change', function() {
-        if (dateFin.value && this.value > dateFin.value) {
-            showToast(
-                'Erreur de date',
-                'La date de début ne peut pas être postérieure à la date de fin.',
-                'error',
-                4000
-            );
-            this.classList.add('error');
-            this.value = '';
-            setTimeout(() => this.classList.remove('error'), 500);
-        } else {
-            this.classList.remove('error');
-        }
-    });
+function setupDateValidation(dateDebutId, dateFinId) {
+    const dateDebut = document.getElementById(dateDebutId);
+    const dateFin = document.getElementById(dateFinId);
     
-    dateFin.addEventListener('change', function() {
-        if (dateDebut.value && this.value < dateDebut.value) {
-            showToast(
-                'Erreur de date',
-                'La date de fin ne peut pas être antérieure à la date de début.',
-                'error',
-                4000
-            );
-            this.classList.add('error');
-            this.value = '';
-            setTimeout(() => this.classList.remove('error'), 500);
-        } else {
-            this.classList.remove('error');
-        }
-    });
+    if (dateDebut && dateFin) {
+        dateDebut.addEventListener('change', function() {
+            if (dateFin.value && this.value > dateFin.value) {
+                showToast(
+                    'Erreur de date',
+                    'La date de début ne peut pas être postérieure à la date de fin.',
+                    'error',
+                    4000
+                );
+                this.classList.add('error');
+                this.value = '';
+                setTimeout(() => this.classList.remove('error'), 500);
+            } else {
+                this.classList.remove('error');
+            }
+        });
+        
+        dateFin.addEventListener('change', function() {
+            if (dateDebut.value && this.value < dateDebut.value) {
+                showToast(
+                    'Erreur de date',
+                    'La date de fin ne peut pas être antérieure à la date de début.',
+                    'error',
+                    4000
+                );
+                this.classList.add('error');
+                this.value = '';
+                setTimeout(() => this.classList.remove('error'), 500);
+            } else {
+                this.classList.remove('error');
+            }
+        });
+    }
 }
+
+// Initialiser les validations de dates
+setupDateValidation('date_debut', 'date_fin');
+setupDateValidation('date_debut_envoi', 'date_fin_envoi');
+
+// ============================================
+// SOUMISSION AUTOMATIQUE DES FILTRES
+// ============================================
+document.getElementById('statut_filtre')?.addEventListener('change', function() {
+    this.closest('form').submit();
+});
+
+document.getElementById('type_filtre')?.addEventListener('change', function() {
+    this.closest('form').submit();
+});
 
 // ============================================
 // RÉINITIALISATION DES FILTRES
@@ -1008,13 +1231,6 @@ document.querySelectorAll('.btn-clear, .btn-clear-type').forEach(btn => {
         e.preventDefault();
         window.location.href = this.getAttribute('href');
     });
-});
-
-// ============================================
-// SOUMISSION AUTOMATIQUE DU FILTRE TYPE
-// ============================================
-document.getElementById('type_filtre')?.addEventListener('change', function() {
-    this.closest('form').submit();
 });
 
 // ============================================
@@ -1031,16 +1247,13 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 <?php endif; ?>
 
-// ============================================
-// TOAST DE BIENVENUE / INFORMATION
-// ============================================
-<?php if (isset($_GET['filtered']) && $_GET['filtered'] === 'success'): ?>
+<?php if (!empty($errorMessageEnvoi)): ?>
 document.addEventListener('DOMContentLoaded', function() {
     showToast(
-        'Filtres appliqués',
-        'Les filtres ont été appliqués avec succès.',
-        'success',
-        3000
+        'Erreur de validation',
+        '<?= addslashes($errorMessageEnvoi) ?>',
+        'error',
+        5000
     );
 });
 <?php endif; ?>

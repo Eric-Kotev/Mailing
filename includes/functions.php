@@ -30,22 +30,40 @@ function getCustomFieldsForContact($idContact, $onlyActive = true) {
 function getContactCustomValues($idContact) {
     global $db;
     
-    // Récupérer les champs du contact depuis custom_fields (avec id_contact)
-    $fields = $db->select('custom_fields', ['id_contact' => $idContact]);
-    $result = [];
-    
-    foreach ($fields as $field) {
-        // Récupérer la valeur pour ce champ depuis contact_custom_values (sans id_contact)
-        $value = $db->select('contact_custom_values', ['id_custom_field' => $field['id_custom_field']]);
-        $result[$field['field_name']] = [
-            'id_custom_field' => $field['id_custom_field'],
-            'label' => $field['field_label'],
-            'type' => $field['field_type'],
-            'value' => !empty($value) ? $value[0]['field_value'] : ''
-        ];
+    try {
+        // Récupérer les champs du contact depuis custom_fields
+        $fields = $db->select('custom_fields', ['id_contact' => $idContact]);
+        $result = [];
+        
+        if (empty($fields)) {
+            return $result;
+        }
+        
+        foreach ($fields as $field) {
+            // Vérifier que l'ID est valide
+            if (!isset($field['id_custom_field']) || empty($field['id_custom_field'])) {
+                continue;
+            }
+            
+            $idCustomField = $field['id_custom_field'];
+            
+            // Récupérer la valeur pour ce champ depuis contact_custom_values
+            $value = $db->select('contact_custom_values', ['id_custom_field' => $idCustomField]);
+            
+            $result[$field['field_name']] = [
+                'id_custom_field' => $idCustomField,
+                'label' => $field['field_label'],
+                'type' => $field['field_type'],
+                'value' => !empty($value) ? $value[0]['field_value'] : ''
+            ];
+        }
+        
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("ERREUR getContactCustomValues: " . $e->getMessage());
+        return [];
     }
-    
-    return $result;
 }
 
 /**
@@ -56,6 +74,10 @@ function getContactCustomValues($idContact) {
  */
 function saveContactCustomValues($idContact, $customFieldsData) {
     global $db;
+    
+    if (empty($customFieldsData) || !is_array($customFieldsData)) {
+        return;
+    }
     
     foreach ($customFieldsData as $fieldName => $value) {
         // Chercher le champ associé à ce contact
@@ -82,11 +104,12 @@ function saveContactCustomValues($idContact, $customFieldsData) {
             }
         } else {
             if (empty($value)) {
-                $db->delete('contact_custom_values', $existing[0]['id_value'], 'id_value');
+                // CORRECTION : delete($table, $id, $idField)
+                $db->delete('contact_custom_values', $idCustomField, 'id_custom_field');
             } else {
                 $db->update('contact_custom_values', [
                     'field_value' => $value
-                ], ['id_value' => $existing[0]['id_value']]);
+                ], ['id_custom_field' => $idCustomField]);
             }
         }
     }
@@ -106,17 +129,27 @@ function saveContactCustomValues($idContact, $customFieldsData) {
 function createCustomFieldForContact($idCompte, $idContact, $fieldName, $fieldLabel, $fieldType = 'text', $fieldOptions = null) {
     global $db;
     
+    // LOG DE DEBUG
+    error_log("=== createCustomFieldForContact ===");
+    error_log("idCompte: $idCompte");
+    error_log("idContact: $idContact");
+    error_log("fieldName: $fieldName");
+    error_log("fieldLabel: $fieldLabel");
+    error_log("fieldType: $fieldType");
+    error_log("fieldOptions: $fieldOptions");
+    
     // Nettoyer le nom du champ
     $fieldName = strtolower(preg_replace('/[^a-z0-9_]/', '_', trim($fieldName)));
+    $fieldLabel = trim($fieldLabel);
     
     // Vérifier si le champ existe déjà pour ce contact
     $exists = $db->select('custom_fields', [
-        'id_compte' => $idCompte,
         'id_contact' => $idContact,
         'field_name' => $fieldName
     ]);
     
     if (!empty($exists)) {
+        error_log("❌ Champ existe déjà");
         return ['success' => false, 'error' => 'Ce nom de champ existe déjà pour ce contact'];
     }
     
@@ -128,29 +161,39 @@ function createCustomFieldForContact($idCompte, $idContact, $fieldName, $fieldLa
     
     // Créer le champ
     $data = [
-        'id_compte' => $idCompte,
         'id_contact' => $idContact,
         'field_name' => $fieldName,
-        'field_label' => trim($fieldLabel),
+        'field_label' => $fieldLabel,
         'field_type' => $fieldType,
         'field_options' => $fieldOptions,
         'field_order' => $nextOrder,
         'is_required' => false,
-        'is_active' => true
+        'is_active' => true,
+        'created_at' => date('Y-m-d H:i:s')
     ];
     
+    error_log("📝 Données à insérer: " . json_encode($data));
+    
     try {
-        $db->insert('custom_fields', $data);
-        return ['success' => true, 'message' => 'Champ créé avec succès'];
+        // 🔥 CORRECTION : Utiliser insertAndGetId au lieu de request()
+        $fieldId = $db->insertAndGetId('custom_fields', $data);
+        error_log("✅ fieldId retourné: " . ($fieldId ? $fieldId : 'null'));
+        
+        if ($fieldId) {
+            return ['success' => true, 'message' => 'Champ créé avec succès', 'id_custom_field' => $fieldId];
+        } else {
+            return ['success' => false, 'error' => 'Erreur lors de l\'insertion du champ'];
+        }
     } catch (Exception $e) {
+        error_log("❌ ERREUR createCustomFieldForContact: " . $e->getMessage());
+        error_log("📄 TRACE: " . $e->getTraceAsString());
         return ['success' => false, 'error' => $e->getMessage()];
     }
 }
-
 /**
  * Supprime un champ personnalisé pour un contact
  * 
- * @param int $idCustomField ID du champ personnalisé
+ * @param string $idCustomField ID du champ personnalisé (UUID)
  * @param string $idContact ID du contact (UUID) - pour vérification
  * @return bool Succès de la suppression
  */
@@ -168,30 +211,16 @@ function deleteCustomFieldForContact($idCustomField, $idContact) {
     }
     
     try {
-        // La suppression en cascade supprimera aussi les valeurs
+        // CORRECTION : delete($table, $id, $idField)
+        // Supprimer d'abord les valeurs associées
+        $db->delete('contact_custom_values', $idCustomField, 'id_custom_field');
+        // Supprimer le champ
         $db->delete('custom_fields', $idCustomField, 'id_custom_field');
         return true;
     } catch (Exception $e) {
+        error_log("ERREUR deleteCustomFieldForContact: " . $e->getMessage());
         return false;
     }
-}
-
-/**
- * Récupère tous les champs personnalisés d'un compte (pour l'administration)
- * 
- * @param string $idCompte ID du compte (UUID)
- * @param bool $onlyActive Récupérer uniquement les champs actifs
- * @return array Liste des champs personnalisés du compte
- */
-function getAllCustomFieldsForAccount($idCompte, $onlyActive = true) {
-    global $db;
-    
-    $conditions = ['id_compte' => $idCompte];
-    if ($onlyActive) {
-        $conditions['is_active'] = true;
-    }
-    
-    return $db->select('custom_fields', $conditions, '*', 'field_order ASC');
 }
 
 /**
@@ -225,8 +254,6 @@ function getContactCustomFieldsWithValues($idContact) {
 // ============================================
 // FONCTIONS UTILITAIRES GÉNÉRALES
 // ============================================
-
-// 🔥 SUPPRIMÉ : getCreditsDisponibles() est déjà dans db.php
 
 /**
  * Vérifie si un email existe déjà dans la base
@@ -306,13 +333,11 @@ function formatPhoneNumber($telephone) {
     
     // Si le numéro a déjà un indicatif (33 ou 261) mais commence par 33
     if (substr($telephone, 0, 2) == '33' && strlen($telephone) == 12) {
-        // Déjà au format France
         return $telephone;
     }
     
     // Si le numéro a déjà un indicatif (261) mais commence par 261
     if (substr($telephone, 0, 3) == '261' && strlen($telephone) == 12) {
-        // Déjà au format Madagascar
         return $telephone;
     }
     

@@ -104,11 +104,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_blacklist']))
             if ($alreadyExists > 0) {
                 $message .= " ($alreadyExists déjà existant(s))";
             }
-            $_SESSION['flash_message'] = $message;
-            header("Location: index.php?page=blacklist/index");
+            header("Location: index.php?page=blacklist/index&toast=" . urlencode($message) . "&type=success");
             exit;
         } else {
             $error = "Tous les contacts sont déjà blacklistés pour les types sélectionnés";
+            header("Location: index.php?page=blacklist/index&toast=" . urlencode($error) . "&type=error");
+            exit;
         }
     }
 }
@@ -132,8 +133,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_bulk_unblackli
             echo json_encode(['success' => true, 'count' => $removedCount]);
             exit;
         } else {
-            $_SESSION['flash_message'] = "$removedCount contact(s) retiré(s) de la blacklist avec succès !";
-            header("Location: index.php?page=blacklist/index");
+            $message = "$removedCount contact(s) retiré(s) de la blacklist avec succès !";
+            header("Location: index.php?page=blacklist/index&toast=" . urlencode($message) . "&type=success");
             exit;
         }
     } else {
@@ -142,8 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_bulk_unblackli
             echo json_encode(['success' => false, 'error' => 'Aucun contact sélectionné']);
             exit;
         } else {
-            $_SESSION['flash_error'] = "Aucun contact sélectionné.";
-            header("Location: index.php?page=blacklist/index");
+            header("Location: index.php?page=blacklist/index&toast=" . urlencode('Aucun contact sélectionné') . "&type=error");
             exit;
         }
     }
@@ -154,15 +154,21 @@ if (isset($_GET['retirer'])) {
     $id_blacklist = $_GET['retirer'];
     try {
         $db->delete('blacklist', $id_blacklist, 'id_blacklist');
-        $_SESSION['flash_message'] = "Contact retiré de la blacklist";
-        header("Location: index.php?page=blacklist/index");
+        $message = "Contact retiré de la blacklist";
+        header("Location: index.php?page=blacklist/index&toast=" . urlencode($message) . "&type=success");
         exit;
     } catch (Exception $e) {
         $error = "Erreur : " . $e->getMessage();
+        header("Location: index.php?page=blacklist/index&toast=" . urlencode($error) . "&type=error");
+        exit;
     }
 }
 
 $totalBlacklisted = count($blacklistWithContact);
+
+// Récupérer les paramètres toast
+$toastMessage = isset($_GET['toast']) ? urldecode($_GET['toast']) : null;
+$toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -192,151 +198,139 @@ $totalBlacklisted = count($blacklistWithContact);
         }
         
         /* ============================================
-           STYLES SELECT2 - PLACEHOLDER AGRANDI
+           STYLES SELECT2 - TAILLE RÉDUITE
         ============================================ */
         
-        /* Conteneur principal */
+        /* Cacher les selects natifs */
+        #contactsSearch, #typeMessageSelect {
+            display: none !important;
+        }
+        
         .select2-container {
             width: 100% !important;
+            display: block !important;
         }
         
-        /* STYLE POUR LA SÉLECTION SIMPLE */
-        .select2-container--default .select2-selection--single {
-            height: auto !important;
-            min-height: 52px !important;
-            border: 2px solid #e5e7eb !important;
-            border-radius: 12px !important;
-            padding: 14px 16px !important;
-            background: white !important;
-            transition: all 0.2s ease;
-        }
-        
-        .select2-container--default .select2-selection--single:hover {
-            border-color: #ef4444 !important;
-        }
-        
-        /* Le placeholder - TEXTE GRAND ET VISIBLE */
-        .select2-container--default .select2-selection--single .select2-selection__placeholder {
-            font-size: 16px !important;
-            line-height: 24px !important;
-            color: #9ca3af !important;
-            font-weight: normal !important;
-        }
-        
-        /* Le texte sélectionné */
-        .select2-container--default .select2-selection--single .select2-selection__rendered {
-            line-height: 24px !important;
-            font-size: 15px !important;
-            color: #1f2937 !important;
-            padding-left: 0 !important;
-        }
-        
-        /* La flèche */
-        .select2-container--default .select2-selection--single .select2-selection__arrow {
-            height: 50px !important;
-            right: 12px !important;
-        }
-        
-        /* STYLE POUR LA SÉLECTION MULTIPLE */
+        /* Conteneur principal - TAILLE RÉDUITE */
         .select2-container--default .select2-selection--multiple {
-            min-height: 52px !important;
+            min-height: 38px !important;
+            max-height: 80px !important;
+            overflow-y: auto !important;
             border: 2px solid #e5e7eb !important;
-            border-radius: 12px !important;
-            padding: 12px 14px !important;
+            border-radius: 8px !important;
+            padding: 4px 10px !important;
             background: white !important;
-            transition: all 0.2s ease;
+            transition: border-color 0.2s ease;
         }
         
         .select2-container--default .select2-selection--multiple:hover {
             border-color: #ef4444 !important;
         }
         
-        /* Le placeholder pour la sélection multiple */
+        .select2-container--default .select2-selection--multiple:focus-within {
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+        }
+        
+        /* Placeholder */
         .select2-container--default .select2-selection--multiple .select2-selection__placeholder {
-            font-size: 16px !important;
+            font-size: 14px !important;
             line-height: 28px !important;
             color: #9ca3af !important;
+            font-weight: 400 !important;
+            padding: 0 !important;
+            display: block !important;
         }
         
-        /* Le champ de recherche dans la sélection multiple */
-        .select2-container--default .select2-selection--multiple .select2-search--inline {
-            margin: 0 !important;
+        /* Le conteneur des éléments sélectionnés */
+        .select2-container--default .select2-selection--multiple .select2-selection__rendered {
+            display: block !important;
+            padding: 0 !important;
+            min-height: 24px !important;
         }
         
-        .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
-            margin: 0 !important;
-            padding: 6px 0 !important;
-            font-size: 15px !important;
-            min-width: 180px !important;
-            height: auto !important;
-        }
-        
-        /* Les badges des éléments sélectionnés */
+        /* Les badges des éléments sélectionnés - PLUS COMPACTS */
         .select2-container--default .select2-selection--multiple .select2-selection__choice {
             background-color: #fee2e2 !important;
             border: none !important;
-            border-radius: 24px !important;
-            padding: 6px 12px !important;
-            margin: 2px 4px !important;
-            font-size: 13px !important;
+            border-radius: 16px !important;
+            padding: 2px 10px !important;
+            margin: 2px 3px !important;
+            font-size: 12px !important;
             color: #991b1b !important;
             display: inline-flex !important;
             align-items: center !important;
-            gap: 6px !important;
+            gap: 3px !important;
+            line-height: 1.4 !important;
         }
         
         .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
             color: #991b1b !important;
-            margin-right: 4px !important;
-            font-size: 14px !important;
+            margin-right: 3px !important;
+            font-size: 12px !important;
             font-weight: bold !important;
-            border-right: none !important;
-            padding: 0 4px !important;
+            padding: 0 2px !important;
         }
         
-        /* DROPDOWN */
+        /* Le champ de recherche à l'intérieur */
+        .select2-container--default .select2-selection--multiple .select2-search--inline {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
+            margin: 0 !important;
+            padding: 2px 0 !important;
+            font-size: 13px !important;
+            min-width: 100px !important;
+            height: 26px !important;
+            border: none !important;
+            outline: none !important;
+            background: transparent !important;
+        }
+        
+        /* Dropdown */
         .select2-dropdown {
             border: 2px solid #e5e7eb !important;
-            border-radius: 12px !important;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.02) !important;
-            overflow: hidden !important;
+            border-radius: 8px !important;
             z-index: 1050 !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1) !important;
         }
         
         /* Champ de recherche dans le dropdown */
         .select2-search--dropdown {
-            padding: 12px !important;
+            padding: 8px !important;
             border-bottom: 1px solid #e5e7eb !important;
         }
         
         .select2-search__field {
             border: 2px solid #e5e7eb !important;
-            border-radius: 10px !important;
-            padding: 12px 14px !important;
-            font-size: 15px !important;
+            border-radius: 6px !important;
+            padding: 6px 12px !important;
+            font-size: 13px !important;
             width: 100% !important;
             transition: all 0.2s ease;
         }
         
         .select2-search__field:focus {
-            outline: none !important;
             border-color: #ef4444 !important;
+            outline: none !important;
             box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
         }
         
-        /* Liste des résultats */
+        /* Résultats */
         .select2-results {
-            max-height: 400px !important;
+            max-height: 300px !important;
         }
         
         .select2-results__options {
-            max-height: 350px !important;
+            max-height: 250px !important;
             overflow-y: auto !important;
         }
         
         .select2-results__option {
-            padding: 12px 16px !important;
-            font-size: 14px !important;
+            padding: 8px 14px !important;
+            font-size: 13px !important;
             line-height: 1.4 !important;
         }
         
@@ -353,39 +347,36 @@ $totalBlacklisted = count($blacklistWithContact);
         
         /* Scrollbar personnalisée */
         .select2-results__options::-webkit-scrollbar {
-            width: 8px;
+            width: 5px;
         }
         
         .select2-results__options::-webkit-scrollbar-track {
             background: #f1f1f1;
-            border-radius: 4px;
+            border-radius: 3px;
         }
         
         .select2-results__options::-webkit-scrollbar-thumb {
             background: #c1c1c1;
-            border-radius: 4px;
+            border-radius: 3px;
         }
         
-        /* VERSION MOBILE - Placeholder encore plus grand */
+        /* VERSION MOBILE */
         @media (max-width: 768px) {
-            .select2-container--default .select2-selection--single {
-                min-height: 48px !important;
-                padding: 12px 14px !important;
-            }
-            
-            .select2-container--default .select2-selection--single .select2-selection__placeholder {
-                font-size: 15px !important;
-                line-height: 22px !important;
-            }
-            
             .select2-container--default .select2-selection--multiple {
-                min-height: 48px !important;
-                padding: 10px 12px !important;
+                min-height: 34px !important;
+                max-height: 70px !important;
+                padding: 3px 8px !important;
             }
             
             .select2-container--default .select2-selection--multiple .select2-selection__placeholder {
-                font-size: 15px !important;
-                line-height: 26px !important;
+                font-size: 13px !important;
+                line-height: 24px !important;
+            }
+            
+            .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
+                font-size: 12px !important;
+                min-width: 80px !important;
+                height: 22px !important;
             }
             
             .select2-dropdown {
@@ -401,10 +392,8 @@ $totalBlacklisted = count($blacklistWithContact);
         }
         
         /* ============================================
-           STYLES DES MODALES DE CONFIRMATION
+           STYLES DES MODALES
         ============================================ */
-        
-        /* MODALE DE CONFIRMATION GÉNÉRIQUE */
         .confirm-modal-overlay {
             position: fixed;
             top: 0;
@@ -442,7 +431,6 @@ $totalBlacklisted = count($blacklistWithContact);
             transform: scale(1) translateY(0);
         }
         
-        /* En-tête de la modale */
         .confirm-modal-header {
             padding: 24px 28px 16px 28px;
             display: flex;
@@ -465,17 +453,14 @@ $totalBlacklisted = count($blacklistWithContact);
             background: #fef3c7;
             color: #d97706;
         }
-        
         .confirm-modal-header .icon-wrapper.danger {
             background: #fee2e2;
             color: #dc2626;
         }
-        
         .confirm-modal-header .icon-wrapper.success {
             background: #dcfce7;
             color: #16a34a;
         }
-        
         .confirm-modal-header .icon-wrapper i {
             font-size: 24px;
         }
@@ -493,7 +478,6 @@ $totalBlacklisted = count($blacklistWithContact);
             margin: 2px 0 0 0;
         }
         
-        /* Corps de la modale */
         .confirm-modal-body {
             padding: 24px 28px;
         }
@@ -503,10 +487,6 @@ $totalBlacklisted = count($blacklistWithContact);
             color: #374151;
             line-height: 1.6;
             margin: 0;
-        }
-        
-        .confirm-modal-body .modal-message strong {
-            color: #1f2937;
         }
         
         .confirm-modal-body .modal-warning-text {
@@ -521,12 +501,6 @@ $totalBlacklisted = count($blacklistWithContact);
             gap: 10px;
         }
         
-        .confirm-modal-body .modal-warning-text i {
-            margin-top: 2px;
-            flex-shrink: 0;
-        }
-        
-        /* Pied de la modale */
         .confirm-modal-footer {
             padding: 16px 28px 24px 28px;
             display: flex;
@@ -549,62 +523,31 @@ $totalBlacklisted = count($blacklistWithContact);
             gap: 8px;
         }
         
-        .confirm-modal-footer .btn:active {
-            transform: scale(0.96);
-        }
-        
         .confirm-modal-footer .btn-cancel {
             background: #f3f4f6;
             color: #4b5563;
         }
-        
         .confirm-modal-footer .btn-cancel:hover {
             background: #e5e7eb;
         }
-        
         .confirm-modal-footer .btn-danger {
             background: #dc2626;
             color: white;
         }
-        
         .confirm-modal-footer .btn-danger:hover {
             background: #b91c1c;
         }
-        
         .confirm-modal-footer .btn-success {
             background: #16a34a;
             color: white;
         }
-        
         .confirm-modal-footer .btn-success:hover {
             background: #15803d;
         }
         
-        .confirm-modal-footer .btn-warning {
-            background: #d97706;
-            color: white;
-        }
-        
-        .confirm-modal-footer .btn-warning:hover {
-            background: #b45309;
-        }
-        
         /* ============================================
-           VOS STYLES EXISTANTS
+           TOAST NOTIFICATION
         ============================================ */
-        .checkbox-column {
-            width: 40px;
-            text-align: center;
-        }
-        .checkbox-column input {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        .bulk-actions-bar {
-            transition: all 0.3s ease;
-        }
-        
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -630,6 +573,20 @@ $totalBlacklisted = count($blacklistWithContact);
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.warning .toast-content { background: #f59e0b; }
+        .toast-notification.info .toast-content { background: #3b82f6; }
+        
+        /* ============================================
+           STYLES EXISTANTS
+        ============================================ */
+        .checkbox-column {
+            width: 40px;
+            text-align: center;
+        }
+        .checkbox-column input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
         
         .modal-content-unblacklist {
             transition: all 0.3s ease;
@@ -677,7 +634,6 @@ $totalBlacklisted = count($blacklistWithContact);
             font-size: 11px;
             letter-spacing: 0.5px;
             color: #6b7280;
-            border-bottom: 1px solid #e5e7eb;
         }
         .blacklist-table tr:hover {
             background-color: #f9fafb;
@@ -704,9 +660,18 @@ $totalBlacklisted = count($blacklistWithContact);
             padding: 6px;
             border-radius: 6px;
             transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            color: #10b981;
         }
         .action-btn:hover {
-            transform: scale(1.1);
+            transform: scale(1.05);
+            color: #059669;
+        }
+        .action-btn i {
+            font-size: 16px;
         }
         .btn-retirer {
             color: #10b981;
@@ -743,11 +708,12 @@ $totalBlacklisted = count($blacklistWithContact);
             padding: 10px 12px 10px 36px;
             border: 1px solid #e5e7eb;
             border-radius: 8px;
+            font-size: 14px;
         }
         .search-input-wrapper input:focus {
             outline: none;
             border-color: #ef4444;
-            ring: 2px solid #fecaca;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
         }
         
         .selected-contacts-info {
@@ -761,11 +727,27 @@ $totalBlacklisted = count($blacklistWithContact);
             color: #0284c7;
         }
         
-        button {
-            transition: all 0.2s ease;
+        .bulk-actions-bar {
+            transition: all 0.3s ease;
         }
-        button:active {
-            transform: scale(0.98);
+        
+        /* Labels des champs */
+        .form-label {
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            color: #1f2937 !important;
+            margin-bottom: 4px !important;
+            display: block !important;
+        }
+        
+        .form-label i {
+            margin-right: 6px;
+        }
+        
+        .motif-input {
+            padding: 8px 14px !important;
+            font-size: 14px !important;
+            border-radius: 8px !important;
         }
     </style>
 </head>
@@ -843,20 +825,6 @@ $totalBlacklisted = count($blacklistWithContact);
         </div>
     </div>
 
-    <!-- Messages flash -->
-    <?php if (isset($_SESSION['flash_message'])): ?>
-        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded">
-            <?= htmlspecialchars($_SESSION['flash_message']) ?>
-            <?php unset($_SESSION['flash_message']); ?>
-        </div>
-    <?php endif; ?>
-
-    <?php if (isset($error)): ?>
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded">
-            <?= htmlspecialchars($error) ?>
-        </div>
-    <?php endif; ?>
-
     <!-- Section Ajouter -->
     <div id="addSection" class="bg-white rounded-lg shadow p-6">
         <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
@@ -866,10 +834,10 @@ $totalBlacklisted = count($blacklistWithContact);
         <form method="POST" class="space-y-4" id="blacklistForm">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-users mr-1 text-gray-400"></i> Contacts * (sélection multiple possible)
+                    <label class="form-label">
+                        <i class="fas fa-users text-gray-400"></i> Contacts * (sélection multiple possible)
                     </label>
-                    <select name="id_contacts[]" id="contactsSearch" multiple="multiple" class="w-full">
+                    <select name="id_contacts[]" id="contactsSearch" multiple="multiple">
                         <?php foreach ($contactsAvecBlocages as $item): 
                             $contact = $item['contact'];
                             $nbBloques = $item['nb_bloques'];
@@ -890,10 +858,10 @@ $totalBlacklisted = count($blacklistWithContact);
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        Types de message à bloquer * <span class="text-red-500">(plusieurs choix possibles)</span>
+                    <label class="form-label">
+                        <i class="fas fa-envelope text-gray-400"></i> Types de message à bloquer * <span class="text-red-500">(plusieurs choix possibles)</span>
                     </label>
-                    <select name="id_type_message[]" id="typeMessageSelect" multiple="multiple" class="w-full">
+                    <select name="id_type_message[]" id="typeMessageSelect" multiple="multiple">
                         <?php if (!empty($typeMessages)): ?>
                             <?php foreach ($typeMessages as $type): ?>
                                 <option value="<?= $type['id_type_message'] ?>">
@@ -908,9 +876,11 @@ $totalBlacklisted = count($blacklistWithContact);
                 </div>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Motif (optionnel)</label>
+                <label class="form-label">
+                    <i class="fas fa-pencil-alt text-gray-400"></i> Motif (optionnel)
+                </label>
                 <input type="text" name="motif" id="motifInput" placeholder="Pourquoi ces contacts sont bloqués ?" 
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200">
+                       class="motif-input w-full border border-gray-300 rounded-lg focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200">
             </div>
             <div class="flex justify-end space-x-3">
                 <button type="button" id="clearSelectionBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg transition">
@@ -1064,7 +1034,7 @@ $totalBlacklisted = count($blacklistWithContact);
                                 </td>
                                 <td>
                                     <span class="type-badge <?= $typeClass ?>">
-                                        <i class="fas <?= $typeLabel == 'WhatsApp' ? 'fa-whatsapp' : ($typeLabel == 'SMS' ? 'fa-comment-dots' : 'fa-envelope') ?> text-xs mr-1"></i>
+                                        <i class="fas <?= $typeLabel == 'WhatsApp' ? 'fa-brands fa-whatsapp' : ($typeLabel == 'SMS' ? 'fa-comment-dots' : 'fa-envelope') ?> text-xs mr-1"></i>
                                         <?= htmlspecialchars($typeLabel) ?>
                                     </span>
                                 </td>
@@ -1077,7 +1047,7 @@ $totalBlacklisted = count($blacklistWithContact);
                                 <td class="whitespace-nowrap">
                                     <button onclick="openUnblacklistModal('<?= $bl['id_blacklist'] ?>', '<?= addslashes($bl['contact']['prenom'] . ' ' . $bl['contact']['nom']) ?>', '<?= addslashes($typeLabel) ?>')"
                                             class="action-btn btn-retirer" title="Retirer de la blacklist">
-                                        <i class="fas fa-check-circle text-lg"></i>
+                                        <i class="fas fa-check-circle"></i> Retirer
                                     </button>
                                 </td>
                             </tr>
@@ -1105,10 +1075,18 @@ $totalBlacklisted = count($blacklistWithContact);
         
         const toast = document.createElement('div');
         toast.className = `toast-notification ${type}`;
-        toast.innerHTML = `<div class="toast-content"><span>$</span><span>${message}</span></div>`;
+        const icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+        toast.innerHTML = `<div class="toast-content"><i class="fas ${icons[type] || icons.success}"></i><span>${message}</span></div>`;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
     }
+
+    // ============================================
+    // AFFICHAGE DES TOASTS DEPUIS L'URL
+    // ============================================
+    <?php if ($toastMessage): ?>
+    showToast('<?= addslashes($toastMessage) ?>', '<?= $toastType ?>');
+    <?php endif; ?>
 
     // ============================================
     // MODALE DE CONFIRMATION GÉNÉRIQUE
@@ -1126,7 +1104,6 @@ $totalBlacklisted = count($blacklistWithContact);
         const confirmBtn = document.getElementById('confirmModalConfirmBtn');
         const cancelBtn = document.getElementById('confirmModalCancelBtn');
         
-        // Configurer les icônes
         const iconMap = {
             warning: { class: 'warning', icon: 'fa-exclamation-triangle' },
             danger: { class: 'danger', icon: 'fa-exclamation-circle' },
@@ -1138,12 +1115,10 @@ $totalBlacklisted = count($blacklistWithContact);
         iconWrapper.className = 'icon-wrapper ' + iconConfig.class;
         iconWrapper.querySelector('i').className = 'fas ' + iconConfig.icon;
         
-        // Configurer le contenu
         title.textContent = options.title || 'Confirmation';
         subtitle.textContent = options.subtitle || 'Veuillez confirmer votre action';
         message.innerHTML = options.message || 'Êtes-vous sûr de vouloir effectuer cette action ?';
         
-        // Gérer l'avertissement
         if (options.warning) {
             warning.style.display = 'flex';
             warningText.textContent = options.warning;
@@ -1151,7 +1126,6 @@ $totalBlacklisted = count($blacklistWithContact);
             warning.style.display = 'none';
         }
         
-        // Configurer les boutons
         confirmBtn.textContent = options.confirmText || 'Confirmer';
         confirmBtn.className = 'btn ' + (options.confirmClass || 'btn-danger');
         confirmBtn.innerHTML = '<i class="fas fa-check"></i> ' + (options.confirmText || 'Confirmer');
@@ -1159,10 +1133,7 @@ $totalBlacklisted = count($blacklistWithContact);
         cancelBtn.textContent = options.cancelText || 'Annuler';
         cancelBtn.innerHTML = '<i class="fas fa-times"></i> ' + (options.cancelText || 'Annuler');
         
-        // Stocker le callback
         confirmCallback = options.onConfirm || null;
-        
-        // Afficher la modale
         modal.classList.add('show');
     }
 
@@ -1171,7 +1142,6 @@ $totalBlacklisted = count($blacklistWithContact);
         confirmCallback = null;
     }
 
-    // Écouteurs de la modale de confirmation
     document.getElementById('confirmModalConfirmBtn').addEventListener('click', function() {
         if (typeof confirmCallback === 'function') {
             confirmCallback();
@@ -1188,7 +1158,7 @@ $totalBlacklisted = count($blacklistWithContact);
     });
 
     // ============================================
-    // MODALE POUR RETIRER UN CONTACT (UNIQUEMENT)
+    // MODALE POUR RETIRER UN CONTACT
     // ============================================
     function openUnblacklistModal(blacklistId, contactName, typeLabel) {
         unblacklistData = { id: blacklistId, name: contactName, type: typeLabel };
@@ -1216,22 +1186,8 @@ $totalBlacklisted = count($blacklistWithContact);
     function confirmUnblacklist() {
         if (!unblacklistData) return;
         
-        showConfirmModal({
-            type: 'success',
-            title: 'Retirer de la blacklist',
-            subtitle: 'Action de retrait',
-            message: `Êtes-vous sûr de vouloir retirer <strong>${unblacklistData.name}</strong> de la blacklist ?`,
-            warning: 'Cette action est réversible. Vous pourrez ajouter ce contact à nouveau si nécessaire.',
-            confirmText: 'Retirer',
-            confirmClass: 'btn-success',
-            cancelText: 'Annuler',
-            onConfirm: function() {
-                // Rediriger vers la page de retrait
-                window.location.href = '?page=blacklist/index&retirer=' + unblacklistData.id;
-            }
-        });
-        
-        closeUnblacklistModal();
+        // Rediriger directement vers la page avec le paramètre retirer
+        window.location.href = '?page=blacklist/index&retirer=' + unblacklistData.id;
     }
 
     document.getElementById('unblacklistModal')?.addEventListener('click', function(e) {
@@ -1373,8 +1329,10 @@ $totalBlacklisted = count($blacklistWithContact);
         });
     }
     
-    document.querySelectorAll('.contact-checkbox').forEach(cb => {
-        cb.addEventListener('change', updateBulkActionsBar);
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('contact-checkbox')) {
+            updateBulkActionsBar();
+        }
     });
     
     updateBulkActionsBar();

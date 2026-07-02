@@ -6,7 +6,6 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
-
 ini_set('log_errors', 1);
 ini_set('error_log', '/var/log/php_errors.log');
 
@@ -107,14 +106,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_contacts_t
 }
 
 // ============================================
-// TRAITEMENT DE L'IMPORT CSV (AJAX) - VERSION CORRIGÉE
+// TRAITEMENT DE L'IMPORT CSV (AJAX)
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
-    // Vider le buffer et définir le header JSON
     ob_clean();
     header('Content-Type: application/json');
     
-    // Log pour debug
     error_log("=== IMPORT CSV DEMARRÉ ===");
     error_log("POST: " . print_r($_POST, true));
     error_log("FILES: " . print_r($_FILES, true));
@@ -134,7 +131,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             exit;
         }
         
-        // Vérifier le fichier
         if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
             $errorCode = $_FILES['csv_file']['error'] ?? 'Aucun fichier';
             error_log("Erreur upload: code " . $errorCode);
@@ -145,14 +141,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $file = $_FILES['csv_file'];
         error_log("Fichier: " . $file['name'] . ", taille: " . $file['size'] . " bytes");
         
-        // Vérifier la taille (5MB max)
         $maxSize = 5 * 1024 * 1024;
         if ($file['size'] > $maxSize) {
             echo json_encode(['success' => false, 'error' => 'Fichier trop volumineux (max 5MB)']);
             exit;
         }
         
-        // Vérifier l'extension
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if ($extension !== 'csv') {
             echo json_encode(['success' => false, 'error' => 'Format non supporté. Utilisez un fichier CSV']);
@@ -165,7 +159,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             exit;
         }
         
-        // Détection automatique du séparateur
         $firstLine = fgets($handle);
         rewind($handle);
         error_log("Première ligne: " . $firstLine);
@@ -184,7 +177,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         }
         error_log("Séparateur détecté: '" . $separator . "'");
         
-        // Lire les en-têtes
         $headers = fgetcsv($handle, 0, $separator);
         if (!$headers) {
             echo json_encode(['success' => false, 'error' => 'Format CSV invalide: impossible de lire les en-têtes']);
@@ -195,21 +187,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $headers = array_map('strtolower', $headers);
         error_log("Headers: " . print_r($headers, true));
         
-        // Mapping des colonnes
+        // ============================================
+        // MAPPING DES COLONNES AVEC TOUTES LES NOUVELLES COLONNES
+        // ============================================
         $mapping = [
             'prenom' => array_search('prenom', $headers),
             'nom' => array_search('nom', $headers),
             'email' => array_search('email', $headers),
             'telephone' => array_search('telephone', $headers),
+            'tel_portable' => array_search('tel_portable', $headers),
             'ville' => array_search('ville', $headers),
             'adresse' => array_search('adresse', $headers),
             'code_postal' => array_search('code_postal', $headers),
             'pays' => array_search('pays', $headers),
-            'date_naissance' => array_search('date_naissance', $headers)
+            'date_naissance' => array_search('date_naissance', $headers),
+            // NOUVELLES COLONNES
+            'no_client' => array_search('no_client', $headers),
+            'civilite' => array_search('civilite', $headers),
+            'sexe' => array_search('sexe', $headers),
+            'commentaire' => array_search('commentaire', $headers),
+            'commentaire_prive' => array_search('commentaire_prive', $headers),
+            'enseigne' => array_search('enseigne', $headers),
+            'numero_siret' => array_search('numero_siret', $headers),
+            'mari' => array_search('mari', $headers),
+            'anniversaire_mari' => array_search('anniversaire_mari', $headers),
+            'femme' => array_search('femme', $headers),
+            'anniversaire_femme' => array_search('anniversaire_femme', $headers),
+            'points_fidelite' => array_search('points_fidelite', $headers),
+            'cumul_cadeau' => array_search('cumul_cadeau', $headers),
+            'cumul_achats' => array_search('cumul_achats', $headers),
+            'cumul_achat_avant_cadeau' => array_search('cumul_achat_avant_cadeau', $headers),
+            'quantite_article' => array_search('quantite_article', $headers),
+            'nombre_ticket' => array_search('nombre_ticket', $headers),
+            'identifiant_ecommerce' => array_search('identifiant_ecommerce', $headers),
+            'valeur_coupon' => array_search('valeur_coupon', $headers),
+            'date_fin_validite_coupon' => array_search('date_fin_validite_coupon', $headers)
         ];
         error_log("Mapping: " . print_r($mapping, true));
         
-        // Vérifier les colonnes requises
         if ($mapping['nom'] === false && $mapping['prenom'] === false) {
             echo json_encode(['success' => false, 'error' => 'Colonnes requises manquantes: nom ou prenom']);
             exit;
@@ -223,11 +238,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         
         while (($data = fgetcsv($handle, 0, $separator)) !== false) {
             $rowNumber++;
-            
-            // Nettoyer la ligne
             $data = array_map('trim', $data);
             
-            // Extraire les données
+            // ============================================
+            // EXTRACTION DES DONNÉES DE BASE
+            // ============================================
             $prenom = $mapping['prenom'] !== false ? trim($data[$mapping['prenom']] ?? '') : '';
             $nom = $mapping['nom'] !== false ? trim($data[$mapping['nom']] ?? '') : '';
             $email = $mapping['email'] !== false ? trim($data[$mapping['email']] ?? '') : '';
@@ -238,11 +253,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $code_postal = $mapping['code_postal'] !== false ? trim($data[$mapping['code_postal']] ?? '') : '';
             $pays = $mapping['pays'] !== false ? trim($data[$mapping['pays']] ?? 'France') : 'France';
             
+            // ============================================
+            // EXTRACTION DES NOUVELLES COLONNES
+            // ============================================
+            $noClient = $mapping['no_client'] !== false ? trim($data[$mapping['no_client']] ?? '') : '';
+            $civilite = $mapping['civilite'] !== false ? trim($data[$mapping['civilite']] ?? '') : '';
+            $sexe = $mapping['sexe'] !== false ? trim($data[$mapping['sexe']] ?? '') : '';
+            $telPortable = $mapping['tel_portable'] !== false ? trim($data[$mapping['tel_portable']] ?? '') : '';
+            $commentaire = $mapping['commentaire'] !== false ? trim($data[$mapping['commentaire']] ?? '') : '';
+            $commentairePrive = $mapping['commentaire_prive'] !== false ? trim($data[$mapping['commentaire_prive']] ?? '') : '';
+            $enseigne = $mapping['enseigne'] !== false ? trim($data[$mapping['enseigne']] ?? '') : '';
+            $numeroSiret = $mapping['numero_siret'] !== false ? trim($data[$mapping['numero_siret']] ?? '') : '';
+            $mari = $mapping['mari'] !== false ? trim($data[$mapping['mari']] ?? '') : '';
+            $anniversaireMari = $mapping['anniversaire_mari'] !== false ? trim($data[$mapping['anniversaire_mari']] ?? '') : '';
+            $femme = $mapping['femme'] !== false ? trim($data[$mapping['femme']] ?? '') : '';
+            $anniversaireFemme = $mapping['anniversaire_femme'] !== false ? trim($data[$mapping['anniversaire_femme']] ?? '') : '';
+            $pointsFidelite = $mapping['points_fidelite'] !== false ? intval(trim($data[$mapping['points_fidelite']] ?? 0)) : 0;
+            $cumulCadeau = $mapping['cumul_cadeau'] !== false ? floatval(trim($data[$mapping['cumul_cadeau']] ?? 0)) : 0;
+            $cumulAchats = $mapping['cumul_achats'] !== false ? floatval(trim($data[$mapping['cumul_achats']] ?? 0)) : 0;
+            $cumulAchatAvantCadeau = $mapping['cumul_achat_avant_cadeau'] !== false ? floatval(trim($data[$mapping['cumul_achat_avant_cadeau']] ?? 0)) : 0;
+            $quantiteArticle = $mapping['quantite_article'] !== false ? intval(trim($data[$mapping['quantite_article']] ?? 0)) : 0;
+            $nombreTicket = $mapping['nombre_ticket'] !== false ? intval(trim($data[$mapping['nombre_ticket']] ?? 0)) : 0;
+            $identifiantEcommerce = $mapping['identifiant_ecommerce'] !== false ? trim($data[$mapping['identifiant_ecommerce']] ?? '') : '';
+            $valeurCoupon = $mapping['valeur_coupon'] !== false ? trim($data[$mapping['valeur_coupon']] ?? '') : '';
+            $dateFinValiditeCoupon = $mapping['date_fin_validite_coupon'] !== false ? trim($data[$mapping['date_fin_validite_coupon']] ?? '') : '';
+            
             if (empty($nom) && empty($prenom) && empty($email)) {
                 continue;
             }
             
-            // Convertir la date si présente
+            // ============================================
+            // CONVERSION DES DATES
+            // ============================================
             if (!empty($dateNaissance)) {
                 $dateFormats = ['d/m/Y', 'd-m-Y', 'Y-m-d', 'm/d/Y'];
                 $dateConverted = null;
@@ -267,7 +309,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 }
             }
             
-            // Vérifier l'âge
+            // Conversion anniversaire mari
+            if (!empty($anniversaireMari)) {
+                $timestamp = strtotime($anniversaireMari);
+                if ($timestamp !== false) {
+                    $anniversaireMari = date('Y-m-d', $timestamp);
+                } else {
+                    $anniversaireMari = null;
+                }
+            }
+            
+            // Conversion anniversaire femme
+            if (!empty($anniversaireFemme)) {
+                $timestamp = strtotime($anniversaireFemme);
+                if ($timestamp !== false) {
+                    $anniversaireFemme = date('Y-m-d', $timestamp);
+                } else {
+                    $anniversaireFemme = null;
+                }
+            }
+            
+            // Conversion date fin validité coupon
+            if (!empty($dateFinValiditeCoupon)) {
+                $timestamp = strtotime($dateFinValiditeCoupon);
+                if ($timestamp !== false) {
+                    $dateFinValiditeCoupon = date('Y-m-d', $timestamp);
+                } else {
+                    $dateFinValiditeCoupon = null;
+                }
+            }
+            
+            // ============================================
+            // VÉRIFICATION DE L'ÂGE
+            // ============================================
             if (!empty($dateNaissance)) {
                 if (!verifierAge($dateNaissance, 18)) {
                     $errors[] = "Ligne $rowNumber: Âge minimum 18 ans requis";
@@ -275,10 +349,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 }
             }
             
+            // ============================================
+            // RECHERCHE DU CONTACT EXISTANT
+            // ============================================
             $contactId = null;
             $isExisting = false;
             
-            // Vérifier si le contact existe déjà par email
             if (!empty($email)) {
                 $existingContacts = $db->select('contact', [
                     'id_compte' => $idCompte,
@@ -290,7 +366,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 }
             }
             
-            // Si pas trouvé par email, essayer par nom + prénom
             if (!$contactId && !empty($nom) && !empty($prenom)) {
                 $existingContacts = $db->select('contact', [
                     'id_compte' => $idCompte,
@@ -303,8 +378,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 }
             }
             
-            // Si le contact n'existe pas, le créer
+            // ============================================
+            // CRÉATION DU CONTACT S'IL N'EXISTE PAS
+            // ============================================
             if (!$contactId) {
+                // Formater le téléphone fixe
                 $telephoneFormatted = null;
                 if (!empty($telephone)) {
                     if (substr($telephone, 0, 3) === '261') {
@@ -314,18 +392,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     }
                 }
                 
+                // Formater le téléphone portable
+                $telPortableFormatted = null;
+                if (!empty($telPortable)) {
+                    if (substr($telPortable, 0, 3) === '261') {
+                        $telPortableFormatted = $telPortable;
+                    } else {
+                        $telPortableFormatted = formatPhoneNumber($telPortable);
+                    }
+                }
+                
+                // ============================================
+                // DONNÉES COMPLÈTES DU CONTACT AVEC NOUVELLES COLONNES
+                // ============================================
                 $contactData = [
                     'id_compte' => $idCompte,
                     'nom' => $nom,
                     'prenom' => $prenom,
                     'email' => !empty($email) ? $email : null,
                     'telephone' => $telephoneFormatted,
+                    'tel_portable' => $telPortableFormatted,
                     'adresse' => !empty($adresse) ? $adresse : null,
                     'ville' => !empty($ville) ? $ville : null,
                     'code_postal' => !empty($code_postal) ? $code_postal : null,
                     'pays' => !empty($pays) ? $pays : 'France',
                     'date_naissance' => !empty($dateNaissance) ? $dateNaissance : null,
-                    'date_inscription' => date('Y-m-d H:i:s')
+                    'date_inscription' => date('Y-m-d H:i:s'),
+                    // NOUVELLES COLONNES
+                    'no_client' => !empty($noClient) ? $noClient : null,
+                    'civilite' => !empty($civilite) ? $civilite : null,
+                    'sexe' => !empty($sexe) ? $sexe : null,
+                    'commentaire' => !empty($commentaire) ? $commentaire : null,
+                    'commentaire_prive' => !empty($commentairePrive) ? $commentairePrive : null,
+                    'enseigne' => !empty($enseigne) ? $enseigne : null,
+                    'numero_siret' => !empty($numeroSiret) ? $numeroSiret : null,
+                    'mari' => !empty($mari) ? $mari : null,
+                    'anniversaire_mari' => !empty($anniversaireMari) ? $anniversaireMari : null,
+                    'femme' => !empty($femme) ? $femme : null,
+                    'anniversaire_femme' => !empty($anniversaireFemme) ? $anniversaireFemme : null,
+                    'points_fidelite' => $pointsFidelite,
+                    'cumul_cadeau' => $cumulCadeau,
+                    'cumul_achats' => $cumulAchats,
+                    'cumul_achat_avant_cadeau' => $cumulAchatAvantCadeau,
+                    'quantite_article' => $quantiteArticle,
+                    'nombre_ticket' => $nombreTicket,
+                    'identifiant_ecommerce' => !empty($identifiantEcommerce) ? $identifiantEcommerce : null,
+                    'valeur_coupon' => !empty($valeurCoupon) ? $valeurCoupon : null,
+                    'date_fin_validite_coupon' => !empty($dateFinValiditeCoupon) ? $dateFinValiditeCoupon : null
                 ];
                 
                 try {
@@ -343,7 +456,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 }
             }
             
-            // Ajouter le contact à la liste
+            // ============================================
+            // AJOUT DU CONTACT À LA LISTE
+            // ============================================
             if ($contactId) {
                 $existingInList = $db->select('liste_contact', [
                     'id_liste' => $id_liste,
@@ -375,7 +490,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         
         error_log("Import terminé: $importCount importés, $createdCount créés, $existingCount existants, " . count($errors) . " erreurs");
         
-        // Construire le message de retour
         if ($importCount > 0) {
             $message = "$importCount contact(s) importé(s) dans la liste";
             if ($createdCount > 0) {
@@ -385,7 +499,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $message .= " ($existingCount existant(s) ajouté(s))";
             }
             if (!empty($errors)) {
-                $message .= count($errors) . " non importé (s)";
+                $message .= " (" . count($errors) . " non importé(s))";
             }
             echo json_encode(['success' => true, 'message' => $message, 'imported' => $importCount]);
         } else {
@@ -416,14 +530,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_rename'])) {
     if (!empty($id_liste) && !empty($nouveau_nom)) {
         try {
             $db->update('liste', ['nom_liste' => $nouveau_nom], ['id_liste' => $id_liste, 'id_compte' => $idCompte]);
-            $_SESSION['flash_message'] = "Liste renommée avec succès";
+            header('Location: index.php?page=listes/index&success=renamed');
         } catch (Exception $e) {
-            $_SESSION['flash_error'] = "Erreur lors du renommage";
+            header('Location: index.php?page=listes/index&error=rename');
         }
     } else {
-        $_SESSION['flash_error'] = "Le nom ne peut pas être vide";
+        header('Location: index.php?page=listes/index&error=empty_name');
     }
-    header('Location: index.php?page=listes/index');
     exit();
 }
 
@@ -436,14 +549,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_clear'])) {
     if (!empty($id_liste)) {
         try {
             $db->deleteWithConditions('liste_contact', ['id_liste' => $id_liste]);
-            $_SESSION['flash_message'] = "La liste a été vidée avec succès";
+            header('Location: index.php?page=listes/index&success=cleared');
         } catch (Exception $e) {
-            $_SESSION['flash_error'] = "Erreur lors du vidage";
+            header('Location: index.php?page=listes/index&error=clear');
         }
     } else {
-        $_SESSION['flash_error'] = "ID de liste invalide";
+        header('Location: index.php?page=listes/index&error=invalid_id');
     }
-    header('Location: index.php?page=listes/index');
     exit();
 }
 
@@ -457,14 +569,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete'])) {
         try {
             $db->deleteWithConditions('liste_contact', ['id_liste' => $id_liste]);
             $db->delete('liste', $id_liste, 'id_liste');
-            $_SESSION['flash_message'] = "La liste a été supprimée avec succès";
+            header('Location: index.php?page=listes/index&success=deleted');
         } catch (Exception $e) {
-            $_SESSION['flash_error'] = "Erreur lors de la suppression";
+            header('Location: index.php?page=listes/index&error=delete');
         }
     } else {
-        $_SESSION['flash_error'] = "ID de liste invalide";
+        header('Location: index.php?page=listes/index&error=invalid_id');
     }
-    header('Location: index.php?page=listes/index');
     exit();
 }
 
@@ -483,11 +594,47 @@ $tousContacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'nom.asc
 
 $totalListes = count($listes);
 
+// Gérer les messages de succès/erreur via les paramètres GET
+$successType = isset($_GET['success']) ? $_GET['success'] : null;
+$errorType = isset($_GET['error']) ? $_GET['error'] : null;
+
 // Messages flash
-$flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
-$flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
-unset($_SESSION['flash_message']);
-unset($_SESSION['flash_error']);
+$flashMessage = null;
+$flashError = null;
+
+if ($successType) {
+    switch ($successType) {
+        case 'renamed':
+            $flashMessage = 'Liste renommée avec succès';
+            break;
+        case 'cleared':
+            $flashMessage = 'La liste a été vidée avec succès';
+            break;
+        case 'deleted':
+            $flashMessage = 'La liste a été supprimée avec succès';
+            break;
+    }
+}
+
+if ($errorType) {
+    switch ($errorType) {
+        case 'rename':
+            $flashError = 'Erreur lors du renommage';
+            break;
+        case 'clear':
+            $flashError = 'Erreur lors du vidage';
+            break;
+        case 'delete':
+            $flashError = 'Erreur lors de la suppression';
+            break;
+        case 'empty_name':
+            $flashError = 'Le nom ne peut pas être vide';
+            break;
+        case 'invalid_id':
+            $flashError = 'ID de liste invalide';
+            break;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -496,6 +643,9 @@ unset($_SESSION['flash_error']);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mes listes - <?= APP_NAME ?></title>
     <style>
+        /* ============================================
+           TOAST NOTIFICATION
+           ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -525,26 +675,317 @@ unset($_SESSION['flash_error']);
             transform: scale(1) !important;
         }
         .liste-row.hidden-row { display: none; }
-        .modal-add-liste {
-            transition: all 0.3s ease;
-            transform: scale(0.95);
-            opacity: 0;
-        }
-        .modal-add-liste.modal-show {
-            opacity: 1 !important;
-            transform: scale(1) !important;
-        }
         
-        .contact-item.hide {
+        /* ============================================
+           STYLES POUR LES MODALES EN PLEIN ÉCRAN
+           ============================================ */
+        
+        /* Overlay des modales */
+        #addListeModal,
+        #addContactToListModal,
+        #renameModal,
+        #clearModal,
+        #deleteModal,
+        #importModal {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background-color: rgba(0, 0, 0, 0.6) !important;
+            backdrop-filter: blur(3px);
+            z-index: 9999 !important;
             display: none;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 20px !important;
+            margin: 0 !important;
+            overflow: hidden !important;
         }
-        .dropdown-search-input {
-            position: sticky;
-            top: 0;
-            background: white;
-            z-index: 10;
+
+        /* Conteneur des modales */
+        .modal-add-liste,
+        #addContactToListModal > div,
+        #renameModal > div,
+        #clearModal > div,
+        #deleteModal > div,
+        #importModal > div {
+            position: relative !important;
+            width: 95% !important;
+            max-width: 800px !important;
+            height: auto !important;
+            max-height: 92vh !important;
+            margin: 0 auto !important;
+            border-radius: 16px !important;
+            background: #f8fafc !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            z-index: 10000 !important;
+            animation: modalSlideIn 0.3s ease-out !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
         }
-        
+
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(30px) scale(0.98);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* Contenu interne */
+        #addListeModal .p-6,
+        #addContactToListModal .p-6,
+        #renameModal .p-6,
+        #clearModal .p-6,
+        #deleteModal .p-6,
+        #importModal .p-6 {
+            padding: 24px 32px !important;
+        }
+
+        /* Header */
+        .modal-header-sticky {
+            flex-shrink: 0 !important;
+            background: white !important;
+            padding: 16px 24px !important;
+            border-bottom: 2px solid #e5e7eb !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 20 !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+        }
+
+        .modal-header-sticky .flex.justify-between.items-center {
+            width: 100% !important;
+        }
+
+        /* Zone de contenu scrollable */
+        .modal-scroll-content {
+            flex: 1 !important;
+            overflow-y: auto !important;
+            padding: 16px 4px 20px 4px !important;
+            min-height: 0 !important;
+        }
+
+        /* Footer */
+        .modal-footer-sticky {
+            flex-shrink: 0 !important;
+            background: white !important;
+            padding: 16px 24px !important;
+            border-top: 2px solid #e5e7eb !important;
+            position: sticky !important;
+            bottom: 0 !important;
+            z-index: 20 !important;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.06) !important;
+        }
+
+        /* ============================================
+           STYLES POUR LES BOUTONS D'ACTION
+           ============================================ */
+        .action-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 8px 14px !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+            border-radius: 8px !important;
+            transition: all 0.2s ease !important;
+            border: none !important;
+            cursor: pointer !important;
+            min-width: 36px !important;
+            min-height: 36px !important;
+        }
+
+        .action-btn i {
+            font-size: 14px !important;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-1px) !important;
+        }
+
+        .action-btn-edit {
+            background: #fef3c7 !important;
+            color: #d97706 !important;
+        }
+        .action-btn-edit:hover {
+            background: #fde68a !important;
+        }
+
+        .action-btn-add {
+            background: #dbeafe !important;
+            color: #2563eb !important;
+        }
+        .action-btn-add:hover {
+            background: #bfdbfe !important;
+        }
+
+        .action-btn-view {
+            background: #d1fae5 !important;
+            color: #059669 !important;
+        }
+        .action-btn-view:hover {
+            background: #a7f3d0 !important;
+        }
+
+        .action-btn-import {
+            background: #ede9fe !important;
+            color: #7c3aed !important;
+        }
+        .action-btn-import:hover {
+            background: #ddd6fe !important;
+        }
+
+        .action-btn-clear {
+            background: #ffedd5 !important;
+            color: #ea580c !important;
+        }
+        .action-btn-clear:hover {
+            background: #fed7aa !important;
+        }
+
+        .action-btn-delete {
+            background: #fee2e2 !important;
+            color: #dc2626 !important;
+        }
+        .action-btn-delete:hover {
+            background: #fecaca !important;
+        }
+
+        /* ============================================
+           BOUTONS PRINCIPAUX
+           ============================================ */
+        .btn-primary {
+            background: #3b82f6 !important;
+            color: white !important;
+            padding: 12px 28px !important;
+            border-radius: 10px !important;
+            font-weight: 600 !important;
+            font-size: 15px !important;
+            transition: all 0.2s ease !important;
+            border: none !important;
+            cursor: pointer !important;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: white !important;
+            color: #1e293b !important;
+            padding: 12px 28px !important;
+            border-radius: 10px !important;
+            font-weight: 500 !important;
+            font-size: 15px !important;
+            transition: all 0.2s ease !important;
+            border: 1.5px solid #e2e8f0 !important;
+            cursor: pointer !important;
+        }
+
+        .btn-secondary:hover {
+            background: #f8fafc !important;
+            border-color: #cbd5e1 !important;
+        }
+
+        .btn-success {
+            background: #10b981 !important;
+            color: white !important;
+            padding: 12px 28px !important;
+            border-radius: 10px !important;
+            font-weight: 600 !important;
+            font-size: 15px !important;
+            transition: all 0.2s ease !important;
+            border: none !important;
+            cursor: pointer !important;
+        }
+
+        .btn-success:hover {
+            background: #059669 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-danger {
+            background: #ef4444 !important;
+            color: white !important;
+            padding: 12px 28px !important;
+            border-radius: 10px !important;
+            font-weight: 600 !important;
+            font-size: 15px !important;
+            transition: all 0.2s ease !important;
+            border: none !important;
+            cursor: pointer !important;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-warning {
+            background: #f59e0b !important;
+            color: white !important;
+            padding: 12px 28px !important;
+            border-radius: 10px !important;
+            font-weight: 600 !important;
+            font-size: 15px !important;
+            transition: all 0.2s ease !important;
+            border: none !important;
+            cursor: pointer !important;
+        }
+
+        .btn-warning:hover {
+            background: #d97706 !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        }
+
+        /* ============================================
+           CHAMPS DE FORMULAIRE AGRANDIS
+           ============================================ */
+        .modal-scroll-content input,
+        .modal-scroll-content select,
+        .modal-scroll-content textarea {
+            width: 100% !important;
+            padding: 12px 16px !important;
+            font-size: 15px !important;
+            border: 1.5px solid #e2e8f0 !important;
+            border-radius: 10px !important;
+            background: white !important;
+            transition: all 0.2s ease !important;
+        }
+
+        .modal-scroll-content input:focus,
+        .modal-scroll-content select:focus,
+        .modal-scroll-content textarea:focus {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+            outline: none !important;
+        }
+
+        .modal-scroll-content label {
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            color: #1e293b !important;
+            margin-bottom: 6px !important;
+            display: block !important;
+        }
+
+        /* ============================================
+           STYLES SPÉCIFIQUES POUR LE MODAL IMPORT
+           ============================================ */
         .file-upload-wrapper {
             position: relative;
             overflow: hidden;
@@ -561,23 +1002,98 @@ unset($_SESSION['flash_error']);
         .file-upload-wrapper .file-info {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px;
+            gap: 12px;
+            padding: 16px 20px;
             border: 2px dashed #d1d5db;
-            border-radius: 8px;
+            border-radius: 10px;
             transition: all 0.3s;
+            min-height: 60px;
         }
         .file-upload-wrapper .file-info:hover {
             border-color: #8b5cf6;
             background: #f5f3ff;
         }
         .file-upload-wrapper .file-info .file-name {
-            font-size: 14px;
+            font-size: 15px;
             color: #1f2937;
+            font-weight: 500;
         }
         .file-upload-wrapper .file-info .file-size {
-            font-size: 12px;
+            font-size: 13px;
             color: #6b7280;
+        }
+        .file-upload-wrapper .file-info i {
+            font-size: 28px !important;
+        }
+
+        /* ============================================
+           CONTACTS LIST
+           ============================================ */
+        .contact-item {
+            padding: 12px 16px !important;
+            transition: background 0.2s ease !important;
+        }
+        .contact-item:hover {
+            background: #f8fafc !important;
+        }
+        .contact-item .contact-checkbox {
+            width: 18px !important;
+            height: 18px !important;
+            margin-right: 12px !important;
+        }
+
+        /* ============================================
+           VERSION MOBILE
+           ============================================ */
+        @media (max-width: 768px) {
+            #addListeModal,
+            #addContactToListModal,
+            #renameModal,
+            #clearModal,
+            #deleteModal,
+            #importModal {
+                padding: 8px !important;
+            }
+            
+            .modal-add-liste,
+            #addContactToListModal > div,
+            #renameModal > div,
+            #clearModal > div,
+            #deleteModal > div,
+            #importModal > div {
+                width: 100% !important;
+                max-height: 98vh !important;
+                border-radius: 12px !important;
+            }
+            
+            #addListeModal .p-6,
+            #addContactToListModal .p-6,
+            #renameModal .p-6,
+            #clearModal .p-6,
+            #deleteModal .p-6,
+            #importModal .p-6 {
+                padding: 16px !important;
+            }
+
+            .action-btn {
+                padding: 6px 10px !important;
+                font-size: 12px !important;
+                min-width: 32px !important;
+                min-height: 32px !important;
+            }
+
+            .action-btn i {
+                font-size: 12px !important;
+            }
+
+            .btn-primary,
+            .btn-secondary,
+            .btn-success,
+            .btn-danger,
+            .btn-warning {
+                padding: 10px 20px !important;
+                font-size: 14px !important;
+            }
         }
     </style>
 </head>
@@ -589,17 +1105,10 @@ unset($_SESSION['flash_error']);
             <h1 class="text-2xl font-bold text-gray-800">Mes listes</h1>
             <p class="text-gray-500">Organisez vos contacts par groupes</p>
         </div>
-        <button type="button" onclick="openAddListeModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+        <button type="button" onclick="openAddListeModal()" class="btn-primary">
             <i class="fas fa-plus mr-2"></i>Nouvelle liste
         </button>
     </div>
-
-    <?php if ($flashMessage): ?>
-        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded"><?= htmlspecialchars($flashMessage) ?></div>
-    <?php endif; ?>
-    <?php if ($flashError): ?>
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded"><?= htmlspecialchars($flashError) ?></div>
-    <?php endif; ?>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-white rounded-lg shadow p-4">
@@ -612,9 +1121,9 @@ unset($_SESSION['flash_error']);
         <div class="bg-white rounded-lg shadow p-4 md:col-span-2">
             <div class="relative">
                 <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                <input type="text" id="searchInput" placeholder="Rechercher par nom de liste..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
+                <input type="text" id="searchInput" placeholder="Rechercher par nom de liste..." class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition text-base">
             </div>
-            <div class="mt-2 text-right"><span id="filteredCount" class="text-xs text-gray-500"></span></div>
+            <div class="mt-2 text-right"><span id="filteredCount" class="text-sm text-gray-500"></span></div>
         </div>
     </div>
 
@@ -622,7 +1131,7 @@ unset($_SESSION['flash_error']);
         <div class="bg-white rounded-lg shadow p-12 text-center">
             <i class="fas fa-list text-5xl text-gray-300 mb-4"></i>
             <p class="text-gray-500">Aucune liste pour le moment.</p>
-            <button onclick="openAddListeModal()" class="text-blue-600 mt-2 inline-block">Créer votre première liste →</button>
+            <button onclick="openAddListeModal()" class="text-blue-600 mt-2 inline-block font-medium">Créer votre première liste →</button>
         </div>
     <?php else: ?>
         <div class="bg-white rounded-lg shadow overflow-hidden">
@@ -630,29 +1139,55 @@ unset($_SESSION['flash_error']);
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom de la liste</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacts</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom de la liste</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacts</th>
+                            <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date de création</th>
+                            <th class="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="listesTableBody">
                         <?php foreach ($listes as $liste): ?>
                             <tr class="liste-row hover:bg-gray-50 transition" data-name="<?= strtolower(htmlspecialchars($liste['nom_liste'])) ?>" data-id="<?= $liste['id_liste'] ?>">
-                                <td class="px-6 py-4"><div class="flex items-center"><div class="bg-blue-100 rounded-full p-2 mr-3"><i class="fas fa-list text-blue-600 text-sm"></i></div><?= htmlspecialchars($liste['nom_liste']) ?></div></td>
-                                <td class="px-6 py-4"><?= $liste['nb_contacts'] ?> contact(s)</td>
-                                <td class="px-6 py-4"><?= date('d/m/Y', strtotime($liste['date_creation'])) ?></td>
-                                <td class="px-6 py-4 text-right space-x-2">
-                                    <button type="button" onclick="openRenameModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-yellow-600 hover:text-yellow-800" title="Renommer"><i class="fas fa-edit"></i></button>
-                                    <button type="button" onclick="openAddContactToListModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-blue-600 hover:text-blue-800" title="Ajouter un contact"><i class="fas fa-user-plus"></i></button>
-                                    <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" class="text-green-600 hover:text-green-800" title="Voir les contacts"><i class="fas fa-eye"></i></a>
-                                    <button type="button" onclick="openImportModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-purple-600 hover:text-purple-800" title="Importer CSV"><i class="fas fa-file-import"></i></button>
-                                    <button type="button" onclick="openClearModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" data-count="<?= $liste['nb_contacts'] ?>" class="text-orange-600 hover:text-orange-800" title="Vider"><i class="fas fa-trash-alt"></i></button>
-                                    <button type="button" onclick="openDeleteModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="text-red-600 hover:text-red-800" title="Supprimer"><i class="fas fa-times-circle"></i></button>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center">
+                                        <div class="bg-blue-100 rounded-full p-2.5 mr-3">
+                                            <i class="fas fa-list text-blue-600 text-sm"></i>
+                                        </div>
+                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($liste['nom_liste']) ?></span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 text-gray-600"><?= $liste['nb_contacts'] ?> contact(s)</td>
+                                <td class="px-6 py-4 text-gray-500 text-sm"><?= date('d/m/Y', strtotime($liste['date_creation'])) ?></td>
+                                <td class="px-6 py-4">
+                                    <div class="flex justify-end gap-2 flex-wrap">
+                                        <button type="button" onclick="openRenameModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="action-btn action-btn-edit" title="Renommer">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button type="button" onclick="openAddContactToListModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="action-btn action-btn-add" title="Ajouter un contact">
+                                            <i class="fas fa-user-plus"></i>
+                                        </button>
+                                        <a href="index.php?page=listes/details&id=<?= $liste['id_liste'] ?>" class="action-btn action-btn-view" title="Voir les contacts">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <button type="button" onclick="openImportModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="action-btn action-btn-import" title="Importer CSV">
+                                            <i class="fas fa-file-import"></i>
+                                        </button>
+                                        <button type="button" onclick="openClearModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" data-count="<?= $liste['nb_contacts'] ?>" class="action-btn action-btn-clear" title="Vider">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                        <button type="button" onclick="openDeleteModal(this)" data-id="<?= $liste['id_liste'] ?>" data-name="<?= htmlspecialchars($liste['nom_liste'], ENT_QUOTES) ?>" class="action-btn action-btn-delete" title="Supprimer">
+                                            <i class="fas fa-times-circle"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
-                        <tr id="noResultRow" style="display: none;"><td colspan="4" class="px-6 py-8 text-center text-gray-500"><i class="fas fa-search text-4xl mb-2 block"></i>Aucune liste ne correspond à votre recherche.</td></tr>
+                        <tr id="noResultRow" style="display: none;">
+                            <td colspan="4" class="px-6 py-8 text-center text-gray-500">
+                                <i class="fas fa-search text-4xl mb-2 block"></i>
+                                Aucune liste ne correspond à votre recherche.
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -663,41 +1198,45 @@ unset($_SESSION['flash_error']);
 <!-- ============================================ -->
 <!-- MODAL D'AJOUT DE LISTE -->
 <!-- ============================================ -->
-<div id="addListeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-add-liste">
+<div id="addListeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 modal-add-liste">
         <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-                <div class="flex items-center">
-                    <div class="bg-blue-100 p-2 rounded-full mr-3">
-                        <i class="fas fa-list text-blue-600 text-xl"></i>
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-blue-100 p-2.5 rounded-full mr-3">
+                            <i class="fas fa-list text-blue-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-800">Créer une nouvelle liste</h3>
                     </div>
-                    <h3 class="text-xl font-bold text-gray-800">Créer une nouvelle liste</h3>
+                    <button type="button" onclick="closeAddListeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
-                <button type="button" onclick="closeAddListeModal()" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
             </div>
             
-            <form id="addListeForm" method="POST">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Nom de la liste *</label>
-                    <input type="text" name="nom_liste" id="nom_liste" required 
-                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
-                           placeholder="Ex: Newsletter, Clients VIP, Prospects...">
-                    <p class="text-xs text-gray-500 mt-1">Choisissez un nom explicite pour votre liste</p>
-                </div>
-                
-                <div class="mt-6 flex justify-end space-x-2">
-                    <button type="button" onclick="closeAddListeModal()" 
-                            class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                        Créer la liste
-                    </button>
-                </div>
-            </form>
+            <div class="modal-scroll-content">
+                <form id="addListeForm" method="POST">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Nom de la liste *</label>
+                        <input type="text" name="nom_liste" id="nom_liste" required 
+                               class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-base"
+                               placeholder="Ex: Newsletter, Clients VIP, Prospects...">
+                        <p class="text-xs text-gray-500 mt-1">Choisissez un nom explicite pour votre liste</p>
+                    </div>
+                    
+                    <div class="modal-footer-sticky">
+                        <div class="flex justify-end space-x-3">
+                            <button type="button" onclick="closeAddListeModal()" class="btn-secondary">
+                                Annuler
+                            </button>
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-plus mr-2"></i>Créer la liste
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -705,144 +1244,235 @@ unset($_SESSION['flash_error']);
 <!-- ============================================ -->
 <!-- MODAL AJOUTER CONTACT À UNE LISTE -->
 <!-- ============================================ -->
-<div id="addContactToListModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col">
-        <div class="p-6 border-b">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center">
-                    <div class="bg-blue-100 p-2 rounded-full mr-3">
-                        <i class="fas fa-user-plus text-blue-600 text-xl"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-800">Ajouter des contacts</h3>
-                </div>
-                <button type="button" onclick="closeAddContactToListModal()" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-            <p class="text-gray-500 mt-1">Ajouter des contacts à la liste : <strong id="addContactListName"></strong></p>
-        </div>
-        
-        <div class="p-6 flex-1 overflow-y-auto">
-            <div class="mb-4">
-                <div class="relative">
-                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                    <input type="text" id="searchContactInput" placeholder="Rechercher un contact par nom, email ou téléphone..." 
-                           class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
-                </div>
-            </div>
-            
-            <div class="border rounded-lg overflow-hidden">
-                <div class="max-h-96 overflow-y-auto" id="contactsListContainer">
-                    <div id="loadingContacts" class="p-4 text-center text-gray-500">
-                        <i class="fas fa-spinner fa-spin mr-2"></i>Chargement des contacts...
-                    </div>
-                </div>
-            </div>
-            
-            <div class="mt-4 flex justify-between items-center">
-                <div>
-                    <span class="text-sm text-gray-500">
-                        <span id="selectedCount">0</span> contact(s) sélectionné(s)
-                    </span>
-                </div>
-                <div class="flex space-x-2">
-                    <button type="button" onclick="selectAllContacts()" class="text-sm text-blue-600 hover:text-blue-800">
-                        <i class="fas fa-check-double"></i> Tout sélectionner
-                    </button>
-                    <button type="button" onclick="selectNoneContacts()" class="text-sm text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times"></i> Tout désélectionner
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="p-6 border-t bg-gray-50 flex justify-end space-x-2">
-            <button type="button" onclick="closeAddContactToListModal()" 
-                    class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                Annuler
-            </button>
-            <button type="button" onclick="submitAddContactsToList()" id="submitAddContactsBtn"
-                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                <i class="fas fa-plus mr-2"></i>Ajouter les contacts sélectionnés
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL RENOMMER -->
-<div id="renameModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+<div id="addContactToListModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 max-h-[95vh] flex flex-col">
         <div class="p-6">
-            <h3 class="text-lg font-bold mb-4">Renommer la liste</h3>
-            <form method="POST">
-                <input type="hidden" name="action_rename" value="1">
-                <input type="hidden" name="id_liste" id="renameListId">
-                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Nouveau nom</label><input type="text" name="nom_liste" id="renameListName" required class="w-full border border-gray-300 rounded-lg px-3 py-2"></div>
-                <div class="flex justify-end space-x-2"><button type="button" onclick="closeRenameModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Renommer</button></div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL VIDER -->
-<div id="clearModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
-        <div class="p-6 text-center">
-            <h3 class="text-xl font-bold mb-2">Vider la liste</h3>
-            <p class="text-gray-500 mb-4">Êtes-vous sûr de vouloir vider la liste <strong id="clearListName"></strong> ?</p>
-            <form method="POST"><input type="hidden" name="action_clear" value="1"><input type="hidden" name="id_liste" id="clearListId"><div class="flex justify-center space-x-2"><button type="button" onclick="closeClearModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" class="px-4 py-2 bg-orange-600 text-white rounded-lg">Vider</button></div></form>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL SUPPRIMER -->
-<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
-        <div class="p-6 text-center">
-            <h3 class="text-xl font-bold mb-2">Supprimer la liste</h3>
-            <p class="text-gray-500 mb-4">Êtes-vous sûr de vouloir supprimer la liste <strong id="deleteListName"></strong> ?<br>Les contacts ne seront pas supprimés.</p>
-            <form method="POST"><input type="hidden" name="action_delete" value="1"><input type="hidden" name="id_liste" id="deleteListId"><div class="flex justify-center space-x-2"><button type="button" onclick="closeDeleteModal()" class="px-4 py-2 border rounded-lg">Annuler</button><button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg">Supprimer</button></div></form>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL IMPORT CSV -->
-<div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4">
-        <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold">Importer des contacts</h3>
-                <button onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="bg-blue-50 p-3 rounded mb-4 text-sm">
-                <strong>Format attendu :</strong> 
-                <span class="block mt-1 text-xs text-gray-600">Colonnes: prenom, nom, email, telephone, ville, adresse, code_postal, pays, date_naissance</span>
-                <span class="block mt-1 text-xs text-gray-600">Séparateur: ; ou ,</span>
-                <span class="block mt-1 text-xs text-gray-600">Date: YYYY-MM-DD ou DD/MM/YYYY</span>
-                <span class="block mt-1 text-xs text-gray-600 text-red-500">Âge minimum: 18 ans</span>
-            </div>
-            <form id="importForm" method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="id_liste" id="importListId">
-                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Liste cible</label><span id="importListName" class="font-semibold"></span></div>
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Fichier CSV</label>
-                    <div class="file-upload-wrapper">
-                        <div class="file-info" id="fileInfo">
-                            <i class="fas fa-cloud-upload-alt text-2xl text-purple-500"></i>
-                            <span class="file-name" id="fileName">Cliquez ou glissez votre fichier CSV ici</span>
-                            <span class="file-size" id="fileSize"></span>
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-blue-100 p-2.5 rounded-full mr-3">
+                            <i class="fas fa-user-plus text-blue-600 text-xl"></i>
                         </div>
-                        <input type="file" name="csv_file" accept=".csv" required id="csvFileInput">
+                        <h3 class="text-2xl font-bold text-gray-800">Ajouter des contacts</h3>
                     </div>
-                </div>
-                <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Séparateur</label><select name="separator" class="w-full border border-gray-300 rounded-lg px-3 py-2"><option value=";">Point-virgule (;)</option><option value=",">Virgule (,)</option></select></div>
-                <div class="flex justify-end space-x-2">
-                    <button type="button" onclick="closeImportModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">Annuler</button>
-                    <button type="submit" id="importSubmitBtn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition">
-                        <i class="fas fa-upload mr-2"></i>Importer
+                    <button type="button" onclick="closeAddContactToListModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
                     </button>
                 </div>
-            </form>
+                <p class="text-gray-500 mt-1 text-base">Ajouter des contacts à la liste : <strong id="addContactListName"></strong></p>
+            </div>
+            
+            <div class="modal-scroll-content">
+                <div class="mb-4">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        <input type="text" id="searchContactInput" placeholder="Rechercher un contact par nom, email ou téléphone..." 
+                               class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-base">
+                    </div>
+                </div>
+                
+                <div class="border rounded-lg overflow-hidden">
+                    <div class="max-h-96 overflow-y-auto" id="contactsListContainer">
+                        <div id="loadingContacts" class="p-4 text-center text-gray-500">
+                            <i class="fas fa-spinner fa-spin mr-2"></i>Chargement des contacts...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 flex justify-between items-center">
+                    <div>
+                        <span class="text-sm text-gray-500">
+                            <span id="selectedCount">0</span> contact(s) sélectionné(s)
+                        </span>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button type="button" onclick="selectAllContacts()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                            <i class="fas fa-check-double"></i> Tout sélectionner
+                        </button>
+                        <button type="button" onclick="selectNoneContacts()" class="text-sm text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times"></i> Tout désélectionner
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer-sticky">
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeAddContactToListModal()" class="btn-secondary">
+                        Annuler
+                    </button>
+                    <button type="button" onclick="submitAddContactsToList()" id="submitAddContactsBtn" class="btn-primary">
+                        <i class="fas fa-plus mr-2"></i>Ajouter les contacts sélectionnés
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODAL RENOMMER -->
+<!-- ============================================ -->
+<div id="renameModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6">
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-yellow-100 p-2.5 rounded-full mr-3">
+                            <i class="fas fa-edit text-yellow-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-800">Renommer la liste</h3>
+                    </div>
+                    <button type="button" onclick="closeRenameModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="modal-scroll-content">
+                <form method="POST">
+                    <input type="hidden" name="action_rename" value="1">
+                    <input type="hidden" name="id_liste" id="renameListId">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Nouveau nom</label>
+                        <input type="text" name="nom_liste" id="renameListName" required 
+                               class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 text-base">
+                    </div>
+                    <div class="modal-footer-sticky">
+                        <div class="flex justify-end space-x-3">
+                            <button type="button" onclick="closeRenameModal()" class="btn-secondary">Annuler</button>
+                            <button type="submit" class="btn-primary"><i class="fas fa-save mr-2"></i>Renommer</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODAL VIDER -->
+<!-- ============================================ -->
+<div id="clearModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-orange-100 mb-4">
+                    <i class="fas fa-trash-alt text-orange-600 text-3xl"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Vider la liste</h3>
+                <p class="text-gray-500 mb-6 text-base">Êtes-vous sûr de vouloir vider la liste <strong id="clearListName"></strong> ?</p>
+                <p class="text-sm text-gray-400 mb-6">Cette action est irréversible.</p>
+                <form method="POST">
+                    <input type="hidden" name="action_clear" value="1">
+                    <input type="hidden" name="id_liste" id="clearListId">
+                    <div class="flex justify-center space-x-3">
+                        <button type="button" onclick="closeClearModal()" class="btn-secondary">Annuler</button>
+                        <button type="submit" class="btn-warning"><i class="fas fa-trash-alt mr-2"></i>Vider</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODAL SUPPRIMER -->
+<!-- ============================================ -->
+<div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-red-100 mb-4">
+                    <i class="fas fa-times-circle text-red-600 text-3xl"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">Supprimer la liste</h3>
+                <p class="text-gray-500 mb-6 text-base">Êtes-vous sûr de vouloir supprimer la liste <strong id="deleteListName"></strong> ?</p>
+                <p class="text-sm text-gray-400 mb-6">Les contacts ne seront pas supprimés.</p>
+                <form method="POST">
+                    <input type="hidden" name="action_delete" value="1">
+                    <input type="hidden" name="id_liste" id="deleteListId">
+                    <div class="flex justify-center space-x-3">
+                        <button type="button" onclick="closeDeleteModal()" class="btn-secondary">Annuler</button>
+                        <button type="submit" class="btn-danger"><i class="fas fa-trash mr-2"></i>Supprimer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODAL IMPORT CSV -->
+<!-- ============================================ -->
+<div id="importModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4">
+        <div class="p-6">
+            <div class="modal-header-sticky">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center">
+                        <div class="bg-purple-100 p-2.5 rounded-full mr-3">
+                            <i class="fas fa-file-import text-purple-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-800">Importer des contacts</h3>
+                    </div>
+                    <button type="button" onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="modal-scroll-content">
+                <div class="bg-blue-50 p-4 rounded-lg mb-4 text-sm">
+                    <strong class="text-blue-800">Format attendu :</strong>
+                    <ul class="mt-2 text-gray-600 space-y-1">
+                        <li><i class="fas fa-check-circle text-green-500 mr-2"></i>Colonnes: prenom, nom, email, telephone, tel_portable, ville, adresse, code_postal, pays, date_naissance, no_client, civilite, sexe, commentaire, commentaire_prive, enseigne, numero_siret, mari, anniversaire_mari, femme, anniversaire_femme, points_fidelite, cumul_cadeau, cumul_achats, cumul_achat_avant_cadeau, quantite_article, nombre_ticket, identifiant_ecommerce, valeur_coupon, date_fin_validite_coupon</li>
+                        <li><i class="fas fa-check-circle text-green-500 mr-2"></i>Séparateur: ; ou ,</li>
+                        <li><i class="fas fa-check-circle text-green-500 mr-2"></i>Date: YYYY-MM-DD ou DD/MM/YYYY</li>
+                        <li><i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>Âge minimum: 18 ans</li>
+                    </ul>
+                </div>
+                
+                <form id="importForm" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="id_liste" id="importListId">
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Liste cible</label>
+                        <span id="importListName" class="text-base font-semibold text-gray-800"></span>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Fichier CSV</label>
+                        <div class="file-upload-wrapper">
+                            <div class="file-info" id="fileInfo">
+                                <i class="fas fa-cloud-upload-alt text-purple-500"></i>
+                                <span class="file-name" id="fileName">Cliquez ou glissez votre fichier CSV ici</span>
+                                <span class="file-size" id="fileSize"></span>
+                            </div>
+                            <input type="file" name="csv_file" accept=".csv" required id="csvFileInput">
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Taille max : 5MB</p>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Séparateur</label>
+                        <select name="separator" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-purple-500 text-base">
+                            <option value=";">Point-virgule (;)</option>
+                            <option value=",">Virgule (,)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="modal-footer-sticky">
+                        <div class="flex justify-end space-x-3">
+                            <button type="button" onclick="closeImportModal()" class="btn-secondary">Annuler</button>
+                            <button type="submit" id="importSubmitBtn" class="btn-success">
+                                <i class="fas fa-upload mr-2"></i>Importer
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -862,9 +1492,15 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// Messages flash
-<?php if ($flashMessage): ?> showToast('<?= addslashes($flashMessage) ?>', 'success'); <?php endif; ?>
-<?php if ($flashError): ?> showToast('<?= addslashes($flashError) ?>', 'error'); <?php endif; ?>
+// ============================================
+// AFFICHAGE DES MESSAGES FLASH VIA TOAST
+// ============================================
+<?php if ($flashMessage): ?>
+showToast('<?= addslashes($flashMessage) ?>', 'success');
+<?php endif; ?>
+<?php if ($flashError): ?>
+showToast('<?= addslashes($flashError) ?>', 'error');
+<?php endif; ?>
 
 // ============================================
 // MODAL D'AJOUT DE LISTE
@@ -1098,7 +1734,7 @@ function filterListes() {
 if (searchInput) searchInput.addEventListener('input', filterListes);
 
 // ============================================
-// MODALS EXISTANTS
+// MODALS
 // ============================================
 function openRenameModal(button) {
     document.getElementById('renameListId').value = button.getAttribute('data-id');
@@ -1148,7 +1784,6 @@ document.getElementById('csvFileInput')?.addEventListener('change', function(e) 
         fileInfo.style.borderColor = '#8b5cf6';
         fileInfo.style.background = '#f5f3ff';
         
-        // Vérifier l'extension
         const extension = file.name.split('.').pop().toLowerCase();
         if (extension !== 'csv') {
             showToast('Veuillez sélectionner un fichier CSV', 'warning');
@@ -1156,7 +1791,6 @@ document.getElementById('csvFileInput')?.addEventListener('change', function(e) 
             resetFileInfo();
         }
         
-        // Vérifier la taille
         if (file.size > 5 * 1024 * 1024) {
             showToast('Fichier trop volumineux (max 5MB)', 'warning');
             this.value = '';
@@ -1176,7 +1810,7 @@ function resetFileInfo() {
 }
 
 // ============================================
-// IMPORT CSV AJAX - Version avec logs améliorés
+// IMPORT CSV AJAX
 // ============================================
 document.getElementById('importForm').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -1191,12 +1825,6 @@ document.getElementById('importForm').addEventListener('submit', async function(
     const submitBtn = document.getElementById('importSubmitBtn');
     const originalText = submitBtn.innerHTML;
     
-    //LOG : Afficher les données du formulaire
-    console.log('=== IMPORT CSV ===');
-    for (let pair of formData.entries()) {
-        console.log(pair[0] + ': ' + pair[1]);
-    }
-    
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Import en cours...';
     submitBtn.disabled = true;
     
@@ -1209,12 +1837,7 @@ document.getElementById('importForm').addEventListener('submit', async function(
             body: formData 
         });
         
-        // LOG : Vérifier la réponse
-        console.log('Status HTTP:', response.status);
-        
-        // Lire la réponse brute
         const textResponse = await response.text();
-        console.log('Réponse brute:', textResponse);
         
         let result;
         try {
