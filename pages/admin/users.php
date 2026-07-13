@@ -934,12 +934,12 @@ foreach ($users as $u) {
                                         <?php if ($isActive): ?>
                                             <button onclick="openConfirmModal('suspendre', '<?= $user['id_compte'] ?>', '<?= htmlspecialchars($user['prenom'] ?? $user['user'] ?? 'Utilisateur') ?>')" 
                                                     class="btn-action btn-suspendre" title="Suspendre le compte">
-                                                <i class="fas fa-pause"></i>
+                                                Suspendre<i class="fas fa-pause"></i>
                                             </button>
                                         <?php else: ?>
                                             <button onclick="openConfirmModal('activer', '<?= $user['id_compte'] ?>', '<?= htmlspecialchars($user['prenom'] ?? $user['user'] ?? 'Utilisateur') ?>')" 
                                                     class="btn-action btn-activer" title="Activer le compte">
-                                                <i class="fas fa-play"></i>
+                                                Activer<i class="fas fa-play"></i>
                                             </button>
                                         <?php endif; ?>
                                         
@@ -951,13 +951,13 @@ foreach ($users as $u) {
                                         <?php else: ?>
                                             <button onclick="openRoleModal('<?= $user['id_compte'] ?>', '<?= $role ?>')" 
                                                     class="btn-action btn-role" title="Changer le rôle">
-                                                <i class="fas fa-user-tag"></i>
+                                                Rôle<i class="fas fa-user-tag"></i>
                                             </button>
                                         <?php endif; ?>
                                         
                                         <button onclick="openEditUserModal('<?= $user['id_compte'] ?>')" 
                                                 class="btn-action btn-edit" title="Modifier le compte">
-                                            <i class="fas fa-edit"></i>
+                                            Modifier<i class="fas fa-edit"></i>
                                         </button>
                                     </div>
                                 </td>

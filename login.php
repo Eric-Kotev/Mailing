@@ -21,35 +21,79 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $user = trim($_POST['user'] ?? '');
+    $login = trim($_POST['login'] ?? '');
     $password = $_POST['password'] ?? '';
     
-    if (empty($user) || empty($password)) {
+    if (empty($login) || empty($password)) {
         $error = "Veuillez remplir tous les champs";
     } else {
-        $compte = getCompteByUser($user);
+        $compte = null;
+        $isClient = false;
         
-        if ($compte) {
+        // 1. Vérifier d'abord dans la table compte (admins, managers, users)
+        $compte = getCompteByUser($login);
+        
+        // 2. Si non trouvé dans compte, chercher dans la table clients (clients)
+        if (!$compte) {
+            $clientData = $db->select('clients', ['email' => $login]);
+            if (!empty($clientData)) {
+                $client = $clientData[0];
+                $isClient = true;
+                
+                // Vérifier le mot de passe du client
+                if (password_verify($password, $client['mot_de_passe'])) {
+                    if ($client['statut'] === 'inactif') {
+                        $error = "Votre compte client est désactivé. Contactez l'administrateur.";
+                    } else {
+                        // Stocker les informations du client en session
+                        $_SESSION['user_id'] = $client['id_client'];
+                        $_SESSION['user_name'] = $client['prenom'] . ' ' . $client['nom'];
+                        $_SESSION['user_prenom'] = $client['prenom'];
+                        $_SESSION['user_nom'] = $client['nom'];
+                        $_SESSION['user_entreprise'] = $client['societe'];
+                        $_SESSION['user_email'] = $client['email'];
+                        $_SESSION['user_credits'] = floatval($client['credit'] ?? 0);
+                        $_SESSION['user_role'] = 'client';
+                        $_SESSION['is_client'] = true;
+                        $_SESSION['user_type'] = 'client';
+                        
+                        // Mettre à jour la date de dernière connexion
+                        $db->update('clients', ['derniere_connexion' => date('Y-m-d H:i:s')], ['id_client' => $client['id_client']]);
+                        
+                        header('Location: index.php');
+                        exit;
+                    }
+                } else {
+                    $error = "Mot de passe incorrect";
+                }
+            } else {
+                $error = "Identifiant inconnu";
+            }
+        } 
+        // 3. Si trouvé dans compte, vérifier le mot de passe
+        else {
             if (password_verify($password, $compte['password'])) {
                 if (!$compte['actif']) {
-                    $error = " Votre compte est suspendu. Contactez l'administrateur.";
+                    $error = "Votre compte est suspendu. Contactez l'administrateur.";
                 } else {
+                    // Stocker les informations du compte en session
                     $_SESSION['user_id'] = $compte['id_compte'];
                     $_SESSION['user_name'] = $compte['prenom'] . ' ' . $compte['nom'];
-                    $_SESSION['user_prenom'] = $compte['prenom'];  // AJOUTÉ
-                    $_SESSION['user_nom'] = $compte['nom'];        // AJOUTÉ
+                    $_SESSION['user_prenom'] = $compte['prenom'];
+                    $_SESSION['user_nom'] = $compte['nom'];
                     $_SESSION['user_entreprise'] = $compte['entreprise'];
                     $_SESSION['user_email'] = $compte['user'];
                     $_SESSION['user_credits'] = floatval($compte['credits_total']);
+                    $_SESSION['user_role'] = $compte['role'] ?? 'user';
+                    $_SESSION['is_client'] = false;
+                    $_SESSION['user_type'] = 'compte';
                     
                     header('Location: index.php');
                     exit;
                 }
             } else {
-                $error = " Mot de passe incorrect";
+                $error = "Mot de passe incorrect";
             }
-        } else {
-            $error = " Utilisateur inconnu";
         }
     }
 }
@@ -70,15 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         body {
-           background: linear-gradient(
-        135deg,
-        #020617 0%,
-        #0f172a 30%,
-        #1e293b 70%,
-        #334155 100%
-    );
-    position: relative;
-    overflow: hidden;
+            background: linear-gradient(
+                135deg,
+                #020617 0%,
+                #0f172a 30%,
+                #1e293b 70%,
+                #334155 100%
+            );
+            position: relative;
+            overflow: hidden;
         }
         
         body::before {
@@ -115,9 +159,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-color: #3b82f6;
         }
         
-       .btn-gradient {
-        background: #2563eb;
-        transition: all .3s ease;
+        .btn-gradient {
+            background: #2563eb;
+            transition: all .3s ease;
         }
 
         .btn-gradient:hover {
@@ -167,10 +211,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .toggle-password:focus {
             outline: none;
         }
+        
+        @keyframes animate-shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .animate-shake {
+            animation: animate-shake 0.5s ease-in-out;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .animate-bounce {
+            animation: bounce 2s ease-in-out infinite;
+        }
+        
+        .login-hint {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 relative">
-        <div class="absolute inset-0 overflow-hidden">
+    <div class="absolute inset-0 overflow-hidden">
         <div class="absolute top-0 left-0 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
         <div class="absolute bottom-0 right-0 w-96 h-96 bg-slate-500/20 rounded-full blur-3xl"></div>
     </div>
@@ -217,13 +283,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <form method="POST" action="" id="loginForm">
                 <div class="mb-5">
                     <label class="block text-gray-700 text-sm font-semibold mb-2">
-                        <i class="fas fa-user mr-2 text-blue-500"></i>
-                        Nom d'utilisateur
+                        <i class="fas fa-envelope mr-2 text-blue-500"></i>
+                        Email ou nom d'utilisateur
                     </label>
-                    <input type="text" name="user" required 
-                           value="<?= htmlspecialchars($_POST['user'] ?? '') ?>"
+                    <input type="text" name="login" id="login" required 
+                           value="<?= htmlspecialchars($_POST['login'] ?? '') ?>"
                            class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-blue-600 input-focus transition"
-                           placeholder="Entrez votre nom d'utilisateur">
+                           placeholder="Entrez votre email ou nom d'utilisateur">
+                    <p class="login-hint">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Utilisez votre email (clients) ou nom d'utilisateur (admin/manager)
+                    </p>
                 </div>
                 
                 <div class="mb-6">
@@ -281,23 +351,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
         }
     </script>
-    
-    <style>
-        @keyframes animate-shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-            20%, 40%, 60%, 80% { transform: translateX(5px); }
-        }
-        .animate-shake {
-            animation: animate-shake 0.5s ease-in-out;
-        }
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-        .animate-bounce {
-            animation: bounce 2s ease-in-out infinite;
-        }
-    </style>
 </body>
 </html>

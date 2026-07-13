@@ -17,6 +17,10 @@ if (!empty($prenom) && !empty($nom)) {
     $displayName = $userName;
 }
 
+// Récupérer le rôle pour l'affichage
+$userRole = $_SESSION['user_role'] ?? 'user';
+$isAdmin = ($userRole === 'admin');
+
 // Récupérer le logo de l'utilisateur
 $userLogo = '';
 $userId = $_SESSION['user_id'] ?? 0;
@@ -30,9 +34,10 @@ if ($userId) {
 
 <header class="bg-white shadow-sm">
     <div class="flex justify-between items-center px-6 py-3">
-        <!--  GROUPE GAUCHE : Menu hamburger + Message Bonjour -->
+        <!-- GROUPE GAUCHE : Menu hamburger + Message Bonjour -->
         <div class="flex items-center gap-4">
-            <button id="sidebarToggle" class="text-gray-500 hover:text-gray-700">
+            <!-- Bouton toggle pour le sidebar -->
+            <button id="headerToggleBtn" class="text-gray-500 hover:text-gray-700 focus:outline-none">
                 <i class="fas fa-bars text-xl"></i>
             </button>
             
@@ -45,6 +50,9 @@ if ($userId) {
                 <div class="text-xs text-gray-500 flex items-center gap-2">
                     <i class="fas fa-building text-gray-400"></i>
                     <?= htmlspecialchars($_SESSION['user_entreprise'] ?? 'Aucune entreprise') ?>
+                    <?php if ($isAdmin): ?>
+                        <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-[10px] font-medium">Admin</span>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -77,85 +85,92 @@ if ($userId) {
     </div>
 </header>
 
-<style>
-    .object-cover {
-        object-fit: cover;
-    }
-    
-    .toast-container {
-        position: fixed;
-        top: 80px;
-        right: 20px;
-        z-index: 10000;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-    
-    .toast-notification {
-        min-width: 300px;
-        max-width: 400px;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-        animation: slideInRight 0.3s ease-out;
-        overflow: hidden;
-    }
-    
-    @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-    
-    .toast-notification .toast-content {
-        padding: 14px 16px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    
-    .toast-notification.success .toast-content { background: #10b981; color: white; }
-    .toast-notification.error .toast-content { background: #ef4444; color: white; }
-    .toast-notification.warning .toast-content { background: #f59e0b; color: white; }
-    .toast-notification.info .toast-content { background: #3b82f6; color: white; }
-    
-    .toast-notification .toast-icon {
-        font-size: 1.25rem;
-    }
-    
-    .toast-notification .toast-message {
-        flex: 1;
-        font-size: 0.875rem;
-        font-weight: 500;
-    }
-    
-    .toast-notification .toast-close {
-        cursor: pointer;
-        opacity: 0.7;
-        transition: opacity 0.2s;
-    }
-    
-    .toast-notification .toast-close:hover {
-        opacity: 1;
-    }
-    
-    .toast-notification.fade-out {
-        animation: fadeOut 0.3s ease forwards;
-    }
-    
-    @keyframes fadeOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-    }
-</style>
-
 <script>
+document.addEventListener('DOMContentLoaded', function () {
+    // ============================================
+    // SYNC AVEC LE BOUTON DU SIDEBAR
+    // ============================================
+    const headerToggleBtn = document.getElementById('headerToggleBtn');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    
+    // Fonction pour basculer le sidebar
+    function toggleSidebar() {
+        if (!sidebar) return;
+        
+        const isCollapsed = sidebar.classList.contains('w-20');
+        
+        if (isCollapsed) {
+            // Agrandir
+            sidebar.classList.remove('w-20');
+            sidebar.classList.add('w-64');
+            
+            // Afficher les textes
+            const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
+            allTexts.forEach(text => text.classList.remove('hidden'));
+            
+            // Restaurer les paddings
+            const header = sidebar.querySelector('.p-2');
+            if (header) {
+                header.classList.add('p-4');
+                header.classList.remove('p-2');
+            }
+            const footer = sidebar.querySelector('.p-2.border-t');
+            if (footer) {
+                footer.classList.add('p-4');
+                footer.classList.remove('p-2');
+            }
+            
+            // Mettre à jour l'icône du bouton du sidebar
+            if (sidebarToggle) {
+                sidebarToggle.querySelector('i').className = 'fas fa-chevron-left text-sm';
+            }
+            
+            localStorage.setItem('admin_sidebar_collapsed', 'false');
+        } else {
+            // Rétrécir
+            sidebar.classList.add('w-20');
+            sidebar.classList.remove('w-64');
+            
+            // Cacher les textes
+            const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
+            allTexts.forEach(text => text.classList.add('hidden'));
+            
+            // Réduire les paddings
+            const header = sidebar.querySelector('.p-4');
+            if (header) {
+                header.classList.add('p-2');
+                header.classList.remove('p-4');
+            }
+            const footer = sidebar.querySelector('.p-4.border-t');
+            if (footer) {
+                footer.classList.add('p-2');
+                footer.classList.remove('p-4');
+            }
+            
+            // Mettre à jour l'icône du bouton du sidebar
+            if (sidebarToggle) {
+                sidebarToggle.querySelector('i').className = 'fas fa-chevron-right text-sm';
+            }
+            
+            localStorage.setItem('admin_sidebar_collapsed', 'true');
+        }
+    }
+    
+    // Événement sur le bouton du header
+    if (headerToggleBtn) {
+        headerToggleBtn.addEventListener('click', toggleSidebar);
+    }
+    
+    // Événement sur le bouton du sidebar (si existant)
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', toggleSidebar);
+    }
+});
+
+// ============================================
+// TOAST NOTIFICATIONS
+// ============================================
 function showToast(message, type = 'success') {
     const container = document.getElementById('toastContainer') || (() => {
         const newContainer = document.createElement('div');
@@ -249,3 +264,91 @@ function escapeHtml(text) {
     verifierNotifications(); // vérification immédiate au chargement
 })();
 </script>
+
+<style>
+.object-cover {
+    object-fit: cover;
+}
+
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast-notification {
+    min-width: 300px;
+    max-width: 400px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    animation: slideInRight 0.3s ease-out;
+    overflow: hidden;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.toast-notification .toast-content {
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.toast-notification.success .toast-content { background: #10b981; color: white; }
+.toast-notification.error .toast-content { background: #ef4444; color: white; }
+.toast-notification.warning .toast-content { background: #f59e0b; color: white; }
+.toast-notification.info .toast-content { background: #3b82f6; color: white; }
+
+.toast-notification .toast-icon {
+    font-size: 1.25rem;
+}
+
+.toast-notification .toast-message {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.toast-notification .toast-close {
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.toast-notification .toast-close:hover {
+    opacity: 1;
+}
+
+.toast-notification.fade-out {
+    animation: fadeOut 0.3s ease forwards;
+}
+
+@keyframes fadeOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Bouton header toggle */
+#headerToggleBtn {
+    transition: all 0.2s ease;
+}
+
+#headerToggleBtn:hover {
+    transform: scale(1.1);
+    color: #1f2937;
+}
+</style>

@@ -14,7 +14,14 @@ requireLogin();
 
 $page = $_GET['page'] ?? 'dashboard';
 
-// Pages autorisées
+// ============================================
+// GESTION DES RÔLES
+// ============================================
+$userRole = $_SESSION['user_role'] ?? 'user';
+$isAdmin = ($userRole === 'admin');
+$isClient = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'client';
+
+// Pages autorisées pour les utilisateurs normaux (Manager, User, Client)
 $allowedPages = [
     'dashboard',
     'contacts/index', 'contacts/get_contact', 'contacts/supprimer', 'contacts/unblacklist',
@@ -23,11 +30,59 @@ $allowedPages = [
     'canaux/index', 'canaux/ajouter', 'canaux/supprimer',
     'blacklist/index',
     'parametres/compte', 'parametres/credits',
-    'admin/users', 'admin/users/edit', 'admin/users/add_credits', 'admin/custom_fields',
 ];
 
+// Pages ADMIN seulement
+$adminPages = [
+    'admin/users', 
+    'admin/users/edit', 
+    'admin/users/add_credits', 
+    'admin/custom_fields',
+    'admin/dashboard',
+    'admin/operators',
+    'admin/clients',
+    'admin/client-detail',
+    'admin/comptes',
+];
+
+// Pages CLIENT seulement (accessible via le menu utilisateur)
+$clientPages = [
+    'client/dashboard',
+    'client/campagnes',
+    'client/credits',
+    'client/profile',
+    'client/details',
+];
+
+// Si l'utilisateur est admin, ajouter les pages admin aux pages autorisées
+if ($isAdmin) {
+    $allowedPages = array_merge($allowedPages, $adminPages);
+}
+
+// Si l'utilisateur est client, ajouter les pages client
+if ($isClient) {
+    $allowedPages = array_merge($allowedPages, $clientPages);
+}
+
+// Vérifier si la page demandée est autorisée
 if (!in_array($page, $allowedPages)) {
-    $page = 'dashboard';
+    if ($isAdmin) {
+        $page = 'admin/dashboard';
+    } elseif ($isClient) {
+        $page = 'client/dashboard';
+    } else {
+        $page = 'dashboard';
+    }
+}
+
+// Rediriger les admins vers le dashboard admin par défaut
+if ($isAdmin && $page === 'dashboard' && file_exists('pages/admin/dashboard.php')) {
+    $page = 'admin/dashboard';
+}
+
+// Rediriger les clients vers le dashboard client par défaut
+if ($isClient && $page === 'dashboard' && file_exists('pages/client/dashboard.php')) {
+    $page = 'client/dashboard';
 }
 
 // Mise à jour des crédits en session
@@ -37,13 +92,26 @@ $_SESSION['user_credits'] = $userCredits;
 // ============================================
 // TRAITEMENT DES PAGES QUI FONT DES REDIRECTIONS
 // ============================================
-// Pour les pages comme ajouter.php, supprimer.php, etc.
-// On inclut la page MAIS on capture son contenu
-// Si elle fait une redirection (header), on arrête tout
-
 ob_start();
 
-$filePath = 'pages/' . $page . '.php';
+// Déterminer le chemin du fichier
+if (strpos($page, 'admin/') === 0 && $isAdmin) {
+    // Pages admin
+    $filePath = 'pages/' . $page . '.php';
+    if (!file_exists($filePath)) {
+        $filePath = 'admin/' . str_replace('admin/', '', $page) . '.php';
+    }
+} elseif (strpos($page, 'client/') === 0 && $isClient) {
+    // Pages client
+    $filePath = 'pages/' . $page . '.php';
+    if (!file_exists($filePath)) {
+        $filePath = 'pages/client/dashboard.php';
+    }
+} else {
+    // Pages normales
+    $filePath = 'pages/' . $page . '.php';
+}
+
 if (file_exists($filePath)) {
     include $filePath;
 } else {
@@ -57,16 +125,13 @@ $pageContent = ob_get_clean();
 if (headers_sent()) {
     exit;
 }
-
-// Si le contenu est vide et qu'il n'y a pas de redirection, on affiche quand même
-// (c'est le cas pour les pages qui ne font que du HTML)
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= APP_NAME ?> - BackOffice</title>
+    <title><?= APP_NAME ?> - <?= $isAdmin ? 'Administration' : 'BackOffice' ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -78,7 +143,16 @@ if (headers_sent()) {
 <body class="bg-gray-100">
     <div class="flex h-screen">
         <!-- SIDEBAR (Menu de gauche) -->
-        <?php include 'includes/menu.php'; ?>
+        <?php 
+        // 🔥 2 MENUS UNIQUEMENT :
+        // - Admin → menu_admin.php
+        // - Tous les autres (Manager, User, Client) → menu.php
+        if ($isAdmin) {
+            include 'includes/menu_admin.php';
+        } else {
+            include 'includes/menu.php';
+        }
+        ?>
         
         <!-- CONTENU PRINCIPAL -->
         <div class="flex-1 flex flex-col overflow-hidden">

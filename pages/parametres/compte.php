@@ -146,191 +146,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_FILES['logo']) && !isset($
     }
 }
 ?>
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mon compte - <?= APP_NAME ?></title>
-    <style>
-        .password-container {
-            position: relative;
-        }
-        .password-container input {
-            padding-right: 45px;
-        }
-        .toggle-password {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            cursor: pointer;
-            color: #9ca3af;
-            z-index: 10;
-            background: transparent;
-            border: none;
-        }
-        .toggle-password:hover {
-            color: #3b82f6;
-        }
-        
-        /* Styles pour le logo */
-        .logo-wrapper {
-            width: 96px;
-            height: 96px;
-            position: relative;
-        }
-        .logo-image {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            background: white;
-            padding: 8px;
-        }
-        .logo-placeholder {
-            width: 100%;
-            height: 100%;
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .logo-placeholder i {
-            font-size: 2.5rem;
-            color: #9ca3af;
-        }
-        
-        /* Toast notifications */
-        .toast {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 1000;
-            animation: slideIn 0.3s ease;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .toast.success {
-            background: #22c55e;
-        }
-        .toast.error {
-            background: #ef4444;
-        }
-        .toast.fade-out {
-            animation: fadeOut 0.3s ease forwards;
-        }
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        @keyframes fadeOut {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-        }
-        
-        /* Modal de confirmation */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1001;
-            justify-content: center;
-            align-items: center;
-        }
-        .modal.show {
-            display: flex;
-        }
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
-            animation: modalIn 0.2s ease;
-        }
-        @keyframes modalIn {
-            from {
-                transform: scale(0.9);
-                opacity: 0;
-            }
-            to {
-                transform: scale(1);
-                opacity: 1;
-            }
-        }
-        .modal-content h3 {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 12px;
-        }
-        .modal-content p {
-            color: #6b7280;
-            margin-bottom: 24px;
-        }
-        .modal-buttons {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-        }
-        .modal-buttons button {
-            padding: 8px 20px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        .btn-confirm {
-            background: #ef4444;
-            color: white;
-        }
-        .btn-confirm:hover {
-            background: #dc2626;
-        }
-        .btn-cancel {
-            background: #e5e7eb;
-            color: #374151;
-        }
-        .btn-cancel:hover {
-            background: #d1d5db;
-        }
-    </style>
-</head>
-<body>
 
-<div class="max-w-2xl mx-auto">
-    <h1 class="text-2xl font-bold text-gray-800 mb-6">Mon compte</h1>
+<div class="w-full">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-800">Mon compte</h1>
+        <p class="text-gray-500">Gérez vos informations personnelles et votre logo</p>
+    </div>
     
     <div class="bg-white rounded-lg shadow p-6">
         <!-- Section Logo -->
-        <div class="mb-6 pb-4 border-b">
-            <h3 class="text-lg font-bold mb-4">Logo de l'entreprise</h3>
-            <div class="flex items-center space-x-6">
+        <div class="mb-6 pb-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">Logo de l'entreprise</h3>
+            <div class="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
                 <div class="logo-wrapper" id="logoWrapper">
                     <?php if (!empty($compte['logo_url'])): ?>
                         <img src="<?= htmlspecialchars($compte['logo_url']) . '?t=' . time() ?>" 
@@ -344,23 +171,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_FILES['logo']) && !isset($
                     <?php endif; ?>
                 </div>
                 
-                <div class="flex-1">
+                <div class="flex-1 w-full">
                     <form method="POST" enctype="multipart/form-data" class="space-y-3" id="logoForm">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Changer le logo</label>
                             <input type="file" name="logo" id="logoInput" accept="image/*" 
-                                   class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                                   class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
                             <p class="text-xs text-gray-500 mt-1">Formats: JPG, PNG, GIF, WEBP. Max 2MB</p>
                         </div>
-                        <div class="flex space-x-2">
+                        <div class="flex flex-wrap gap-2">
                             <button type="submit" name="upload_logo" 
-                                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition">
+                                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition duration-200">
                                 <i class="fas fa-upload mr-1"></i>Modifier
                             </button>
                             
                             <?php if (!empty($compte['logo_url'])): ?>
                                 <button type="button" id="deleteLogoBtn" 
-                                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm transition">
+                                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm transition duration-200">
                                     <i class="fas fa-trash mr-1"></i>Supprimer
                                 </button>
                             <?php endif; ?>
@@ -372,33 +199,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_FILES['logo']) && !isset($
         
         <!-- Formulaire Profil -->
         <form method="POST" id="profileForm">
-            <div class="grid grid-cols-2 gap-4">
-                <div class="col-span-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Entreprise *</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Entreprise <span class="text-red-500">*</span></label>
                     <input type="text" name="entreprise" required value="<?= htmlspecialchars($compte['entreprise']) ?>"
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Prénom *</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Prénom <span class="text-red-500">*</span></label>
                     <input type="text" name="prenom" required value="<?= htmlspecialchars($compte['prenom']) ?>"
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nom <span class="text-red-500">*</span></label>
                     <input type="text" name="nom" required value="<?= htmlspecialchars($compte['nom']) ?>"
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
                 </div>
-                <div class="col-span-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Identifiant de connexion *</label>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Identifiant de connexion <span class="text-red-500">*</span></label>
                     <input type="text" name="user" required value="<?= htmlspecialchars($compte['user']) ?>"
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
                     <p class="text-xs text-gray-500 mt-1">Utilisé pour vous connecter (email ou pseudo)</p>
                 </div>
             </div>
             
-            <div class="mt-6 pt-4 border-t">
-                <h3 class="text-lg font-bold mb-4">Changer le mot de passe</h3>
-                <div class="grid grid-cols-2 gap-4">
+            <div class="mt-6 pt-4 border-t border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Changer le mot de passe</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Mot de passe actuel</label>
                         <div class="password-container">
@@ -428,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_FILES['logo']) && !isset($
             </div>
             
             <div class="mt-6 flex justify-end">
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition duration-200">
                     <i class="fas fa-save mr-2"></i>Enregistrer
                 </button>
             </div>
@@ -449,22 +276,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_FILES['logo']) && !isset($
     </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js"></script>
 <script>
-// Fonction pour afficher un toast
+// ============================================
+// TOAST NOTIFICATIONS
+// ============================================
 function showToast(message, type = 'success') {
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'} mr-2"></i>${message}`;
-    document.body.appendChild(toast);
+    const container = document.getElementById('toastContainer') || (() => {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'toastContainer';
+        newContainer.className = 'toast-container';
+        document.body.appendChild(newContainer);
+        return newContainer;
+    })();
     
-    setTimeout(() => {
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    
+    let icon = '';
+    switch(type) {
+        case 'success': icon = '<i class="fas fa-check-circle"></i>'; break;
+        case 'error': icon = '<i class="fas fa-exclamation-circle"></i>'; break;
+        case 'warning': icon = '<i class="fas fa-exclamation-triangle"></i>'; break;
+        case 'info': icon = '<i class="fas fa-info-circle"></i>'; break;
+        default: icon = '<i class="fas fa-bell"></i>';
+    }
+    
+    toast.innerHTML = `
+        <div class="toast-content">
+            <div class="toast-icon">${icon}</div>
+            <div class="toast-message">${escapeHtml(message)}</div>
+            <div class="toast-close"><i class="fas fa-times"></i></div>
+        </div>
+    `;
+    
+    container.appendChild(toast);
+    
+    const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => {
         toast.classList.add('fade-out');
         setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    });
+    
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.classList.add('fade-out');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 5000);
 }
 
-// Fonction pour afficher/masquer le mot de passe
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ============================================
+// MESSAGES PHP EN TOAST
+// ============================================
+<?php if ($success): ?>
+showToast('<?= addslashes($success) ?>', 'success');
+<?php endif; ?>
+
+<?php if ($error): ?>
+showToast('<?= addslashes($error) ?>', 'error');
+<?php endif; ?>
+
+// ============================================
+// AFFICHER/MASQUER LE MOT DE PASSE
+// ============================================
 function togglePassword(inputId, buttonElement) {
     const passwordInput = document.getElementById(inputId);
     const icon = buttonElement.querySelector('i');
@@ -479,7 +360,9 @@ function togglePassword(inputId, buttonElement) {
     }
 }
 
-// Aperçu du logo avant upload - RESTAURÉ
+// ============================================
+// APERÇU DU LOGO AVANT UPLOAD
+// ============================================
 const logoInput = document.getElementById('logoInput');
 if (logoInput) {
     logoInput.addEventListener('change', function(e) {
@@ -492,13 +375,10 @@ if (logoInput) {
                 const existingPlaceholder = document.getElementById('logoPlaceholder');
                 
                 if (existingImage) {
-                    // Mettre à jour l'image existante
                     existingImage.src = event.target.result;
                 } else if (existingPlaceholder) {
-                    // Remplacer le placeholder par une image
                     wrapper.innerHTML = `<img src="${event.target.result}" alt="Aperçu" id="logoImage" class="logo-image">`;
                 } else {
-                    // Ajouter l'image
                     wrapper.innerHTML = `<img src="${event.target.result}" alt="Aperçu" id="logoImage" class="logo-image">`;
                 }
             };
@@ -507,16 +387,9 @@ if (logoInput) {
     });
 }
 
-// Messages PHP
-<?php if ($success): ?>
-showToast('<?= htmlspecialchars($success) ?>', 'success');
-<?php endif; ?>
-
-<?php if ($error): ?>
-showToast('<?= htmlspecialchars($error) ?>', 'error');
-<?php endif; ?>
-
-// Modal de confirmation
+// ============================================
+// MODAL DE CONFIRMATION
+// ============================================
 const deleteBtn = document.getElementById('deleteLogoBtn');
 const modal = document.getElementById('confirmModal');
 const confirmDelete = document.getElementById('confirmDelete');
@@ -556,5 +429,211 @@ window.addEventListener('click', function(e) {
 });
 </script>
 
-</body>
-</html>
+<style>
+/* ============================================
+   TOAST STYLES
+   ============================================ */
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast-notification {
+    min-width: 300px;
+    max-width: 450px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    animation: slideInRight 0.3s ease-out;
+    overflow: hidden;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.toast-notification .toast-content {
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.toast-notification.success .toast-content { background: #10b981; color: white; }
+.toast-notification.error .toast-content { background: #ef4444; color: white; }
+.toast-notification.warning .toast-content { background: #f59e0b; color: white; }
+.toast-notification.info .toast-content { background: #3b82f6; color: white; }
+
+.toast-notification .toast-icon {
+    font-size: 1.25rem;
+}
+
+.toast-notification .toast-message {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.toast-notification .toast-close {
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.toast-notification .toast-close:hover {
+    opacity: 1;
+}
+
+.toast-notification.fade-out {
+    animation: fadeOut 0.3s ease forwards;
+}
+
+@keyframes fadeOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* ============================================
+   PASSWORD STYLES
+   ============================================ */
+.password-container {
+    position: relative;
+}
+.password-container input {
+    padding-right: 45px;
+}
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #9ca3af;
+    z-index: 10;
+    background: transparent;
+    border: none;
+    font-size: 1.1rem;
+}
+.toggle-password:hover {
+    color: #3b82f6;
+}
+
+/* ============================================
+   LOGO STYLES
+   ============================================ */
+.logo-wrapper {
+    width: 96px;
+    height: 96px;
+    position: relative;
+    flex-shrink: 0;
+}
+.logo-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+    padding: 8px;
+}
+.logo-placeholder {
+    width: 100%;
+    height: 100%;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.logo-placeholder i {
+    font-size: 2.5rem;
+    color: #9ca3af;
+}
+
+/* ============================================
+   MODAL STYLES
+   ============================================ */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1001;
+    justify-content: center;
+    align-items: center;
+}
+.modal.show {
+    display: flex;
+}
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    animation: modalIn 0.2s ease;
+}
+@keyframes modalIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+.modal-content h3 {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+.modal-content p {
+    color: #6b7280;
+    margin-bottom: 24px;
+}
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+.modal-buttons button {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+.btn-confirm {
+    background: #ef4444;
+    color: white;
+}
+.btn-confirm:hover {
+    background: #dc2626;
+}
+.btn-cancel {
+    background: #e5e7eb;
+    color: #374151;
+}
+.btn-cancel:hover {
+    background: #d1d5db;
+}
+</style>

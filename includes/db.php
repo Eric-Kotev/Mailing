@@ -16,6 +16,10 @@ class Database {
             if (!empty($query)) {
                 $query .= "&";
             }
+            // 🔥 Convertir les IDs en string pour les UUID
+            if (preg_match('/^id_?[a-zA-Z]*$/', $col) || $col === 'id' || strpos($col, '_id') !== false) {
+                $value = (string)$value;
+            }
             if ($col === 'user') {
                 $col = '"user"';
             }
@@ -80,72 +84,72 @@ class Database {
     }
     
     public function select($table, $conditions = [], $select = '*', $orderBy = null, $limit = null, $offset = null) {
-    $query = "select=" . $select;
-    
-    // Ajouter les conditions
-    foreach ($conditions as $col => $value) {
-        if ($col === 'user') {
-            $query .= '&"user"=eq.' . urlencode($value);
-        } else {
-            // Gérer les conditions spéciales
-            if (strpos($col, '!=') !== false) {
-                $col = str_replace('!=', '', $col);
-                $query .= "&" . $col . "=neq." . urlencode($value);
-            } elseif (strpos($col, '>=') !== false) {
-                $col = str_replace('>=', '', $col);
-                $query .= "&" . $col . "=gte." . urlencode($value);
-            } elseif (strpos($col, '<=') !== false) {
-                $col = str_replace('<=', '', $col);
-                $query .= "&" . $col . "=lte." . urlencode($value);
-            } elseif (strpos($col, '>') !== false) {
-                $col = str_replace('>', '', $col);
-                $query .= "&" . $col . "=gt." . urlencode($value);
-            } elseif (strpos($col, '<') !== false) {
-                $col = str_replace('<', '', $col);
-                $query .= "&" . $col . "=lt." . urlencode($value);
-            } else {
-                $query .= "&" . $col . "=eq." . urlencode($value);
-            }
-        }
-    }
-    
-    // 🔥 CORRECTION : Ajouter l'ordre correctement
-    if ($orderBy) {
-        // Nettoyer le format
-        $orderBy = trim($orderBy);
+        $query = "select=" . $select;
         
-        // Vérifier si le format est déjà "colonne.desc" ou "colonne.asc"
-        if (preg_match('/^[a-zA-Z0-9_]+\.(desc|asc)$/i', $orderBy)) {
-            // Déjà au bon format, l'utiliser tel quel
-            $query .= "&order=" . $orderBy;
-        } else {
-            // Extraire le nom de la colonne et la direction
-            $parts = explode(' ', $orderBy);
-            $column = $parts[0];
-            $direction = isset($parts[1]) ? strtoupper($parts[1]) : 'ASC';
-            
-            // Valider la direction
-            if ($direction !== 'ASC' && $direction !== 'DESC') {
-                $direction = 'ASC';
+        // Ajouter les conditions
+        foreach ($conditions as $col => $value) {
+            // 🔥 Convertir les IDs en string pour les UUID
+            if (preg_match('/^id_?[a-zA-Z]*$/', $col) || $col === 'id' || strpos($col, '_id') !== false) {
+                $value = (string)$value;
             }
             
-            $query .= "&order=" . $column . "." . strtolower($direction);
+            if ($col === 'user') {
+                $query .= '&"user"=eq.' . urlencode($value);
+            } else {
+                // Gérer les conditions spéciales
+                if (strpos($col, '!=') !== false) {
+                    $col = str_replace('!=', '', $col);
+                    $query .= "&" . $col . "=neq." . urlencode($value);
+                } elseif (strpos($col, '>=') !== false) {
+                    $col = str_replace('>=', '', $col);
+                    $query .= "&" . $col . "=gte." . urlencode($value);
+                } elseif (strpos($col, '<=') !== false) {
+                    $col = str_replace('<=', '', $col);
+                    $query .= "&" . $col . "=lte." . urlencode($value);
+                } elseif (strpos($col, '>') !== false) {
+                    $col = str_replace('>', '', $col);
+                    $query .= "&" . $col . "=gt." . urlencode($value);
+                } elseif (strpos($col, '<') !== false) {
+                    $col = str_replace('<', '', $col);
+                    $query .= "&" . $col . "=lt." . urlencode($value);
+                } else {
+                    $query .= "&" . $col . "=eq." . urlencode($value);
+                }
+            }
         }
+        
+        // Ajouter l'ordre
+        if ($orderBy) {
+            $orderBy = trim($orderBy);
+            
+            if (preg_match('/^[a-zA-Z0-9_]+\.(desc|asc)$/i', $orderBy)) {
+                $query .= "&order=" . $orderBy;
+            } else {
+                $parts = explode(' ', $orderBy);
+                $column = $parts[0];
+                $direction = isset($parts[1]) ? strtoupper($parts[1]) : 'ASC';
+                
+                if ($direction !== 'ASC' && $direction !== 'DESC') {
+                    $direction = 'ASC';
+                }
+                
+                $query .= "&order=" . $column . "." . strtolower($direction);
+            }
+        }
+        
+        // Ajouter la limite
+        if ($limit) {
+            $query .= "&limit=" . intval($limit);
+        }
+        
+        // Ajouter l'offset
+        if ($offset) {
+            $query .= "&offset=" . intval($offset);
+        }
+        
+        $endpoint = $table . '?' . $query;
+        return $this->request('GET', $endpoint);
     }
-    
-    // Ajouter la limite
-    if ($limit) {
-        $query .= "&limit=" . intval($limit);
-    }
-    
-    // Ajouter l'offset
-    if ($offset) {
-        $query .= "&offset=" . intval($offset);
-    }
-    
-    $endpoint = $table . '?' . $query;
-    return $this->request('GET', $endpoint);
-}
     
     public function insert($table, $data) {
         return $this->request('POST', $table, $data);
@@ -155,54 +159,51 @@ class Database {
      * Insère un enregistrement et retourne l'ID créé
      */
     public function insertAndGetId($table, $data) {
-    $endpoint = $table;
-    
-    // Convertir les données en format Supabase
-    $postData = [];
-    foreach ($data as $key => $value) {
-        $postData[$key] = $value;
-    }
-    
-    $result = $this->request('POST', $endpoint, $postData);
-    
-    // 🔥 DEBUG - Log du résultat
-    error_log("insertAndGetId - Résultat: " . json_encode($result));
-    
-    // Supabase retourne un tableau avec les données insérées
-    if (!empty($result) && isset($result[0])) {
-        $row = $result[0];
+        $endpoint = $table;
         
-        // Vérifier les différents noms possibles pour la clé primaire
-        $possibleKeys = ['id_custom_field', 'id_contact', 'id', 'id_value'];
-        foreach ($possibleKeys as $key) {
-            if (isset($row[$key])) {
-                return $row[$key];
+        $postData = [];
+        foreach ($data as $key => $value) {
+            $postData[$key] = $value;
+        }
+        
+        $result = $this->request('POST', $endpoint, $postData);
+        
+        error_log("insertAndGetId - Résultat: " . json_encode($result));
+        
+        if (!empty($result) && isset($result[0])) {
+            $row = $result[0];
+            $possibleKeys = ['id_custom_field', 'id_contact', 'id', 'id_value'];
+            foreach ($possibleKeys as $key) {
+                if (isset($row[$key])) {
+                    return $row[$key];
+                }
+            }
+            
+            $firstKey = array_key_first($row);
+            if ($firstKey) {
+                return $row[$firstKey];
             }
         }
         
-        // Si aucun ID trouvé, retourner la première colonne
-        $firstKey = array_key_first($row);
-        if ($firstKey) {
-            return $row[$firstKey];
+        if (!empty($result) && isset($result['id_custom_field'])) {
+            return $result['id_custom_field'];
         }
+        if (!empty($result) && isset($result['id'])) {
+            return $result['id'];
+        }
+        
+        return null;
     }
-    
-    // Si on a un seul élément dans le tableau avec un ID
-    if (!empty($result) && isset($result['id_custom_field'])) {
-        return $result['id_custom_field'];
-    }
-    if (!empty($result) && isset($result['id'])) {
-        return $result['id'];
-    }
-    
-    return null;
-}
     
     public function update($table, $data, $conditions) {
         $query = "";
         foreach ($conditions as $col => $value) {
             if (!empty($query)) {
                 $query .= "&";
+            }
+            // 🔥 Convertir les IDs en string pour les UUID
+            if (preg_match('/^id_?[a-zA-Z]*$/', $col) || $col === 'id' || strpos($col, '_id') !== false) {
+                $value = (string)$value;
             }
             if ($col === 'user') {
                 $col = '"user"';
@@ -215,11 +216,15 @@ class Database {
     }
     
     public function delete($table, $id, $idField) {
-        $endpoint = $table . '?' . $idField . '=eq.' . $id;
+        // 🔥 Convertir l'ID en string pour les UUID
+        $id = (string)$id;
+        $endpoint = $table . '?' . $idField . '=eq.' . urlencode($id);
         return $this->request('DELETE', $endpoint);
     }
     
-    // 🔥 Méthode utilitaire pour exécuter une requête SQL personnalisée via RPC
+    /**
+     * Exécute une fonction RPC sur Supabase
+     */
     public function rpc($function, $params = []) {
         $endpoint = 'rpc/' . $function;
         return $this->request('POST', $endpoint, $params);
@@ -240,18 +245,27 @@ function getCompteByUser($user) {
 
 function getContactsByCompte($idCompte) {
     global $db;
+    // 🔥 Convertir en string pour UUID
+    $idCompte = (string)$idCompte;
     return $db->select('contact', ['id_compte' => $idCompte]);
 }
 
 function getListesByCompte($idCompte) {
     global $db;
+    // 🔥 Convertir en string pour UUID
+    $idCompte = (string)$idCompte;
     return $db->select('liste', ['id_compte' => $idCompte]);
 }
 
-function getCreditsDisponibles($idCompte) {
+function getCreditsDisponibles($id) {
     global $db;
-    $result = $db->select('compte', ['id_compte' => $idCompte], 'credits_total');
-    return $result ? floatval($result[0]['credits_total']) : 0;
+    
+    // 🔥 Convertir l'ID en string pour les UUID
+    $id = (string)$id;
+    
+    // Récupérer depuis la table compte
+    $result = $db->select('compte', ['id_compte' => $id], 'credits_total');
+    return $result ? floatval($result[0]['credits_total'] ?? 0) : 0;
 }
 
 function getTypesMessage() {
@@ -283,6 +297,8 @@ function getTypesMessage() {
 
 function getWhatsAppSession($idCompte) {
     global $db;
+    // 🔥 Convertir en string pour UUID
+    $idCompte = (string)$idCompte;
     $result = $db->select('whatsapp_sessions', [
         'id_compte' => $idCompte,
         'est_active' => true
@@ -292,11 +308,15 @@ function getWhatsAppSession($idCompte) {
 
 function getAllWhatsAppSessions($idCompte) {
     global $db;
+    // 🔥 Convertir en string pour UUID
+    $idCompte = (string)$idCompte;
     return $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
 }
 
 function setActiveWhatsAppSession($idCompte, $sessionName) {
     global $db;
+    // 🔥 Convertir en string pour UUID
+    $idCompte = (string)$idCompte;
     
     // Désactiver toutes les sessions
     $db->update('whatsapp_sessions', ['est_active' => false], ['id_compte' => $idCompte]);
