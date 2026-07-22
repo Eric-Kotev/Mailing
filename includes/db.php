@@ -16,7 +16,7 @@ class Database {
             if (!empty($query)) {
                 $query .= "&";
             }
-            // 🔥 Convertir les IDs en string pour les UUID
+            //Convertir les IDs en string pour les UUID
             if (preg_match('/^id_?[a-zA-Z]*$/', $col) || $col === 'id' || strpos($col, '_id') !== false) {
                 $value = (string)$value;
             }
@@ -88,7 +88,7 @@ class Database {
         
         // Ajouter les conditions
         foreach ($conditions as $col => $value) {
-            // 🔥 Convertir les IDs en string pour les UUID
+            //Convertir les IDs en string pour les UUID
             if (preg_match('/^id_?[a-zA-Z]*$/', $col) || $col === 'id' || strpos($col, '_id') !== false) {
                 $value = (string)$value;
             }
@@ -201,7 +201,7 @@ class Database {
             if (!empty($query)) {
                 $query .= "&";
             }
-            // 🔥 Convertir les IDs en string pour les UUID
+            //Convertir les IDs en string pour les UUID
             if (preg_match('/^id_?[a-zA-Z]*$/', $col) || $col === 'id' || strpos($col, '_id') !== false) {
                 $value = (string)$value;
             }
@@ -216,7 +216,7 @@ class Database {
     }
     
     public function delete($table, $id, $idField) {
-        // 🔥 Convertir l'ID en string pour les UUID
+        //Convertir l'ID en string pour les UUID
         $id = (string)$id;
         $endpoint = $table . '?' . $idField . '=eq.' . urlencode($id);
         return $this->request('DELETE', $endpoint);
@@ -245,14 +245,14 @@ function getCompteByUser($user) {
 
 function getContactsByCompte($idCompte) {
     global $db;
-    // 🔥 Convertir en string pour UUID
+    //Convertir en string pour UUID
     $idCompte = (string)$idCompte;
     return $db->select('contact', ['id_compte' => $idCompte]);
 }
 
 function getListesByCompte($idCompte) {
     global $db;
-    // 🔥 Convertir en string pour UUID
+    //Convertir en string pour UUID
     $idCompte = (string)$idCompte;
     return $db->select('liste', ['id_compte' => $idCompte]);
 }
@@ -260,7 +260,7 @@ function getListesByCompte($idCompte) {
 function getCreditsDisponibles($id) {
     global $db;
     
-    // 🔥 Convertir l'ID en string pour les UUID
+    //Convertir l'ID en string pour les UUID
     $id = (string)$id;
     
     // Récupérer depuis la table compte
@@ -297,7 +297,7 @@ function getTypesMessage() {
 
 function getWhatsAppSession($idCompte) {
     global $db;
-    // 🔥 Convertir en string pour UUID
+    //Convertir en string pour UUID
     $idCompte = (string)$idCompte;
     $result = $db->select('whatsapp_sessions', [
         'id_compte' => $idCompte,
@@ -308,14 +308,14 @@ function getWhatsAppSession($idCompte) {
 
 function getAllWhatsAppSessions($idCompte) {
     global $db;
-    // 🔥 Convertir en string pour UUID
+    //Convertir en string pour UUID
     $idCompte = (string)$idCompte;
     return $db->select('whatsapp_sessions', ['id_compte' => $idCompte], '*', 'created_at.desc');
 }
 
 function setActiveWhatsAppSession($idCompte, $sessionName) {
     global $db;
-    // 🔥 Convertir en string pour UUID
+    //Convertir en string pour UUID
     $idCompte = (string)$idCompte;
     
     // Désactiver toutes les sessions

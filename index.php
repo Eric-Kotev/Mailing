@@ -144,7 +144,7 @@ if (headers_sent()) {
     <div class="flex h-screen">
         <!-- SIDEBAR (Menu de gauche) -->
         <?php 
-        // 🔥 2 MENUS UNIQUEMENT :
+        //  2 MENUS UNIQUEMENT :
         // - Admin → menu_admin.php
         // - Tous les autres (Manager, User, Client) → menu.php
         if ($isAdmin) {
