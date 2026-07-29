@@ -17,8 +17,7 @@ if (empty($campagne)) {
 }
 $campagne = $campagne[0];
 
-// Récupérer tous les envois liés à cette campagne (exclure les brouillons)
-// Récupérer d'abord tous les envois
+// Récupérer tous les envois liés à cette campagne (exclure les brouillons MAIS garder les planifiés)
 $allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
 
 // Filtrer pour exclure les brouillons
@@ -34,19 +33,26 @@ $totalSucces = 0;
 $totalErreurs = 0;
 $totalWhatsApp = 0;
 $totalSms = 0;
+$totalEmail = 0;
 $totalAPreparer = 0;
+$totalPlanifies = 0;
 
 foreach ($envois as $e) {
     $totalSucces += $e['nb_succes'];
     $totalErreurs += $e['nb_erreurs'];
     if ($e['type_campagne'] == 'whatsapp') {
         $totalWhatsApp++;
+    } elseif ($e['type_campagne'] == 'email') {
+        $totalEmail++;
     } else {
         $totalSms++;
     }
     // Ne compter que les messages prêts à envoyer
     if ($e['statut'] == 'pret_a_envoyer') {
         $totalAPreparer++;
+    }
+    if ($e['statut'] == 'planifiee') {
+        $totalPlanifies++;
     }
 }
 
@@ -56,7 +62,74 @@ foreach ($envois as $e) {
 function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
     global $db;
     
-    // Récupérer tous les messages de la campagne
+    // Récupérer la campagne config actuelle pour connaître son statut
+    $campagneConfig = $db->select('campagne_config', [
+        'id_campagne_config' => $idCampagneConfig,
+        'id_compte' => $idCompte
+    ]);
+    
+    if (empty($campagneConfig)) {
+        return;
+    }
+    
+    $campagneActuelle = $campagneConfig[0];
+    $statutActuel = $campagneActuelle['statut'] ?? 'brouillon';
+    
+    // Si la campagne est déjà planifiée, on ne change pas son statut
+    // sauf si elle est envoyée ou en échec complet
+    if ($statutActuel === 'planifiee') {
+        // Vérifier si des messages ont été envoyés ou ont échoué
+        $messages = $db->select('campagne', [
+            'id_campagne_config' => $idCampagneConfig,
+            'id_compte' => $idCompte
+        ]);
+        
+        if (empty($messages)) {
+            return;
+        }
+        
+        $nbEnvoyes = 0;
+        $nbEchoues = 0;
+        $nbTotal = count($messages);
+        
+        foreach ($messages as $msg) {
+            $statut = strtolower(trim($msg['statut']));
+            if ($statut === 'envoye') {
+                $nbEnvoyes++;
+            } elseif ($statut === 'echoue') {
+                $nbEchoues++;
+            }
+        }
+        
+        // Si tous les messages sont envoyés, on passe à envoyee
+        if ($nbEnvoyes == $nbTotal && $nbTotal > 0) {
+            $db->update('campagne_config', [
+                'statut' => 'envoyee',
+                'sent_at' => date('Y-m-d H:i:s')
+            ], [
+                'id_campagne_config' => $idCampagneConfig,
+                'id_compte' => $idCompte
+            ]);
+            return;
+        }
+        
+        // Si tous les messages ont échoué, on passe à echoue
+        if ($nbEchoues == $nbTotal && $nbTotal > 0) {
+            $db->update('campagne_config', [
+                'statut' => 'echoue',
+                'sent_at' => null
+            ], [
+                'id_campagne_config' => $idCampagneConfig,
+                'id_compte' => $idCompte
+            ]);
+            return;
+        }
+        
+        // Sinon, on garde planifiee
+        return;
+    }
+    
+    // Si la campagne n'est pas planifiée, on applique la logique normale
     $messages = $db->select('campagne', [
         'id_campagne_config' => $idCampagneConfig,
         'id_compte' => $idCompte
@@ -77,9 +150,11 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
     $nbEchoues = 0;
     $nbPret = 0;
     $nbBrouillon = 0;
+    $nbPlanifie = 0;
     
     foreach ($messages as $msg) {
-        switch ($msg['statut']) {
+        $statut = strtolower(trim($msg['statut']));
+        switch ($statut) {
             case 'envoye':
                 $nbEnvoyes++;
                 break;
@@ -92,14 +167,17 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
             case 'brouillon':
                 $nbBrouillon++;
                 break;
+            case 'planifiee':
+                $nbPlanifie++;
+                break;
         }
     }
     
     // Déterminer le statut global
-    if ($nbEnvoyes == $nbTotal) {
+    if ($nbEnvoyes == $nbTotal && $nbTotal > 0) {
         $statut = 'envoyee';
         $sent_at = date('Y-m-d H:i:s');
-    } elseif ($nbEchoues == $nbTotal) {
+    } elseif ($nbEchoues == $nbTotal && $nbTotal > 0) {
         $statut = 'echoue';
         $sent_at = null;
     } elseif ($nbEnvoyes > 0 || $nbEchoues > 0) {
@@ -107,6 +185,9 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
         $sent_at = null;
     } elseif ($nbPret > 0) {
         $statut = 'pret_a_envoyer';
+        $sent_at = null;
+    } elseif ($nbPlanifie > 0) {
+        $statut = 'planifiee';
         $sent_at = null;
     } else {
         $statut = 'brouillon';
@@ -125,6 +206,45 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
         'id_campagne_config' => $idCampagneConfig,
         'id_compte' => $idCompte
     ]);
+}
+
+// ============================================
+// FONCTION POUR METTRE À JOUR LE STATUT D'UNE CAMPAGNE LISTMONK
+// ============================================
+function updateListmonkCampaignStatus($campaignId, $status) {
+    $apiUrl = "http://164.68.103.147:9005/api/campaigns/{$campaignId}/status";
+    $username = 'test';
+    $password = 'lqXJrA1sfE1YobhQ0CyP9UiMpi1MOsb83p554Uuc1IRDKVRR';
+    
+    $payload = ['status' => $status];
+    
+    $ch = curl_init($apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    return [
+        'success' => $httpCode === 200 || $httpCode === 201 || $httpCode === 204,
+        'http_code' => $httpCode,
+        'response' => $response
+    ];
+}
+
+// ============================================
+// Mettre à jour le statut au chargement de la page
+// ============================================
+mettreAJourStatutCampagne($campagneId, $idCompte);
+// Recharger la campagne pour avoir le statut à jour
+$campagne = $db->select('campagne_config', ['id_campagne_config' => $campagneId, 'id_compte' => $idCompte]);
+if (!empty($campagne)) {
+    $campagne = $campagne[0];
 }
 
 // ============================================
@@ -511,7 +631,46 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
 }
 
 function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires) {
-    return ['success' => false, 'error' => 'Envoi d\'email non encore implémenté'];
+    global $db;
+    
+    try {
+        // Récupérer les informations d'envoi
+        $from_email = $campagneData['from_email'] ?? 'noreply@votre-domaine.com';
+        $from_name = $campagneData['from_name'] ?? 'Votre Entreprise';
+        $objet = $campagneData['objet'] ?? 'Email';
+        $listmonkCampaignId = $campagneData['listmonk_campaign_id'] ?? null;
+        
+        if (!$listmonkCampaignId) {
+            return ['success' => false, 'error' => 'ID de campagne Listmonk manquant. Veuillez recréer le message.'];
+        }
+        
+        // Mettre à jour le statut dans Listmonk pour envoyer immédiatement (running)
+        $result = updateListmonkCampaignStatus($listmonkCampaignId, 'running');
+        
+        if ($result['success']) {
+            $db->update('campagne', [
+                'statut' => 'envoye',
+                'nb_envoyes' => $campagneData['nb_destinataires'],
+                'nb_succes' => $campagneData['nb_destinataires'],
+                'nb_erreurs' => 0,
+                'appareil_utilise' => 'Listmonk (ID: ' . $listmonkCampaignId . ')'
+            ], ['id_campagne' => $campagneData['id_campagne']]);
+            
+            return ['success' => true, 'message' => $campagneData['nb_destinataires'] . ' emails envoyés avec succès via Listmonk'];
+        } else {
+            $errorMsg = 'Erreur Listmonk (HTTP ' . $result['http_code'] . '): ' . substr($result['response'], 0, 200);
+            
+            $db->update('campagne', [
+                'statut' => 'echoue',
+                'erreur' => $errorMsg
+            ], ['id_campagne' => $campagneData['id_campagne']]);
+            
+            return ['success' => false, 'error' => $errorMsg];
+        }
+        
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
 }
 
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
@@ -597,6 +756,28 @@ unset($_SESSION['flash_error']);
             background: #059669;
         }
         .btn-send-message:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-send-email {
+            background: #3b82f6;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-send-email:hover {
+            background: #2563eb;
+        }
+        .btn-send-email:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -716,6 +897,7 @@ unset($_SESSION['flash_error']);
         }
         .stat-type-whatsapp { background: #d1fae5; color: #065f46; }
         .stat-type-sms { background: #dbeafe; color: #1e40af; }
+        .stat-type-email { background: #fef3c7; color: #92400e; }
         
         .envoi-row {
             cursor: pointer;
@@ -725,8 +907,28 @@ unset($_SESSION['flash_error']);
             background-color: #f9fafb;
         }
         
+        .message-content {
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        .message-content iframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+            background: white;
+        }
+        .message-content .html-content {
+            padding: 12px;
+            background: white;
+            border-radius: 4px;
+        }
+        
         #detailsModal .modal-content {
-            max-width: 800px;
+            max-width: 900px;
             max-height: 90vh;
         }
         #detailsModal .modal-header {
@@ -745,6 +947,51 @@ unset($_SESSION['flash_error']);
         .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
         .grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
         .gap-4 { gap: 16px; }
+        
+        /* Styles pour le rendu HTML dans la modal */
+        .html-render {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            background: white;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .html-render h1, .html-render h2, .html-render h3, 
+        .html-render h4, .html-render h5, .html-render h6 {
+            margin-top: 0.5em;
+            margin-bottom: 0.5em;
+        }
+        .html-render p {
+            margin-bottom: 0.75em;
+        }
+        .html-render ul, .html-render ol {
+            margin-left: 1.5em;
+            margin-bottom: 0.75em;
+        }
+        .html-render a {
+            color: #3b82f6;
+            text-decoration: underline;
+        }
+        .html-render img {
+            max-width: 100%;
+            height: auto;
+        }
+        .html-render table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 0.75em;
+        }
+        .html-render table td, .html-render table th {
+            border: 1px solid #d1d5db;
+            padding: 6px 12px;
+        }
+        .html-render blockquote {
+            border-left: 4px solid #d1d5db;
+            padding-left: 12px;
+            margin-left: 0;
+            color: #4b5563;
+        }
         
         @media (max-width: 768px) {
             .container { padding: 12px; }
@@ -837,7 +1084,7 @@ unset($_SESSION['flash_error']);
     <div class="grid grid-cols-5 md:grid-cols-5 gap-4 mb-6">
         <div class="bg-white rounded-xl shadow-md stat-card text-center">
             <div class="stat-number text-blue-600"><?= $totalEnvois ?></div>
-            <div class="stat-label">Messages envoyés</div>
+            <div class="stat-label">Messages</div>
         </div>
         <div class="bg-white rounded-xl shadow-md stat-card text-center">
             <div class="stat-number text-green-600"><?= $totalSucces ?></div>
@@ -850,13 +1097,13 @@ unset($_SESSION['flash_error']);
         <div class="bg-white rounded-xl shadow-md stat-card text-center">
             <div class="stat-number text-green-600"><?= $totalWhatsApp ?></div>
             <div class="stat-label">
-                <span class="stat-type stat-type-whatsapp"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</span>
+                <span class="stat-type stat-type-whatsapp"><i class="fab fa-mobile-alt mr-1"></i> WhatsApp</span>
             </div>
         </div>
         <div class="bg-white rounded-xl shadow-md stat-card text-center">
-            <div class="stat-number text-blue-600"><?= $totalSms ?></div>
+            <div class="stat-number text-blue-600"><?= $totalSms + $totalEmail ?></div>
             <div class="stat-label">
-                <span class="stat-type stat-type-sms"><i class="fas fa-comment-dots mr-1"></i> SMS</span>
+                <span class="stat-type stat-type-sms"><i class="fas fa-comment-dots mr-1"></i> SMS/Email</span>
             </div>
         </div>
     </div>
@@ -875,6 +1122,7 @@ unset($_SESSION['flash_error']);
                 <option value="all">Tous les types</option>
                 <option value="whatsapp">📱 WhatsApp</option>
                 <option value="sms">💬 SMS</option>
+                <option value="email">✉️ Email</option>
             </select>
             
             <label for="filterStatus" class="ml-1"><i class="fas fa-check-circle mr-1"></i> Statut :</label>
@@ -884,6 +1132,7 @@ unset($_SESSION['flash_error']);
                 <option value="echoue">Échoué</option>
                 <option value="partiel">Partiel</option>
                 <option value="pret_a_envoyer">Prêt à envoyer</option>
+                <option value="planifiee">Planifié</option>
             </select>
             
             <button id="clearFilters" class="btn-clear-filter">
@@ -927,12 +1176,83 @@ unset($_SESSION['flash_error']);
                     </thead>
                     <tbody id="envoisTableBody">
                         <?php foreach ($envois as $envoi): 
-                            $statutClass = $envoi['statut'] == 'envoye' ? 'text-green-600' : ($envoi['statut'] == 'partiel' ? 'text-yellow-600' : ($envoi['statut'] == 'pret_a_envoyer' ? 'text-blue-600' : 'text-red-600'));
-                            $statutIcon = $envoi['statut'] == 'envoye' ? 'fa-check-circle' : ($envoi['statut'] == 'partiel' ? 'fa-exclamation-triangle' : ($envoi['statut'] == 'pret_a_envoyer' ? 'fa-clock' : 'fa-exclamation-circle'));
-                            $statutLabel = $envoi['statut'] == 'envoye' ? 'Envoyé' : ($envoi['statut'] == 'partiel' ? 'Partiel' : ($envoi['statut'] == 'pret_a_envoyer' ? 'Prêt à envoyer' : 'Échoué'));
-                            $typeClass = $envoi['type_campagne'] == 'whatsapp' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700';
-                            $typeIcon = $envoi['type_campagne'] == 'whatsapp' ? 'fab fa-whatsapp' : 'fas fa-comment-dots';
-                            $typeLabel = $envoi['type_campagne'] == 'whatsapp' ? 'WhatsApp' : 'SMS';
+                            // Déterminer la classe CSS du statut
+                            $statutClass = 'text-gray-600';
+                            $statutIcon = 'fa-circle';
+                            $statutLabel = 'Inconnu';
+                            
+                            switch ($envoi['statut']) {
+                                case 'envoye':
+                                    $statutClass = 'text-green-600';
+                                    $statutIcon = 'fa-check-circle';
+                                    $statutLabel = 'Envoyé';
+                                    break;
+                                case 'partiel':
+                                    $statutClass = 'text-yellow-600';
+                                    $statutIcon = 'fa-exclamation-triangle';
+                                    $statutLabel = 'Partiel';
+                                    break;
+                                case 'pret_a_envoyer':
+                                    $statutClass = 'text-blue-600';
+                                    $statutIcon = 'fa-clock';
+                                    $statutLabel = 'Prêt à envoyer';
+                                    break;
+                                case 'planifiee':
+                                    $statutClass = 'text-yellow-700';
+                                    $statutIcon = 'fa-calendar-clock';
+                                    $statutLabel = 'Planifié';
+                                    break;
+                                case 'echoue':
+                                    $statutClass = 'text-red-600';
+                                    $statutIcon = 'fa-exclamation-circle';
+                                    $statutLabel = 'Échoué';
+                                    break;
+                                default:
+                                    $statutClass = 'text-gray-600';
+                                    $statutIcon = 'fa-circle';
+                                    $statutLabel = $envoi['statut'] ?? 'Inconnu';
+                            }
+                            
+                            // Gestion des types de message
+                            if ($envoi['type_campagne'] == 'whatsapp') {
+                                $typeClass = 'bg-green-100 text-green-700';
+                                $typeIcon = 'fab fa-mobile-alt';
+                                $typeLabel = 'WhatsApp';
+                            } elseif ($envoi['type_campagne'] == 'email') {
+                                $typeClass = 'bg-yellow-100 text-yellow-700';
+                                $typeIcon = 'fas fa-envelope';
+                                $typeLabel = 'Email';
+                            } else {
+                                $typeClass = 'bg-blue-100 text-blue-700';
+                                $typeIcon = 'fas fa-comment-dots';
+                                $typeLabel = 'SMS';
+                            }
+                            
+                            // Nettoyer le message pour l'affichage (strip_tags pour le résumé)
+                            $messageDisplay = strip_tags($envoi['message']);
+                            if (strlen($messageDisplay) > 50) {
+                                $messageDisplay = substr($messageDisplay, 0, 50) . '...';
+                            }
+                            
+                            // Déterminer si le bouton Envoyer doit être affiché
+                            $showSendButton = false;
+                            $buttonClass = 'btn-send-message';
+                            $buttonIcon = 'fa-paper-plane';
+                            $buttonText = 'Envoyer';
+                            
+                            if ($envoi['statut'] == 'pret_a_envoyer') {
+                                $showSendButton = true;
+                                $buttonClass = 'btn-send-message';
+                                $buttonIcon = 'fa-paper-plane';
+                                $buttonText = 'Envoyer';
+                            }
+                            // Pour les emails planifiés, on affiche aussi le bouton Envoyer
+                            if ($envoi['statut'] == 'planifiee' && $envoi['type_campagne'] == 'email') {
+                                $showSendButton = true;
+                                $buttonClass = 'btn-send-email';
+                                $buttonIcon = 'fa-envelope';
+                                $buttonText = 'Envoyer Email';
+                            }
                         ?>
                             <tr class="envoi-row" 
                                 data-id="<?= $envoi['id_campagne'] ?>"
@@ -949,8 +1269,8 @@ unset($_SESSION['flash_error']);
                                     </span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <div class="text-gray-800 max-w-xs truncate" title="<?= htmlspecialchars($envoi['message']) ?>">
-                                        <?= htmlspecialchars(substr($envoi['message'], 0, 50)) ?>...
+                                    <div class="text-gray-800 max-w-xs truncate" title="<?= htmlspecialchars($messageDisplay) ?>">
+                                        <?= htmlspecialchars($messageDisplay) ?>
                                     </div>
                                 </td>
                                 <td class="px-4 py-3 text-center font-medium"><?= $envoi['nb_destinataires'] ?></td>
@@ -960,12 +1280,12 @@ unset($_SESSION['flash_error']);
                                 </td>
                                 <td class="px-4 py-3 text-center">
                                     <div class="flex items-center justify-center gap-2">
-                                        <?php if ($envoi['statut'] == 'pret_a_envoyer'): ?>
+                                        <?php if ($showSendButton): ?>
                                             <form method="POST" style="display:inline;" id="sendForm_<?= $envoi['id_campagne'] ?>">
                                                 <input type="hidden" name="action_envoyer_message" value="1">
                                                 <input type="hidden" name="id_campagne_historique" value="<?= $envoi['id_campagne'] ?>">
-                                                <button type="submit" class="btn-send-message" title="Envoyer le message">
-                                                    <i class="fas fa-paper-plane"></i> Envoyer
+                                                <button type="submit" class="<?= $buttonClass ?>" title="Envoyer le message">
+                                                    <i class="fas <?= $buttonIcon ?>"></i> <?= $buttonText ?>
                                                 </button>
                                             </form>
                                         <?php endif; ?>
@@ -987,7 +1307,7 @@ unset($_SESSION['flash_error']);
 
 <!-- ===== MODAL DÉTAILS ===== -->
 <div id="detailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-95 opacity-0" id="modalContainer">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-95 opacity-0" id="modalContainer">
         <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-2xl">
             <div class="flex items-center">
                 <div id="modalIcon" class="w-10 h-10 rounded-full flex items-center justify-center mr-3">
@@ -1055,7 +1375,6 @@ function applyFilters() {
         const status = row.dataset.status || '';
         let show = true;
         
-        // Ignorer les brouillons (ils ne devraient pas être présents, mais au cas où)
         if (status === 'brouillon') {
             row.style.display = 'none';
             return;
@@ -1116,9 +1435,13 @@ function showDetails(envoi) {
     const modalIcon = document.getElementById('modalIcon');
     const modalIconImg = document.getElementById('modalIconImg');
     
+    // Configurer l'icône selon le type
     if (envoi.type_campagne === 'whatsapp') {
         modalIcon.className = 'w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mr-3';
-        modalIconImg.className = 'fab fa-whatsapp text-green-600 text-xl';
+        modalIconImg.className = 'fab fa-mobile-alt text-green-600 text-xl';
+    } else if (envoi.type_campagne === 'email') {
+        modalIcon.className = 'w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center mr-3';
+        modalIconImg.className = 'fas fa-envelope text-yellow-600 text-xl';
     } else {
         modalIcon.className = 'w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3';
         modalIconImg.className = 'fas fa-comment-dots text-blue-600 text-xl';
@@ -1126,6 +1449,7 @@ function showDetails(envoi) {
     
     modalTitle.textContent = envoi.titre || 'Détails du message';
     
+    // Traiter les destinataires
     let destinataires = [];
     try { destinataires = JSON.parse(envoi.destinataires); } 
     catch(e) { destinataires = [envoi.destinataires]; }
@@ -1144,17 +1468,70 @@ function showDetails(envoi) {
         destHtml = '<p class="text-gray-500 italic">Aucun destinataire enregistré</p>';
     }
     
-    const statusBadge = envoi.statut === 'envoye' 
-        ? '<span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Envoyé</span>'
-        : (envoi.statut === 'partiel' 
-            ? '<span class="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Partiel</span>'
-            : (envoi.statut === 'pret_a_envoyer'
-                ? '<span class="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-clock mr-1"></i>Prêt à envoyer</span>'
-                : '<span class="bg-red-100 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>'));
+    let statusBadge;
+    switch (envoi.statut) {
+        case 'envoye':
+            statusBadge = '<span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-check-circle mr-1"></i>Envoyé</span>';
+            break;
+        case 'partiel':
+            statusBadge = '<span class="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-triangle mr-1"></i>Partiel</span>';
+            break;
+        case 'pret_a_envoyer':
+            statusBadge = '<span class="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-clock mr-1"></i>Prêt à envoyer</span>';
+            break;
+        case 'planifiee':
+            statusBadge = '<span class="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-calendar-clock mr-1"></i>Planifié</span>';
+            break;
+        case 'echoue':
+            statusBadge = '<span class="bg-red-100 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>';
+            break;
+        default:
+            statusBadge = '<span class="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full text-xs font-semibold">' + escapeHtml(envoi.statut) + '</span>';
+    }
     
-    const typeBadge = envoi.type_campagne === 'whatsapp'
-        ? '<span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fab fa-whatsapp mr-1"></i>WhatsApp</span>'
-        : '<span class="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-comment-dots mr-1"></i>SMS</span>';
+    let typeBadge;
+    if (envoi.type_campagne === 'whatsapp') {
+        typeBadge = '<span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fab fa-mobile-alt mr-1"></i>WhatsApp</span>';
+    } else if (envoi.type_campagne === 'email') {
+        typeBadge = '<span class="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-envelope mr-1"></i>Email</span>';
+    } else {
+        typeBadge = '<span class="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-comment-dots mr-1"></i>SMS</span>';
+    }
+    
+    // Construire le contenu du message (HTML ou texte)
+    let messageContent = escapeHtml(envoi.message || '-');
+    let isHtml = false;
+    
+    // Détecter si le message contient du HTML
+    if (envoi.message && (
+        envoi.message.includes('<p>') || 
+        envoi.message.includes('<div>') || 
+        envoi.message.includes('<br>') ||
+        envoi.message.includes('<strong>') ||
+        envoi.message.includes('<em>') ||
+        envoi.message.includes('<ul>') ||
+        envoi.message.includes('<ol>') ||
+        envoi.message.includes('<a href') ||
+        envoi.message.includes('<img')
+    )) {
+        isHtml = true;
+        messageContent = envoi.message;
+    }
+    
+    let messageHtml = '';
+    if (isHtml) {
+        messageHtml = `
+            <div class="html-render">
+                ${messageContent}
+            </div>
+        `;
+    } else {
+        messageHtml = `
+            <div class="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
+                <p class="text-sm text-gray-700 whitespace-pre-wrap">${messageContent}</p>
+            </div>
+        `;
+    }
     
     modalContent.innerHTML = `
         <div class="space-y-4">
@@ -1178,10 +1555,8 @@ function showDetails(envoi) {
             </div>
             
             <div>
-                <div class="text-xs text-gray-500 font-semibold mb-1">Message</div>
-                <div class="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-                    <p class="text-sm text-gray-700 whitespace-pre-wrap">${escapeHtml(envoi.message || '-')}</p>
-                </div>
+                <div class="text-xs text-gray-500 font-semibold mb-1">Message ${isHtml ? '(HTML)' : ''}</div>
+                ${messageHtml}
             </div>
             
             <div>

@@ -33,16 +33,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_liste']) &
     }
     
     try {
+        // 1. Insertion dans la base de données locale
         $data = [
             'id_compte' => $idCompte,
-            'nom_liste' => $nom_liste
+            'nom_liste' => $nom_liste,
+            'listmonk_id' => null // Ajout d'une colonne pour stocker l'ID Listmonk
         ];
-        $db->insert('liste', $data);
-        echo json_encode(['success' => true, 'message' => 'Liste créée avec succès']);
+        
+        // Utilisation de insertAndGetId pour récupérer l'ID local
+        $localListId = $db->insertAndGetId('liste', $data);
+        
+        if (!$localListId) {
+            echo json_encode(['success' => false, 'error' => 'Erreur lors de la création locale']);
+            exit;
+        }
+        
+        // 2. Création de la liste dans Listmonk via l'API
+        $result = createListInListmonk($nom_liste);
+        
+        if ($result['success']) {
+            // 3. Mise à jour de l'enregistrement local avec l'ID Listmonk
+            $listmonkId = $result['listmonk_id'];
+            $db->update('liste', ['listmonk_id' => $listmonkId], ['id_liste' => $localListId]);
+            
+            echo json_encode([
+                'success' => true, 
+                'message' => 'Liste créée avec succès et synchronisée avec Listmonk (ID: ' . $listmonkId . ')',
+                'listmonk_id' => $listmonkId
+            ]);
+        } else {
+            echo json_encode([
+                'success' => true, 
+                'message' => 'Liste créée localement, mais erreur lors de la synchronisation avec Listmonk: ' . ($result['error'] ?? 'Erreur inconnue'),
+                'listmonk_id' => null
+            ]);
+        }
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
+}
+
+/**
+ * Fonction pour créer une liste dans Listmonk via l'API
+ * @param string $name Nom de la liste
+ * @return array ['success' => bool, 'listmonk_id' => int|null, 'error' => string|null]
+ */
+function createListInListmonk($name) {
+    $apiUrl = 'http://164.68.103.147:9005/api/lists';
+    $username = 'test';
+    $password = 'lqXJrA1sfE1YobhQ0CyP9UiMpi1MOsb83p554Uuc1IRDKVRR';
+    
+    // Préparation des données pour l'API
+    $data = [
+        'name' => $name,
+        'type' => 'private',
+        'optin' => 'single',
+        'tags' => ['test'],
+        'description' => 'Liste créée depuis l\'application'
+    ];
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    // Journalisation pour le débogage
+    error_log("Listmonk API - HTTP Code: " . $httpCode);
+    error_log("Listmonk API - Response: " . $response);
+    if ($curlError) {
+        error_log("Listmonk API - CURL Error: " . $curlError);
+    }
+    
+    // Vérifier si la création a réussi
+    if ($httpCode === 200 || $httpCode === 201) {
+        // Décoder la réponse pour extraire l'ID
+        $responseData = json_decode($response, true);
+        
+        // L'ID peut être à différents endroits selon la réponse de l'API
+        $listmonkId = null;
+        if (isset($responseData['data']['id'])) {
+            $listmonkId = $responseData['data']['id'];
+        } elseif (isset($responseData['id'])) {
+            $listmonkId = $responseData['id'];
+        } elseif (isset($responseData['data']['uuid'])) {
+            // Si l'API retourne un UUID
+            $listmonkId = $responseData['data']['uuid'];
+        }
+        
+        return [
+            'success' => true,
+            'listmonk_id' => $listmonkId,
+            'error' => null
+        ];
+    } else {
+        return [
+            'success' => false,
+            'listmonk_id' => null,
+            'error' => "HTTP Code: $httpCode, Response: $response"
+        ];
+    }
 }
 
 // ============================================
@@ -187,9 +288,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $headers = array_map('strtolower', $headers);
         error_log("Headers: " . print_r($headers, true));
         
-        // ============================================
-        // MAPPING DES COLONNES AVEC TOUTES LES NOUVELLES COLONNES
-        // ============================================
+        // =====================
+        // MAPPING DES COLONNES
+        // =====================
         $mapping = [
             'prenom' => array_search('prenom', $headers),
             'nom' => array_search('nom', $headers),

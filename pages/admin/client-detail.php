@@ -26,6 +26,336 @@ if (empty($clientData)) {
 $client = $clientData[0];
 
 // ============================================
+// LISTMONK FUNCTIONS - Équivalent PHP de listmonk.functions.ts
+// ============================================
+
+/**
+ * Génère un UUID v4
+ */
+function generateUuidV4() {
+    $data = random_bytes(16);
+    $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // version 4
+    $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // variant
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
+
+/**
+ * Normalise l'URL de base (supprime les slashs en trop)
+ */
+function normalizeBaseUrl($url) {
+    return rtrim(trim($url), '/');
+}
+
+/**
+ * Crée l'en-tête d'authentification Basic
+ */
+function authHeader($username, $password) {
+    return 'Basic ' . base64_encode($username . ':' . $password);
+}
+
+/**
+ * Appelle l'API Listmonk
+ * Équivalent de callListmonk dans le TypeScript
+ */
+function callListmonk($conn, $options) {
+    $baseUrl = normalizeBaseUrl($conn['baseUrl']);
+    $path = $options['path'] ?? '';
+    $method = $options['method'] ?? 'GET';
+    $headers = $options['headers'] ?? [];
+    $body = $options['body'] ?? null;
+    
+    $url = $baseUrl . $path;
+    
+    $ch = curl_init($url);
+    
+    // Configuration de base
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    
+    // Méthode HTTP
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+    } elseif ($method === 'PUT') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+    } elseif ($method === 'DELETE') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+    }
+    
+    // En-têtes
+    $allHeaders = [
+        'Authorization: ' . authHeader($conn['username'], $conn['password']),
+        'Accept: application/json'
+    ];
+    
+    foreach ($headers as $key => $value) {
+        $allHeaders[] = $key . ': ' . $value;
+    }
+    
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $allHeaders);
+    
+    // Body
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    }
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    if ($curlError) {
+        throw new Exception('Erreur de connexion à Listmonk: ' . $curlError);
+    }
+    
+    // Parser la réponse JSON
+    $parsed = null;
+    if (!empty($response)) {
+        $parsed = json_decode($response, true);
+        if ($parsed === null && json_last_error() !== JSON_ERROR_NONE) {
+            $parsed = null;
+        }
+    }
+    
+    // Vérifier le code HTTP
+    if ($httpCode < 200 || $httpCode >= 300) {
+        $message = '';
+        if ($parsed && isset($parsed['message'])) {
+            $message = $parsed['message'];
+        } elseif (!empty($response)) {
+            $message = substr($response, 0, 300);
+        } else {
+            $message = 'HTTP ' . $httpCode;
+        }
+        throw new Exception('Listmonk ' . $httpCode . ': ' . $message);
+    }
+    
+    return $parsed;
+}
+
+/**
+ * Récupère les settings complets (lecture seule, sert de sauvegarde avant modification)
+ * Équivalent de getSettings dans le TypeScript
+ */
+function getListmonkSettings($conn) {
+    $json = callListmonk($conn, ['path' => '/api/settings', 'method' => 'GET']);
+    
+    $settings = $json['data'] ?? null;
+    if (!$settings || !is_array($settings)) {
+        throw new Exception('Réponse inattendue de Listmonk : champ "data" absent.');
+    }
+    
+    $smtp = isset($settings['smtp']) && is_array($settings['smtp']) ? $settings['smtp'] : [];
+    
+    $smtpList = [];
+    foreach ($smtp as $i => $s) {
+        $smtpList[] = [
+            'index' => $i,
+            'name' => $s['name'] ?? '',
+            'host' => $s['host'] ?? '',
+            'port' => $s['port'] ?? 0,
+            'enabled' => isset($s['enabled']) && $s['enabled'] === true,
+            'username' => $s['username'] ?? '',
+        ];
+    }
+    
+    return [
+        'smtp' => $smtpList,
+        'smtpCount' => count($smtp),
+        'settingsKeys' => count(array_keys($settings)),
+        'rawSettings' => $settings // On garde les settings bruts pour les modifications
+    ];
+}
+
+/**
+ * Ajoute (ou remplace par nom) un bloc SMTP.
+ * Équivalent sûr du `jq '.data.smtp += [...] | .data'` suivi d'un PUT :
+ * on relit toujours les settings juste avant l'écriture pour ne rien perdre.
+ * Équivalent de addSmtp dans le TypeScript
+ */
+function addSmtpToListmonk($conn, $smtp, $replaceExistingByName = true) {
+    // 1. Relecture fraîche des settings (jamais de payload partiel -> évite le crash Listmonk)
+    $settingsData = getListmonkSettings($conn);
+    $settings = $settingsData['rawSettings'];
+    
+    if (!$settings || !is_array($settings)) {
+        throw new Exception("Impossible de lire les settings Listmonk (champ 'data' absent).");
+    }
+    
+    $current = isset($settings['smtp']) && is_array($settings['smtp']) ? $settings['smtp'] : [];
+    
+    // 2. Fusion - Vérifier si un bloc avec ce nom existe déjà
+    $existingIdx = -1;
+    $smtpNameLower = strtolower($smtp['name']);
+    foreach ($current as $idx => $s) {
+        $currentName = isset($s['name']) ? strtolower($s['name']) : '';
+        if ($currentName === $smtpNameLower) {
+            $existingIdx = $idx;
+            break;
+        }
+    }
+    
+    $action = 'added';
+    if ($existingIdx >= 0 && $replaceExistingByName) {
+        // Remplacer le bloc existant
+        // On conserve l'UUID si présent
+        if (isset($current[$existingIdx]['uuid'])) {
+            $smtp['uuid'] = $current[$existingIdx]['uuid'];
+        } else {
+            $smtp['uuid'] = generateUuidV4();
+        }
+        $current[$existingIdx] = $smtp;
+        $action = 'replaced';
+    } else {
+        // Ajouter un nouveau bloc avec UUID
+        $smtp['uuid'] = generateUuidV4();
+        $current[] = $smtp;
+        $action = 'added';
+    }
+    
+    // 3. Garde-fous : au moins un serveur actif, sinon Listmonk refuse / casse l'envoi
+    $hasEnabled = false;
+    foreach ($current as $s) {
+        if (isset($s['enabled']) && $s['enabled'] === true) {
+            $hasEnabled = true;
+            break;
+        }
+    }
+    if (!$hasEnabled) {
+        throw new Exception("Au moins un serveur SMTP doit être activé.");
+    }
+    
+    // Listmonk renvoie les mots de passe masqués (chaîne vide) : on les laisse tels quels,
+    // le serveur conserve alors la valeur existante. Ne jamais envoyer "•••".
+    $sanitized = [];
+    foreach ($current as $s) {
+        $sanitizedItem = $s;
+        if (isset($sanitizedItem['password']) && is_string($sanitizedItem['password'])) {
+            // Vérifier si le mot de passe est masqué (contient uniquement des • ou *)
+            if (preg_match('/^[•*]+$/', $sanitizedItem['password'])) {
+                $sanitizedItem['password'] = '';
+            }
+        }
+        $sanitized[] = $sanitizedItem;
+    }
+    
+    // 4. Construction du payload complet (comme dans le TypeScript)
+    $payload = $settings;
+    $payload['smtp'] = $sanitized;
+    
+    // 5. Écriture du document complet
+    $jsonData = json_encode($payload);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception('Erreur de génération JSON: ' . json_last_error_msg());
+    }
+    
+    callListmonk($conn, [
+        'path' => '/api/settings',
+        'method' => 'PUT',
+        'headers' => ['Content-Type' => 'application/json'],
+        'body' => $jsonData
+    ]);
+    
+    $names = array_map(function($s) {
+        return $s['name'] ?? '';
+    }, $sanitized);
+    
+    return [
+        'action' => $action,
+        'smtpCount' => count($sanitized),
+        'names' => $names
+    ];
+}
+
+/**
+ * Supprime un bloc SMTP par son nom (version optimisée)
+ * Équivalent de la commande curl : 
+ * GET settings | filter | PUT
+ */
+function deleteSmtpFromListmonk($conn, $name) {
+    // 1. Relecture fraîche des settings
+    $settingsData = getListmonkSettings($conn);
+    $settings = $settingsData['rawSettings'];
+    
+    if (!$settings || !is_array($settings)) {
+        throw new Exception("Impossible de lire les settings Listmonk.");
+    }
+    
+    $current = isset($settings['smtp']) && is_array($settings['smtp']) ? $settings['smtp'] : [];
+    
+    // 2. Filtrer pour supprimer le bloc (comme la commande jq)
+    $nameLower = strtolower($name);
+    $newSmtp = array_filter($current, function($s) use ($nameLower) {
+        $currentName = isset($s['name']) ? strtolower($s['name']) : '';
+        return $currentName !== $nameLower;
+    });
+    
+    // Réindexer le tableau
+    $newSmtp = array_values($newSmtp);
+    
+    // 3. Vérifier qu'on a bien supprimé quelque chose
+    if (count($newSmtp) === count($current)) {
+        throw new Exception("Aucun serveur SMTP nommé '$name' trouvé");
+    }
+    
+    // 4. Garde-fous : au moins un serveur actif
+    $hasEnabled = false;
+    foreach ($newSmtp as $s) {
+        if (isset($s['enabled']) && $s['enabled'] === true) {
+            $hasEnabled = true;
+            break;
+        }
+    }
+    if (!$hasEnabled && count($newSmtp) > 0) {
+        // Activer le premier serveur
+        $newSmtp[0]['enabled'] = true;
+    }
+    
+    // 5. Construction du payload complet (comme la commande curl)
+    $payload = $settings;
+    $payload['smtp'] = $newSmtp;
+    
+    // 6. Envoyer la mise à jour
+    $jsonData = json_encode($payload);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception('Erreur de génération JSON: ' . json_last_error_msg());
+    }
+    
+    callListmonk($conn, [
+        'path' => '/api/settings',
+        'method' => 'PUT',
+        'headers' => ['Content-Type' => 'application/json'],
+        'body' => $jsonData
+    ]);
+    
+    return [
+        'success' => true,
+        'smtpCount' => count($newSmtp),
+        'deleted' => $name
+    ];
+}
+
+/**
+ * Supprime un bloc SMTP par son nom (ancienne méthode - conservée pour compatibilité)
+ */
+function removeSmtpFromListmonk($conn, $name) {
+    return deleteSmtpFromListmonk($conn, $name);
+}
+
+/**
+ * Configuration par défaut pour Listmonk
+ */
+function getDefaultListmonkConn() {
+    return [
+        'baseUrl' => 'http://164.68.103.147:9005',
+        'username' => 'test',
+        'password' => 'lqXJrA1sfE1YobhQ0CyP9UiMpi1MOsb83p554Uuc1IRDKVRR'
+    ];
+}
+
+// ============================================
 // GESTION DES OPÉRATEURS ASSOCIÉS
 // ============================================
 
@@ -965,6 +1295,374 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_activate_sms_a
 }
 
 // ============================================
+// GESTION DES COMPTES EMAIL
+// ============================================
+
+// --- Récupérer les comptes email du client (AJAX) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_email_accounts'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = $_POST['id_compte'] ?? '';
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        
+        $accounts = $db->select('email_accounts', ['id_compte' => $clientId], '*', 'est_actif DESC, created_at DESC');
+        
+        $accountList = [];
+        foreach ($accounts as $account) {
+            $accountList[] = [
+                'id_email_account' => $account['id_email_account'],
+                'name' => $account['name'],
+                'username' => $account['username'],
+                'password' => $account['password'],
+                'host' => $account['host'],
+                'from_address' => $account['from_address'],
+                'port' => $account['port'],
+                'auth_protocol' => $account['auth_protocol'],
+                'hello_hostname' => $account['hello_hostname'],
+                'tls_type' => $account['tls_type'],
+                'tls_skip_verify' => $account['tls_skip_verify'],
+                'max_conns' => $account['max_conns'],
+                'idle_timeout' => $account['idle_timeout'],
+                'wait_timeout' => $account['wait_timeout'],
+                'max_msg_retries' => $account['max_msg_retries'],
+                'msg_retry_delay' => $account['msg_retry_delay'],
+                'est_actif' => $account['est_actif'],
+                'created_at' => date('d/m/Y H:i', strtotime($account['created_at']))
+            ];
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'accounts' => $accountList
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR get_email_accounts: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// ============================================
+// NOUVELLE ACTION : RÉCUPÉRER LES SETTINGS LISTMONK (GET)
+// Équivalent de getSettings dans le TypeScript
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_listmonk_settings'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $conn = getDefaultListmonkConn();
+        $settings = getListmonkSettings($conn);
+        
+        echo json_encode([
+            'success' => true,
+            'smtp' => $settings['smtp'],
+            'smtpCount' => $settings['smtpCount'],
+            'settingsKeys' => $settings['settingsKeys']
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR get_listmonk_settings: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// --- Créer un compte email (AJAX) AVEC LE NOUVEAU SYSTÈME ---
+// Équivalent de addSmtp dans le TypeScript
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_server'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = $_POST['id_compte'] ?? '';
+        $name = trim($_POST['name'] ?? '');
+        $username = trim($_POST['username'] ?? '');
+        $password = trim($_POST['password'] ?? '');
+        $from_address = trim($_POST['from_address'] ?? '');
+        $replaceExisting = isset($_POST['replace_existing']) && $_POST['replace_existing'] === 'true';
+        
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        if (empty($name)) {
+            throw new Exception('Nom du compte requis');
+        }
+        if (empty($username)) {
+            throw new Exception('Nom d\'utilisateur requis');
+        }
+        if (empty($password)) {
+            throw new Exception('Mot de passe requis');
+        }
+        if (empty($from_address)) {
+            throw new Exception('Adresse email expéditeur requise');
+        }
+        
+        // ============================================
+        // APPEL À L'API SETTINGS AVEC LA FONCTION addSmtpToListmonk
+        // ============================================
+        $conn = getDefaultListmonkConn();
+        
+        // Créer le nouveau bloc SMTP
+        $nouveauBloc = [
+            'enabled' => true,
+            'host' => 'smtp.gmail.com',
+            'port' => 465,
+            'auth_protocol' => 'login',
+            'username' => $username,
+            'password' => $password,
+            'hello_hostname' => '',
+            'tls_type' => 'TLS',
+            'tls_skip_verify' => false,
+            'max_conns' => 10,
+            'idle_timeout' => '15s',
+            'wait_timeout' => '5s',
+            'max_msg_retries' => 2,
+            'msg_retry_delay' => '10ms',
+            'name' => $name,
+            'email_headers' => [],
+            'from_addresses' => [$from_address]
+        ];
+        
+        // Appel à la fonction d'ajout (qui préserve toutes les données, comme le code React)
+        $result = addSmtpToListmonk($conn, $nouveauBloc, $replaceExisting);
+        
+        // ============================================
+        // ENREGISTRER DANS LA BASE DE DONNÉES
+        // ============================================
+        // Vérifier si le compte existe déjà
+        $existing = $db->select('email_accounts', [
+            'id_compte' => $clientId,
+            'name' => $name
+        ]);
+        
+        if (!empty($existing) && $replaceExisting) {
+            // Mettre à jour le compte existant
+            $db->update('email_accounts', [
+                'username' => $username,
+                'password' => $password,
+                'from_address' => $from_address,
+                'host' => 'smtp.gmail.com',
+                'port' => 465,
+                'auth_protocol' => 'login',
+                'hello_hostname' => '',
+                'tls_type' => 'TLS',
+                'tls_skip_verify' => false,
+                'max_conns' => 10,
+                'idle_timeout' => '15s',
+                'wait_timeout' => '5s',
+                'max_msg_retries' => 2,
+                'msg_retry_delay' => '10ms',
+                'updated_at' => date('Y-m-d H:i:s')
+            ], ['id_email_account' => $existing[0]['id_email_account']]);
+            $accountId = $existing[0]['id_email_account'];
+            $message = "Compte email mis à jour avec succès";
+        } else {
+            // Créer un nouveau compte
+            $accountData = [
+                'id_compte' => $clientId,
+                'name' => $name,
+                'username' => $username,
+                'password' => $password,
+                'host' => 'smtp.gmail.com',
+                'from_address' => $from_address,
+                'port' => 465,
+                'auth_protocol' => 'login',
+                'hello_hostname' => '',
+                'tls_type' => 'TLS',
+                'tls_skip_verify' => false,
+                'max_conns' => 10,
+                'idle_timeout' => '15s',
+                'wait_timeout' => '5s',
+                'max_msg_retries' => 2,
+                'msg_retry_delay' => '10ms',
+                'est_actif' => false,
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            $accountId = $db->insert('email_accounts', $accountData);
+            $message = "Compte email créé avec succès";
+        }
+        
+        if (!$accountId) {
+            throw new Exception('Erreur lors de l\'enregistrement en base de données');
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => $message . ' (Action: ' . $result['action'] . ', ' . $result['smtpCount'] . ' serveurs)',
+            'account_id' => $accountId,
+            'name' => $name,
+            'username' => $username,
+            'from_address' => $from_address,
+            'action' => $result['action'],
+            'smtpCount' => $result['smtpCount']
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR add_smtp_server: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// --- Supprimer un serveur SMTP (AJAX) - Supprime de la base et de Listmonk ---
+// Équivalent de la commande curl : GET + filter + PUT
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_smtp_server'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = $_POST['id_compte'] ?? '';
+        $accountId = trim($_POST['account_id'] ?? '');
+        $accountName = trim($_POST['account_name'] ?? '');
+        
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        if (empty($accountId)) {
+            throw new Exception('ID compte invalide');
+        }
+        if (empty($accountName)) {
+            throw new Exception('Nom du compte requis');
+        }
+        
+        // ============================================
+        // ÉTAPE 1 : Vérifier que le compte existe
+        // ============================================
+        $existing = $db->select('email_accounts', [
+            'id_email_account' => $accountId,
+            'id_compte' => $clientId
+        ]);
+        
+        if (empty($existing)) {
+            throw new Exception('Compte non trouvé');
+        }
+        
+        // ============================================
+        // ÉTAPE 2 : Supprimer de l'API Listmonk (en premier)
+        // Si ça échoue, on annule tout
+        // ============================================
+        try {
+            $conn = getDefaultListmonkConn();
+            $deleteResult = deleteSmtpFromListmonk($conn, $accountName);
+        } catch (Exception $e) {
+            throw new Exception('Erreur lors de la suppression dans Listmonk: ' . $e->getMessage());
+        }
+        
+        // ============================================
+        // ÉTAPE 3 : Supprimer de la base de données
+        // ============================================
+        $result = $db->delete('email_accounts', $accountId, 'id_email_account');
+        
+        if (!$result) {
+            // Si la suppression en base échoue, on a déjà supprimé de Listmonk
+            // On log l'erreur mais on retourne un message d'information
+            error_log("ERREUR: Suppression en base échouée pour account_id: $accountId");
+            echo json_encode([
+                'success' => true,
+                'message' => 'Compte supprimé de Listmonk mais erreur en base de données. Veuillez contacter l\'administrateur.',
+                'deleted' => $accountName,
+                'warning' => true
+            ]);
+        } else {
+            echo json_encode([
+                'success' => true,
+                'message' => 'Compte email supprimé avec succès de la base et de Listmonk',
+                'deleted' => $accountName,
+                'smtpCount' => $deleteResult['smtpCount']
+            ]);
+        }
+        
+    } catch (Exception $e) {
+        error_log("ERREUR delete_smtp_server: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// --- Activer un compte email (AJAX) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_activate_email_account'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = $_POST['id_compte'] ?? '';
+        $accountId = trim($_POST['account_id'] ?? '');
+        
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        if (empty($accountId)) {
+            throw new Exception('ID compte invalide');
+        }
+        
+        $account = $db->select('email_accounts', [
+            'id_email_account' => $accountId,
+            'id_compte' => $clientId
+        ]);
+        
+        if (empty($account)) {
+            throw new Exception('Compte non trouvé');
+        }
+        
+        // Désactiver tous les comptes du client
+        $db->update('email_accounts', ['est_actif' => false], ['id_compte' => $clientId]);
+        
+        // Activer le compte sélectionné
+        $db->update('email_accounts', ['est_actif' => true], ['id_email_account' => $accountId]);
+        
+        // Mettre à jour la session
+        $accountInfo = $db->select('email_accounts', ['id_email_account' => $accountId]);
+        if (!empty($accountInfo)) {
+            $_SESSION['email_account_name'] = $accountInfo[0]['name'];
+            $_SESSION['email_username'] = $accountInfo[0]['username'];
+            $_SESSION['email_from_address'] = $accountInfo[0]['from_address'];
+            $_SESSION['email_host'] = $accountInfo[0]['host'];
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Compte email activé avec succès'
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR activate_email_account: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// ============================================
 // RÉCUPÉRATION DES DONNÉES
 // ============================================
 
@@ -1185,7 +1883,6 @@ function getInitials($prenom, $nom) {
 $statut = getStatutBadge($client['actif']);
 $initials = getInitials($client['prenom'], $client['nom']);
 ?>
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1597,6 +2294,14 @@ $initials = getInitials($client['prenom'], $client['nom']);
             background: #2563eb;
         }
         
+        .btn-sm-email {
+            background: #8b5cf6;
+            color: white;
+        }
+        .btn-sm-email:hover {
+            background: #7c3aed;
+        }
+        
         .provider-item {
             display: flex;
             align-items: center;
@@ -1819,6 +2524,11 @@ $initials = getInitials($client['prenom'], $client['nom']);
             width: 95%;
         }
         
+        .modal-card-email {
+            max-width: 800px;
+            width: 95%;
+        }
+        
         .password-container {
             position: relative;
         }
@@ -1878,6 +2588,21 @@ $initials = getInitials($client['prenom'], $client['nom']);
         .device-item .device-icon.inactive {
             background: #f3f4f6;
             color: #9ca3af;
+        }
+        
+        .device-item .device-icon.email-icon {
+            background: #f3e8ff;
+            color: #7c3aed;
+        }
+        
+        .device-item .device-icon.email-icon.inactive {
+            background: #f3f4f6;
+            color: #9ca3af;
+        }
+        
+        .device-item.email-active {
+            border-color: #8b5cf6;
+            background: #faf5ff;
         }
     </style>
 </head>
@@ -2005,7 +2730,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
 </div>
 
 <!-- ============================================ -->
-<!-- MODALE DE CRÉATION DE SESSION -->
+<!-- MODALE DE CRÉATION DE SESSION (WhatsApp/SMS) -->
 <!-- ============================================ -->
 <div id="sessionModal" class="modal-overlay" style="display: none;">
     <div class="modal-card modal-card-session" onclick="event.stopPropagation()">
@@ -2032,6 +2757,131 @@ $initials = getInitials($client['prenom'], $client['nom']);
                 Fermer
             </button>
         </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALE EMAIL POUR LA GESTION DES COMPTES -->
+<!-- ============================================ -->
+<div id="emailModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card modal-card-email" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800" id="emailModalTitle">✉️ Gestion des comptes email</h3>
+                <p class="text-sm text-gray-500" id="emailModalSubtitle"><?= htmlspecialchars($client['entreprise']) ?></p>
+            </div>
+            <button onclick="closeEmailModal()" class="modal-close-btn">&times;</button>
+        </div>
+        
+        <input type="hidden" id="emailProviderId" value="">
+        
+        <div id="emailContent">
+            <div class="text-center py-8">
+                <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
+                <p class="text-gray-500 mt-2">Chargement...</p>
+            </div>
+        </div>
+        
+        <div class="mt-4 flex justify-end gap-2" id="emailFooter">
+            <button onclick="closeEmailModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                Fermer
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALE DE CRÉATION DE COMPTE EMAIL AVEC OPTION DE REMPLACEMENT -->
+<!-- ============================================ -->
+<div id="createEmailAccountModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 500px;" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800">✉️ Créer un compte email</h3>
+                <p class="text-sm text-gray-500">Configurez un nouvel expéditeur email</p>
+            </div>
+            <button onclick="closeCreateEmailAccountModal()" class="modal-close-btn">&times;</button>
+        </div>
+        
+        <form id="createEmailForm">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Nom du compte *
+                    </label>
+                    <input type="text" id="email_name" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
+                           placeholder="Ex: email-client-1">
+                    <p class="text-xs text-gray-400 mt-1">Identifiant unique pour ce compte</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Nom d'utilisateur (email) *
+                    </label>
+                    <input type="text" id="email_username" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
+                           placeholder="Ex: email@gmail.com">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Mot de passe *
+                    </label>
+                    <div class="password-container">
+                        <input type="password" id="email_password" 
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
+                               placeholder="Mot de passe d'application">
+                        <button type="button" class="toggle-password" onclick="togglePassword('email_password', this)">
+                            <i class="far fa-eye"></i>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Utilisez un mot de passe d'application pour Gmail</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Adresse expéditeur *
+                    </label>
+                    <input type="email" id="email_from_address" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
+                           placeholder="Ex: email@gmail.com">
+                    <p class="text-xs text-gray-400 mt-1">L'adresse qui apparaîtra comme expéditeur</p>
+                </div>
+                
+                <div>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" id="replace_existing" checked class="w-4 h-4 text-purple-600 rounded">
+                        <span>Remplacer si un bloc porte déjà ce nom</span>
+                    </label>
+                    <p class="text-xs text-gray-400 mt-1">Si coché, le bloc existant sera remplacé. Sinon, une erreur sera levée.</p>
+                </div>
+                
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <p class="text-xs text-gray-500">
+                        <i class="fas fa-info-circle"></i>
+                        Les paramètres SMTP suivants seront utilisés automatiquement :
+                    </p>
+                    <ul class="text-xs text-gray-500 mt-1 space-y-1">
+                        <li>• Hôte : smtp.gmail.com</li>
+                        <li>• Port : 465</li>
+                        <li>• Protocole : login</li>
+                        <li>• TLS : TLS</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-2 mt-6">
+                <button type="button" onclick="closeCreateEmailAccountModal()" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                    Annuler
+                </button>
+                <button type="submit" 
+                        class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+                    <i class="fas fa-plus-circle"></i> Créer le compte
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -2404,7 +3254,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
                                     <i class="fas <?= $assoc['est_actif'] ? 'fa-check-circle' : 'fa-circle' ?>"></i>
                                     <?= $assoc['est_actif'] ? 'Actif' : 'Inactif' ?>
                                 </span>
-                                <button onclick="openSessionModal(<?= $assoc['id_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>', '<?= htmlspecialchars($assoc['canal']) ?>')" 
+                                <button onclick="openProviderModal(<?= $assoc['id_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>', '<?= htmlspecialchars($assoc['canal']) ?>')" 
                                         class="btn-sm btn-sm-info">
                                     <i class="fas fa-cog"></i>
                                     Gérer
@@ -2445,11 +3295,11 @@ let currentApiPassword = '';
 let confirmCallback = null;
 
 const WAHA_STATUS = {
-    'WORKING': '✅ Connecté',
-    'SCAN_QR_CODE': '📱 Scan QR Code en cours...',
-    'STOPPED': '⏹️ Arrêté',
-    'FAILED': '❌ Échec',
-    'UNKNOWN': '🔄 En attente...'
+    'WORKING': 'Connecté',
+    'SCAN_QR_CODE': 'Scan QR Code en cours...',
+    'STOPPED': 'Arrêté',
+    'FAILED': 'Échec',
+    'UNKNOWN': 'En attente...'
 };
 
 const WAHA_STATUS_CLASS = {
@@ -2731,7 +3581,7 @@ async function confirmAssociate() {
             let icon = 'fa-plug';
             if (canalLower === 'whatsapp') {
                 iconClass = 'whatsapp';
-                icon = 'fa-whatsapp';
+                icon = 'fa-mobile-alt';
             } else if (canalLower === 'sms') {
                 iconClass = 'sms';
                 icon = 'fa-sms';
@@ -2779,7 +3629,7 @@ async function confirmAssociate() {
                             <i class="fas ${statusIcon}"></i>
                             ${statusLabel}
                         </span>
-                        <button onclick="openSessionModal(${assoc.id_provider}, '${escapeHtml(assoc.nom_providers || '')}', '${escapeHtml(assoc.canal || '')}')" 
+                        <button onclick="openProviderModal(${assoc.id_provider}, '${escapeHtml(assoc.nom_providers || '')}', '${escapeHtml(assoc.canal || '')}')" 
                                 class="btn-sm btn-sm-info">
                             <i class="fas fa-cog"></i>
                             Gérer
@@ -2950,7 +3800,29 @@ async function toggleProviderStatus(idClientProvider, newStatus) {
 }
 
 // ============================================
-// GESTION DES SESSIONS OPÉRATEUR
+// FONCTION UNIFIÉE POUR OUVRIR LA MODALE DU FOURNISSEUR
+// ============================================
+
+function openProviderModal(providerId, providerName, providerType) {
+    const typeLower = providerType.toLowerCase();
+    
+    if (typeLower === 'whatsapp') {
+        openSessionModal(providerId, providerName, providerType);
+    } else if (typeLower === 'sms') {
+        openSessionModal(providerId, providerName, providerType);
+    } else if (typeLower === 'email') {
+        document.getElementById('emailModalTitle').textContent = `✉️ Gestion des emails - ${providerName}`;
+        document.getElementById('emailModalSubtitle').textContent = `Client: <?= htmlspecialchars($client['entreprise']) ?>`;
+        document.getElementById('emailProviderId').value = providerId;
+        document.getElementById('emailModal').style.display = 'flex';
+        loadEmailAccounts();
+    } else {
+        showToast('Type d\'opérateur non supporté: ' + providerType, 'error');
+    }
+}
+
+// ============================================
+// GESTION DES SESSIONS OPÉRATEUR (WhatsApp/SMS)
 // ============================================
 
 async function openSessionModal(providerId, providerName, providerType) {
@@ -3394,10 +4266,402 @@ document.getElementById('smsLoginForm')?.addEventListener('submit', async functi
 });
 
 // ============================================
+// FONCTIONS EMAIL - GESTION DES COMPTES
+// ============================================
+
+async function loadEmailAccounts() {
+    const container = document.getElementById('emailContent');
+    const footer = document.getElementById('emailFooter');
+    
+    try {
+        // ÉTAPE 1 : Récupérer les settings Listmonk (GET)
+        const settingsFormData = new FormData();
+        settingsFormData.append('action_get_listmonk_settings', '1');
+        
+        const settingsResponse = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: settingsFormData
+        });
+        
+        const settingsResult = await settingsResponse.json();
+        
+        if (!settingsResult.success) {
+            throw new Error(settingsResult.error || 'Impossible de charger les settings');
+        }
+        
+        // ÉTAPE 2 : Récupérer les comptes email du client (base de données)
+        const accountsFormData = new FormData();
+        accountsFormData.append('action_get_email_accounts', '1');
+        accountsFormData.append('id_compte', clientId);
+        
+        const accountsResponse = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: accountsFormData
+        });
+        
+        const accountsResult = await accountsResponse.json();
+        
+        if (!accountsResult.success) {
+            throw new Error(accountsResult.error || 'Impossible de charger les comptes');
+        }
+        
+        // ÉTAPE 3 : Afficher les deux ensembles de données
+        let html = `
+            <div class="mb-4">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700">
+                        Serveurs SMTP dans Listmonk (${settingsResult.smtpCount})
+                    </label>
+                    <span class="text-xs text-gray-400">${settingsResult.settingsKeys} clés de configuration</span>
+                </div>
+                <div class="space-y-1 max-h-40 overflow-y-auto">
+        `;
+        
+        if (settingsResult.smtp.length === 0) {
+            html += `
+                <div class="text-center text-gray-500 py-2 text-sm bg-gray-50 rounded-lg">
+                    <i class="fas fa-info-circle"></i>
+                    Aucun serveur SMTP configuré dans Listmonk
+                </div>
+            `;
+        } else {
+            settingsResult.smtp.forEach(smtp => {
+                const isActive = smtp.enabled;
+                html += `
+                    <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-200">
+                        <div class="flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full ${isActive ? 'bg-green-500' : 'bg-gray-400'}"></span>
+                            <span class="font-medium text-sm">${escapeHtml(smtp.name || 'Sans nom')}</span>
+                            <span class="text-xs text-gray-500">${escapeHtml(smtp.host || '')}:${smtp.port || ''}</span>
+                        </div>
+                        <span class="text-xs ${isActive ? 'text-green-600' : 'text-gray-500'}">
+                            ${isActive ? 'Actif' : 'Inactif'}
+                        </span>
+                    </div>
+                `;
+            });
+        }
+        
+        html += `
+                </div>
+            </div>
+            
+            <div class="border-t pt-4 mt-2">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700">
+                        Comptes email du client (${accountsResult.accounts.length})
+                    </label>
+                    <button onclick="openCreateEmailAccountModal()" 
+                            class="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded-lg transition">
+                        <i class="fas fa-plus"></i> Ajouter
+                    </button>
+                </div>
+                <div class="space-y-2 max-h-60 overflow-y-auto">
+        `;
+        
+        if (accountsResult.accounts.length === 0) {
+            html += `
+                <div class="text-center text-gray-500 py-2 text-sm bg-gray-50 rounded-lg">
+                    <i class="fas fa-info-circle"></i>
+                    Aucun compte email configuré pour ce client
+                </div>
+            `;
+        } else {
+            accountsResult.accounts.forEach(account => {
+                const isActive = account.est_actif;
+                const cleanName = account.name.replace(/['"\\]/g, '').replace(/\s+/g, ' ');
+                const escapedName = escapeHtml(cleanName);
+                
+                html += `
+                    <div class="device-item ${isActive ? 'email-active' : ''}" 
+                         onclick="activateEmailAccount('${account.id_email_account}')">
+                        <div class="flex items-center gap-3 flex-1">
+                            <div class="device-icon email-icon ${isActive ? '' : 'inactive'}">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            <div class="flex-1">
+                                <p class="font-medium text-gray-800">${escapedName}</p>
+                                <p class="text-xs text-gray-500">${escapeHtml(account.username)}</p>
+                                <p class="text-xs text-gray-400">${escapeHtml(account.from_address)}</p>
+                                <p class="text-xs text-gray-400">Créé le ${account.created_at}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-medium px-2 py-1 rounded-full ${isActive ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}">
+                                ${isActive ? 'Actif' : 'Inactif'}
+                            </span>
+                            <button data-account-id="${account.id_email_account}" 
+                                    data-account-name="${escapedName}"
+                                    class="btn-sm btn-sm-danger delete-email-btn">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        html += `
+                </div>
+            </div>
+            <div class="border-t pt-3 mt-3">
+                <p class="text-xs text-gray-400 text-center">
+                    <i class="fas fa-sync-alt"></i> Les modifications sont synchronisées avec Listmonk
+                </p>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        footer.innerHTML = `
+            <button onclick="closeEmailModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                Fermer
+            </button>
+        `;
+        
+        document.querySelectorAll('.delete-email-btn').forEach(btn => {
+            btn.addEventListener('click', function(event) {
+                event.stopPropagation();
+                const accountId = this.getAttribute('data-account-id');
+                const accountName = this.getAttribute('data-account-name') || 'ce compte';
+                deleteEmailAccount(accountId, accountName);
+            });
+        });
+        
+    } catch (error) {
+        console.error('Erreur:', error);
+        container.innerHTML = `
+            <div class="text-center py-8">
+                <i class="fas fa-exclamation-circle text-3xl text-red-500"></i>
+                <p class="text-gray-600 mt-2">Erreur: ${escapeHtml(error.message)}</p>
+            </div>
+        `;
+    }
+}
+
+function closeEmailModal() {
+    document.getElementById('emailModal').style.display = 'none';
+    document.getElementById('emailContent').innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
+            <p class="text-gray-500 mt-2">Chargement...</p>
+        </div>
+    `;
+    document.getElementById('emailFooter').innerHTML = `
+        <button onclick="closeEmailModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+            Fermer
+        </button>
+    `;
+}
+
+async function activateEmailAccount(accountId) {
+    try {
+        showToast('Activation du compte email...', 'info');
+        
+        const formData = new FormData();
+        formData.append('action_activate_email_account', '1');
+        formData.append('id_compte', clientId);
+        formData.append('account_id', accountId);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadEmailAccounts();
+        } else {
+            showToast(result.error || 'Erreur lors de l\'activation', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    }
+}
+
+function deleteEmailAccount(accountId, accountName) {
+    const cleanName = (accountName || 'ce compte').replace(/['"\\]/g, '');
+    
+    const modalHtml = `
+        <div id="deleteEmailConfirmModal" class="modal-overlay" style="display: flex;">
+            <div class="modal-card" style="max-width: 400px;" onclick="event.stopPropagation()">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center">
+                        <div class="bg-red-100 p-2 rounded-full mr-3">
+                            <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-800">Confirmer la suppression</h3>
+                    </div>
+                    <button onclick="closeDeleteEmailConfirmModal()" class="modal-close-btn">&times;</button>
+                </div>
+                
+                <p class="text-gray-600 mb-4">
+                    Êtes-vous sûr de vouloir supprimer le compte <strong>${escapeHtml(cleanName)}</strong> ?
+                </p>
+                <p class="text-sm text-red-600 mb-4">Cette action est irréversible et supprimera également l'expéditeur de l'API SMTP.</p>
+                
+                <div class="flex justify-end gap-2">
+                    <button onclick="closeDeleteEmailConfirmModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                        Annuler
+                    </button>
+                    <button onclick="confirmDeleteEmailAccount('${accountId}')" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
+                        <i class="fas fa-trash-alt mr-2"></i>Supprimer
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const oldModal = document.getElementById('deleteEmailConfirmModal');
+    if (oldModal) oldModal.remove();
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeDeleteEmailConfirmModal() {
+    const modal = document.getElementById('deleteEmailConfirmModal');
+    if (modal) modal.remove();
+}
+
+async function confirmDeleteEmailAccount(accountId) {
+    closeDeleteEmailConfirmModal();
+    
+    try {
+        showToast('Suppression en cours...', 'info');
+        
+        const accountElement = document.querySelector(`[data-account-id="${accountId}"]`);
+        const accountName = accountElement ? accountElement.getAttribute('data-account-name') : '';
+        
+        if (!accountName) {
+            showToast('Nom du compte non trouvé', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('action_delete_smtp_server', '1');
+        formData.append('account_id', accountId);
+        formData.append('account_name', accountName);
+        formData.append('id_compte', clientId);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadEmailAccounts();
+        } else {
+            showToast(result.error || 'Erreur lors de la suppression', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    }
+}
+
+function openCreateEmailAccountModal() {
+    document.getElementById('createEmailAccountModal').style.display = 'flex';
+    document.getElementById('createEmailForm').reset();
+}
+
+function closeCreateEmailAccountModal() {
+    document.getElementById('createEmailAccountModal').style.display = 'none';
+}
+
+// --- Gestionnaire de formulaire de création de compte email (avec option de remplacement) ---
+document.getElementById('createEmailForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const name = document.getElementById('email_name').value.trim();
+    const username = document.getElementById('email_username').value.trim();
+    const password = document.getElementById('email_password').value.trim();
+    const from_address = document.getElementById('email_from_address').value.trim();
+    const replaceExisting = document.getElementById('replace_existing').checked;
+    
+    if (!name) {
+        showToast('Veuillez entrer un nom pour le compte', 'error');
+        return;
+    }
+    if (!username) {
+        showToast('Veuillez entrer un nom d\'utilisateur', 'error');
+        return;
+    }
+    if (!password) {
+        showToast('Veuillez entrer un mot de passe', 'error');
+        return;
+    }
+    if (!from_address) {
+        showToast('Veuillez entrer une adresse email expéditeur', 'error');
+        return;
+    }
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Création...';
+    submitBtn.disabled = true;
+    
+    try {
+        const formData = new FormData();
+        formData.append('action_add_smtp_server', '1');
+        formData.append('id_compte', clientId);
+        formData.append('name', name);
+        formData.append('username', username);
+        formData.append('password', password);
+        formData.append('from_address', from_address);
+        formData.append('replace_existing', replaceExisting ? 'true' : 'false');
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeCreateEmailAccountModal();
+            await loadEmailAccounts();
+        } else {
+            showToast(result.error || 'Erreur lors de la création', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    } finally {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+// ============================================
 // FONCTIONS WHATSAPP
 // ============================================
 
-// --- Supprimer une session WhatsApp ---
 function deleteWhatsAppSession(sessionId, sessionName) {
     showConfirmModal(
         `Êtes-vous sûr de vouloir supprimer la session <strong>${escapeHtml(sessionName)}</strong> ?<br><span class="text-sm text-red-600">Cette action est irréversible.</span>`,
@@ -3424,7 +4688,6 @@ function deleteWhatsAppSession(sessionId, sessionName) {
                 
                 if (result.success) {
                     showToast(result.message, 'success');
-                    // Recharger la liste des sessions
                     await loadWhatsAppSessions();
                 } else {
                     showToast(result.error || 'Erreur lors de la suppression', 'error');
@@ -3484,7 +4747,7 @@ function startStatusPolling(sessionName) {
         checkSessionStatus(sessionName);
         if (connectionCheckCount >= 24) {
             stopStatusPolling();
-            showToast('⏰ Délai dépassé. Vérifiez manuellement.', 'info');
+            showToast('Délai dépassé. Vérifiez manuellement.', 'info');
         }
     }, 5000);
 }
@@ -3550,11 +4813,11 @@ async function checkSessionStatusAfterWait(sessionName) {
                 stopWaitingTimer();
                 closeCodeModal();
                 updateSessionInDatabase(sessionName, true);
-                showToast('✅ Session connectée avec succès ! 🎉', 'success');
+                showToast('Session connectée avec succès ! 🎉', 'success');
                 playNotificationSound();
                 updateSessionStatusOnly(sessionName, true);
             } else {
-                showToast('⏳ La session n\'est pas encore connectée. Vérifiez le code.', 'info');
+                showToast('La session n\'est pas encore connectée. Vérifiez le code.', 'info');
             }
         }
     } catch (error) {
@@ -3584,7 +4847,7 @@ function updateSessionStatusOnly(sessionName, isConnected) {
             
             if (isConnected) {
                 statusBadge.className = 'session-status-badge working';
-                statusBadge.textContent = '✅ Connecté';
+                statusBadge.textContent = 'Connecté';
                 item.classList.add('working');
                 item.classList.remove('scanning', 'failed', 'stopped');
                 const connectBtn = item.querySelector('.btn-sm-whatsapp');
@@ -3715,7 +4978,7 @@ async function loadWhatsAppSessions() {
             } else {
                 result.sessions.forEach(session => {
                     const isActive = session.est_active;
-                    const statusLabel = isActive ? '✅ Connecté' : '🔗 Connecter';
+                    const statusLabel = isActive ? 'Connecté' : '🔗 Connecter';
                     const statusClass = isActive ? 'working' : 'inactive';
                     const itemClass = isActive ? 'working' : '';
                     const connectBtnStyle = isActive ? 'display: none;' : '';
@@ -3724,7 +4987,7 @@ async function loadWhatsAppSessions() {
                         <div class="session-list-item ${itemClass}" data-session="${escapeHtml(session.nom_session)}">
                             <div class="flex items-center gap-3 flex-1">
                                 <div class="session-icon ${isActive ? '' : 'inactive'}">
-                                    <i class="fab fa-whatsapp"></i>
+                                    <i class="fab fa-mobile-alt"></i>
                                 </div>
                                 <div>
                                     <p class="font-medium text-gray-800 session-name">${escapeHtml(session.nom_session)}</p>
@@ -3873,7 +5136,7 @@ async function connectSession(sessionName) {
             return;
         }
         
-        showToast('✅ Session redémarrée', 'success');
+        showToast('Session redémarrée', 'success');
         
         let phoneNumber = document.getElementById('edit_telephone')?.value || '';
         if (!phoneNumber) {
@@ -3920,14 +5183,14 @@ async function requestCode(sessionName, phoneNumber) {
         
         if (result.success) {
             codeDisplay.textContent = result.code || 'N/A';
-            showToast('✅ Code d\'appairage obtenu !', 'success');
+            showToast('Code d\'appairage obtenu !', 'success');
         } else {
-            codeDisplay.textContent = '❌ Erreur';
+            codeDisplay.textContent = 'Erreur';
             showToast(result.error || 'Erreur lors de la demande du code', 'error');
         }
     } catch (error) {
         console.error('Erreur:', error);
-        codeDisplay.textContent = '❌ Erreur réseau';
+        codeDisplay.textContent = 'Erreur réseau';
         showToast('Erreur réseau: ' + error.message, 'error');
     }
 }
@@ -3939,7 +5202,7 @@ function closeCodeModal() {
 
 function copyCode() {
     const code = document.getElementById('codeDisplay').textContent;
-    if (code && code !== 'Demande en cours...' && code !== '❌ Erreur' && code !== '❌ Erreur réseau') {
+    if (code && code !== 'Demande en cours...' && code !== 'Erreur' && code !== 'Erreur réseau') {
         navigator.clipboard.writeText(code).then(() => {
             showToast('Code copié !', 'success');
         }).catch(() => {
@@ -4010,10 +5273,12 @@ document.addEventListener('keydown', function(e) {
         closeAssociateModal();
         closeDetachConfirmModal();
         closeSessionModal();
+        closeEmailModal();
         closeCodeModal();
         closeSmsApiModal();
         closeSmsDeviceModal();
         closeConfirmModal();
+        closeCreateEmailAccountModal();
         stopWaitingTimer();
     }
 });
@@ -4025,10 +5290,12 @@ document.querySelectorAll('.modal-overlay').forEach(modal => {
             else if (this.id === 'associateProviderModal') closeAssociateModal();
             else if (this.id === 'detachConfirmModal') closeDetachConfirmModal();
             else if (this.id === 'sessionModal') closeSessionModal();
+            else if (this.id === 'emailModal') closeEmailModal();
             else if (this.id === 'codeModal') { closeCodeModal(); stopWaitingTimer(); }
             else if (this.id === 'smsApiModal') closeSmsApiModal();
             else if (this.id === 'smsDeviceModal') closeSmsDeviceModal();
             else if (this.id === 'confirmModal') closeConfirmModal();
+            else if (this.id === 'createEmailAccountModal') closeCreateEmailAccountModal();
         }
     });
 });

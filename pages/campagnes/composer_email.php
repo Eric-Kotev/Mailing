@@ -6,7 +6,7 @@ $idCompte = $_SESSION['user_id'];
 // ============================================
 // RÉCUPÉRATION DE LA CAMPAGNE CONFIG
 // ============================================
-$campagneConfigId = $_POST['campagne_config_id'] ?? $_SESSION['campagne_config_id'] ?? null;
+$campagneConfigId = $_POST['campagne_config_id'] ?? $_SESSION['campagne_config_id'] ?? $_GET['campagne_config_id'] ?? null;
 
 if (!$campagneConfigId) {
     header('Location: index.php?page=campagnes/index');
@@ -99,70 +99,354 @@ foreach ($listesBrutes as $liste) {
         'id_liste' => $liste['id_liste'],
         'nom_liste' => $liste['nom_liste'],
         'nombre_contacts' => $nbContacts,
-        'nombre_sans_email' => $nbSansEmail
+        'nombre_sans_email' => $nbSansEmail,
+        'listmonk_id' => $liste['listmonk_id'] ?? null
     ];
 }
 
 $error = '';
 $success = '';
+$uploadedMediaId = null;
+$uploadedFileName = null;
+$uploadError = null;
+
+// Récupérer les données du formulaire en session
+$formData = $_SESSION['form_data'] ?? [];
+$formData['objet'] = $formData['objet'] ?? '';
+$formData['corps'] = $formData['corps'] ?? '';
+$formData['liste_id'] = $formData['liste_id'] ?? '';
+$formData['from_email'] = $formData['from_email'] ?? 'noreply@votre-domaine.com';
+$formData['from_name'] = $formData['from_name'] ?? 'Votre Entreprise';
+
+// Récupérer les infos de l'upload en session
+$uploadedMediaId = $_SESSION['uploaded_media_id'] ?? null;
+$uploadedFileName = $_SESSION['uploaded_file_name'] ?? null;
+$uploadedMediaUrl = $_SESSION['uploaded_media_url'] ?? null;
+$uploadError = $_SESSION['upload_error'] ?? null;
+$flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
+$flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
+
+// Nettoyer les erreurs d'upload après affichage
+unset($_SESSION['upload_error']);
 
 // ============================================
-// TRAITEMENT DU FORMULAIRE - ENREGISTREMENT SEULEMENT
+// TRAITEMENT DE L'UPLOAD DE FICHIER (AJAX)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_upload_file'])) {
+    header('Content-Type: application/json');
+    
+    $response = ['success' => false, 'message' => '', 'media_id' => null, 'media_url' => null];
+    
+    $hasFile = isset($_FILES['piece_jointe']) && $_FILES['piece_jointe']['error'] === UPLOAD_ERR_OK;
+    
+    if (!$hasFile) {
+        $response['message'] = "Veuillez sélectionner un fichier à importer";
+        echo json_encode($response);
+        exit;
+    }
+    
+    $file = $_FILES['piece_jointe'];
+    
+    // Vérifier la taille du fichier (max 10 Mo)
+    if ($file['size'] > 10 * 1024 * 1024) {
+        $response['message'] = "Le fichier est trop volumineux. Maximum 10 Mo.";
+        echo json_encode($response);
+        exit;
+    }
+    
+    // Vérifier le type de fichier
+    $allowedTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf', 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain', 'text/csv'
+    ];
+    
+    $mimeType = mime_content_type($file['tmp_name']);
+    if (!in_array($file['type'], $allowedTypes) && !in_array($mimeType, $allowedTypes)) {
+        $response['message'] = "Type de fichier non autorisé. Types autorisés: images, PDF, Word, Excel, CSV, TXT";
+        echo json_encode($response);
+        exit;
+    }
+    
+    // Créer le dossier d'upload si nécessaire
+    $uploadDir = 'uploads/pieces_jointes/';
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0777, true);
+    }
+    
+    $fileName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file['name']);
+    $filePath = $uploadDir . $fileName;
+    
+    if (!move_uploaded_file($file['tmp_name'], $filePath)) {
+        $response['message'] = "Impossible de déplacer le fichier uploadé.";
+        echo json_encode($response);
+        exit;
+    }
+    
+    // Uploader le fichier vers Listmonk avec multipart/form-data
+    $apiUrl = 'http://164.68.103.147:9005/api/media';
+    $username = 'test';
+    $password = 'lqXJrA1sfE1YobhQ0CyP9UiMpi1MOsb83p554Uuc1IRDKVRR';
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+    curl_setopt($ch, CURLOPT_VERBOSE, true);
+    
+    // Créer le fichier CURLFile pour l'upload multipart
+    $fileInfo = new CURLFile($filePath, mime_content_type($filePath), $file['name']);
+    $postFields = ['file' => $fileInfo];
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+    
+    $responseData = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    if ($curlError) {
+        $response['message'] = "Erreur CURL: " . $curlError;
+        echo json_encode($response);
+        exit;
+    }
+    
+    if ($httpCode === 200 || $httpCode === 201) {
+        $data = json_decode($responseData, true);
+        $mediaId = null;
+        $mediaUrl = null;
+        
+        if (isset($data['id'])) {
+            $mediaId = $data['id'];
+            // Récupérer l'URL du média
+            if (isset($data['url'])) {
+                $mediaUrl = $data['url'];
+            } elseif (isset($data['data']['url'])) {
+                $mediaUrl = $data['data']['url'];
+            }
+        } elseif (isset($data['data']['id'])) {
+            $mediaId = $data['data']['id'];
+            if (isset($data['data']['url'])) {
+                $mediaUrl = $data['data']['url'];
+            }
+        } elseif (isset($data['result']['id'])) {
+            $mediaId = $data['result']['id'];
+            if (isset($data['result']['url'])) {
+                $mediaUrl = $data['result']['url'];
+            }
+        }
+        
+        if ($mediaId) {
+            // Stocker en session pour utilisation ultérieure
+            $_SESSION['uploaded_media_id'] = $mediaId;
+            $_SESSION['uploaded_file_name'] = $file['name'];
+            $_SESSION['uploaded_media_url'] = $mediaUrl;
+            
+            $response['success'] = true;
+            $response['message'] = "Fichier importé avec succès (ID: " . $mediaId . ")";
+            $response['media_id'] = $mediaId;
+            $response['file_name'] = $file['name'];
+            $response['media_url'] = $mediaUrl;
+        } else {
+            $response['message'] = "Fichier uploadé mais aucun ID média reçu. Réponse: " . substr($responseData, 0, 200);
+        }
+    } else {
+        $response['message'] = "Erreur Listmonk (HTTP " . $httpCode . "): " . substr($responseData, 0, 500);
+        $_SESSION['upload_error'] = $response['message'];
+    }
+    
+    echo json_encode($response);
+    exit;
+}
+
+// ============================================
+// TRAITEMENT POUR SUPPRIMER LE FICHIER UPLOADÉ
+// ============================================
+if (isset($_GET['remove_upload']) && $_GET['remove_upload'] == 1) {
+    unset($_SESSION['uploaded_media_id']);
+    unset($_SESSION['uploaded_file_name']);
+    unset($_SESSION['uploaded_media_url']);
+    unset($_SESSION['upload_error']);
+    header('Location: ' . $_SERVER['PHP_SELF'] . '?page=campagnes/composer&campagne_config_id=' . $campagneConfigId);
+    exit;
+}
+
+// ============================================
+// FONCTION POUR CRÉER UNE CAMPAGNE SUR LISTMONK
+// ============================================
+function createListmonkCampaign($campaignData) {
+    $apiUrl = 'http://164.68.103.147:9005/api/campaigns';
+    $username = 'test';
+    $password = 'lqXJrA1sfE1YobhQ0CyP9UiMpi1MOsb83p554Uuc1IRDKVRR';
+    
+    $payload = [
+        'name' => $campaignData['name'],
+        'subject' => $campaignData['subject'],
+        'lists' => [(int)$campaignData['list_id']],
+        'type' => 'regular',
+        'content_type' => 'richtext',
+        'body' => $campaignData['body'],
+        'from_email' => $campaignData['from_email'] ?? 'noreply@votre-domaine.com',
+        'from_name' => $campaignData['from_name'] ?? 'Votre Entreprise',
+        'messenger' => 'email',
+        'enabled' => true
+    ];
+    
+    // Ajouter les pièces jointes si présentes (pour les fichiers non-image)
+    if (!empty($campaignData['attachments']) && is_array($campaignData['attachments'])) {
+        $payload['attachments'] = $campaignData['attachments'];
+    }
+    
+    // Gestion de la planification
+    if (!empty($campaignData['send_at'])) {
+        $payload['send_at'] = $campaignData['send_at'];
+        $payload['status'] = 'scheduled';
+    } else {
+        $payload['status'] = 'draft';
+    }
+    
+    error_log("=== PAYLOAD LISTMONK ===");
+    error_log(json_encode($payload, JSON_PRETTY_PRINT));
+    
+    $ch = curl_init($apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    if ($curlError) {
+        return ['success' => false, 'error' => "Erreur CURL: $curlError"];
+    }
+    
+    if ($httpCode === 200 || $httpCode === 201) {
+        $data = json_decode($response, true);
+        $campaignId = null;
+        if (isset($data['id'])) {
+            $campaignId = $data['id'];
+        } elseif (isset($data['data']['id'])) {
+            $campaignId = $data['data']['id'];
+        } elseif (isset($data['result']['id'])) {
+            $campaignId = $data['result']['id'];
+        }
+        
+        return [
+            'success' => true, 
+            'campaign_id' => $campaignId, 
+            'data' => $data
+        ];
+    } else {
+        error_log("=== ERREUR LISTMONK RESPONSE ===");
+        error_log($response);
+        return ['success' => false, 'error' => "HTTP $httpCode: " . substr($response, 0, 500)];
+    }
+}
+
+// ============================================
+// FONCTION POUR METTRE À JOUR LE STATUT D'UNE CAMPAGNE
+// ============================================
+function updateListmonkCampaignStatus($campaignId, $status) {
+    $apiUrl = "http://164.68.103.147:9005/api/campaigns/{$campaignId}/status";
+    $username = 'test';
+    $password = 'lqXJrA1sfE1YobhQ0CyP9UiMpi1MOsb83p554Uuc1IRDKVRR';
+    
+    $payload = ['status' => $status];
+    
+    $ch = curl_init($apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    return $httpCode === 200 || $httpCode === 201 || $httpCode === 204;
+}
+
+// ============================================
+// TRAITEMENT DU FORMULAIRE PRINCIPAL
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])) {
+    // Sauvegarder les données du formulaire en session
+    $_SESSION['form_data'] = [
+        'objet' => $_POST['objet'] ?? '',
+        'corps' => $_POST['corps'] ?? '',
+        'liste_id' => $_POST['liste_id'] ?? '',
+        'from_email' => $_POST['from_email'] ?? 'noreply@votre-domaine.com',
+        'from_name' => $_POST['from_name'] ?? 'Votre Entreprise'
+    ];
+    
     $objet = trim($_POST['objet'] ?? '');
     $corps = trim($_POST['corps'] ?? '');
-    $type_envoi = $_POST['type_envoi'] ?? 'simple';
-    $contact_id = $_POST['contact_unique'] ?? null;
     $liste_id = $_POST['liste_id'] ?? null;
+    $from_email = trim($_POST['from_email'] ?? '');
+    $from_name = trim($_POST['from_name'] ?? '');
+    $envoyer_maintenant = isset($_POST['envoyer_maintenant']) && $_POST['envoyer_maintenant'] === '1';
+    $date_planification = $_POST['date_planification'] ?? null;
+    $media_id = $_POST['media_id'] ?? null;
     
-    // Gestion des fichiers
-    $hasFile = isset($_FILES['piece_jointe']) && $_FILES['piece_jointe']['error'] === UPLOAD_ERR_OK;
+    // Si media_id n'est pas dans le POST mais existe en session, l'utiliser
+    if (empty($media_id) && !empty($_SESSION['uploaded_media_id'])) {
+        $media_id = $_SESSION['uploaded_media_id'];
+    }
+    
+    // Récupérer l'URL du média
+    $mediaUrl = $_SESSION['uploaded_media_url'] ?? null;
+    
+    // Validation des emails expéditeurs
+    if (empty($from_email)) {
+        $from_email = 'noreply@votre-domaine.com';
+    }
+    if (empty($from_name)) {
+        $from_name = 'Votre Entreprise';
+    }
     
     // Validation
     if (empty($objet)) {
         $error = "Veuillez saisir un objet";
     } elseif (empty($corps)) {
         $error = "Veuillez saisir le corps du message";
-    } elseif ($type_envoi === 'simple' && empty($contact_id)) {
-        $error = "Veuillez sélectionner un destinataire";
-    } elseif ($type_envoi === 'multiple' && empty($liste_id)) {
-        $error = "Veuillez sélectionner une liste";
+    } elseif (empty($liste_id)) {
+        $error = "Veuillez sélectionner une liste de diffusion";
     } else {
-        // Préparer les données à enregistrer
+        // Préparer les données
         $destinataires = [];
         $destinatairesNoms = [];
-        $fichierInfo = null;
         $contactsSansEmailDansListe = 0;
+        $listmonkListId = null;
         
-        // Traiter le fichier si présent
-        if ($hasFile) {
-            $file = $_FILES['piece_jointe'];
-            $fichierInfo = [
-                'nom' => $file['name'],
-                'taille' => round($file['size'] / 1024 / 1024, 2),
-                'type' => $file['type'],
-                'extension' => strtolower(pathinfo($file['name'], PATHINFO_EXTENSION))
-            ];
+        // Récupérer le listmonk_id de la liste sélectionnée
+        foreach ($listes as $l) {
+            if ($l['id_liste'] == $liste_id) {
+                $listmonkListId = $l['listmonk_id'];
+                break;
+            }
         }
         
-        if ($type_envoi === 'simple') {
-            // Récupérer les infos du contact
-            $contact = $db->select('contact', ['id_contact' => $contact_id, 'id_compte' => $idCompte]);
-            if (!empty($contact) && !empty($contact[0]['email'])) {
-                $destinataires[] = $contact[0]['email'];
-                $destinatairesNoms[] = $contact[0]['prenom'] . ' ' . $contact[0]['nom'] . ' (' . $contact[0]['email'] . ')';
-            } else {
-                $error = "Ce contact n'a pas d'adresse email valide";
-            }
+        if (!$listmonkListId) {
+            $error = "Cette liste n'est pas liée à Listmonk. Veuillez d'abord synchroniser la liste.";
         } else {
-            // Récupérer les contacts de la liste (excluant blacklist)
+            // Récupérer les contacts de la liste
             $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
             foreach ($listeContacts as $lc) {
                 if (!in_array($lc['id_contact'], $blacklistIds)) {
                     $contact = $db->select('contact', ['id_contact' => $lc['id_contact'], 'id_compte' => $idCompte]);
                     if (!empty($contact) && !empty($contact[0]['email'])) {
-                        $destinataires[] = $contact[0]['email'];
+                        $destinataires[] = $contact[0];
                         $destinatairesNoms[] = $contact[0]['prenom'] . ' ' . $contact[0]['nom'] . ' (' . $contact[0]['email'] . ')';
                     } else {
                         $contactsSansEmailDansListe++;
@@ -179,65 +463,202 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             }
         }
         
-        if (empty($error)) {
-            // Enregistrer dans la table campagne (historique)
-            $campagneData = [
-                'id_compte' => $idCompte,
-                'id_campagne_config' => $campagneConfigId,
-                'type_campagne' => 'email',
-                'titre' => "Email: " . (strlen($objet) > 40 ? substr($objet, 0, 40) . '...' : $objet),
-                'message' => $corps,
-                'objet' => $objet,
-                'destinataires' => json_encode($destinatairesNoms),
-                'nb_destinataires' => count($destinataires),
-                'nb_envoyes' => 0,
-                'nb_succes' => 0,
-                'nb_erreurs' => 0,
-                'statut' => 'brouillon',
-                'created_at' => date('Y-m-d H:i:s')
+        if (empty($error) && $listmonkListId) {
+            // Préparer le corps du message avec l'image si présente
+            $bodyContent = $corps;
+            
+            // Si une image est uploadée, l'insérer dans le corps du message
+            if (!empty($media_id) && !empty($mediaUrl)) {
+                // Déterminer si c'est une image
+                $isImage = false;
+                $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+                $extension = strtolower(pathinfo($uploadedFileName ?? '', PATHINFO_EXTENSION));
+                if (in_array($extension, $imageExtensions)) {
+                    $isImage = true;
+                }
+                
+                if ($isImage) {
+                    // Insérer l'image dans le corps du message
+                    $bodyContent .= '<br><br><img src="' . $mediaUrl . '" alt="' . htmlspecialchars($uploadedFileName ?? 'Image') . '" style="max-width:100%;">';
+                } else {
+                    // Pour les fichiers non-image, ajouter un lien de téléchargement
+                    $bodyContent .= '<br><br><strong>Pièce jointe :</strong> <a href="' . $mediaUrl . '">' . htmlspecialchars($uploadedFileName ?? 'Fichier') . '</a>';
+                }
+            }
+            
+            // 1. CRÉER LA CAMPAGNE SUR LISTMONK
+            $campaignData = [
+                'name' => $campagne['nom_campagne'] . ' - ' . date('Y-m-d H:i'),
+                'subject' => $objet,
+                'list_id' => $listmonkListId,
+                'body' => $bodyContent,
+                'from_email' => $from_email,
+                'from_name' => $from_name
             ];
             
-            // Ajouter les infos du fichier si présent
-            if ($fichierInfo) {
-                $campagneData['piece_jointe'] = json_encode($fichierInfo);
+            // Ajouter les pièces jointes pour les fichiers non-image (PDF, DOC, etc.)
+            if (!empty($media_id)) {
+                $extension = strtolower(pathinfo($uploadedFileName ?? '', PATHINFO_EXTENSION));
+                $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+                if (!in_array($extension, $imageExtensions)) {
+                    // Pour les fichiers non-image, on les attache comme pièce jointe
+                    $campaignData['attachments'] = [(int)$media_id];
+                }
+                // Pour les images, on les inclut déjà dans le body
             }
             
-            try {
-                $db->insert('campagne', $campagneData);
+            // VÉRIFIER LA DATE DE PLANIFICATION
+            $hasSchedule = false;
+            $scheduleDate = null;
+            
+            if (!empty($campagne['date_planification'])) {
+                $scheduleDate = $campagne['date_planification'];
+                $hasSchedule = true;
+            } 
+            elseif (!empty($date_planification) && !$envoyer_maintenant) {
+                $scheduleDate = $date_planification;
+                $hasSchedule = true;
+            }
+            
+            if ($hasSchedule && $scheduleDate) {
+            // Format: 2026-08-01T09:00:00.000000+03:00
+            $datetime = new DateTime($scheduleDate);
+            $datetime->setTimezone(new DateTimeZone('+03:00')); // Fuseau horaire de Madagascar
+            $campaignData['send_at'] = $datetime->format('Y-m-d\TH:i:s.000000P');
+        }
+            
+            $result = createListmonkCampaign($campaignData);
+            $listmonkCampaignId = null;
+            
+            if ($result['success']) {
+                $listmonkCampaignId = $result['campaign_id'];
+                error_log("=== CAMPAGNE CRÉÉE SUR LISTMONK: ID=" . $listmonkCampaignId);
+                if (!empty($media_id)) {
+                    error_log("=== AVEC MÉDIA ID: " . $media_id);
+                    error_log("=== URL DU MÉDIA: " . $mediaUrl);
+                }
+
+            if ($hasSchedule && $listmonkCampaignId) {
+                $statusUpdated = updateListmonkCampaignStatus($listmonkCampaignId, 'scheduled');
+                if ($statusUpdated) {
+                    error_log("=== STATUT MIS À JOUR EN 'scheduled' POUR ID=" . $listmonkCampaignId);
+                } else {
+                    error_log("=== ÉCHEC DE MISE À JOUR DU STATUT POUR ID=" . $listmonkCampaignId);
+                }
+            }
+            
+            } else {
+                $error = "Erreur Listmonk : " . $result['error'];
+                error_log("=== ERREUR LISTMONK: " . $result['error']);
+            }
+            
+            // 2. ENREGISTRER DANS LA BASE DE DONNÉES
+            if (empty($error) || $listmonkCampaignId) {
+                $finalStatut = 'pret_a_envoyer';
+                if ($hasSchedule) {
+                    $finalStatut = 'planifiee';
+                }
                 
-                // Mettre à jour le statut de la campagne config
-                $updateData = [
-                    'statut' => 'pret_a_envoyer',
-                    'message_content' => $corps,
-                    'objet' => $objet
+                $campagneData = [
+                    'id_compte' => $idCompte,
+                    'id_campagne_config' => $campagneConfigId,
+                    'type_campagne' => 'email',
+                    'titre' => "Email: " . (strlen($objet) > 40 ? substr($objet, 0, 40) . '...' : $objet),
+                    'message' => $bodyContent,
+                    'objet' => $objet,
+                    'destinataires' => json_encode($destinatairesNoms),
+                    'nb_destinataires' => count($destinataires),
+                    'nb_envoyes' => 0,
+                    'nb_succes' => 0,
+                    'nb_erreurs' => 0,
+                    'statut' => $finalStatut,
+                    'listmonk_campaign_id' => $listmonkCampaignId,
+                    'from_email' => $from_email,
+                    'from_name' => $from_name,
+                    'created_at' => date('Y-m-d H:i:s')
                 ];
                 
-                if ($fichierInfo) {
-                    $updateData['piece_jointe'] = json_encode($fichierInfo);
+                // Ajouter les informations de la pièce jointe UNIQUEMENT si présente
+                if (!empty($media_id)) {
+                    $campagneData['listmonk_media_id'] = $media_id;
+                    $campagneData['piece_jointe'] = json_encode([
+                        'media_id' => $media_id,
+                        'nom' => $uploadedFileName ?? 'Fichier joint',
+                        'url' => $mediaUrl
+                    ]);
                 }
                 
-                $db->update('campagne_config', $updateData, ['id_campagne_config' => $campagneConfigId]);
-                
-                $successMsg = "Email enregistré avec succès !";
-                if ($contactsSansEmailDansListe > 0) {
-                    $successMsg .= "<br><small>⚠️ $contactsSansEmailDansListe contact(s) n'ont pas d'email et ont été exclus.</small>";
+                try {
+                    $db->insert('campagne', $campagneData);
+                    
+                    $updateData = [
+                        'statut' => $finalStatut,
+                        'message_content' => $bodyContent,
+                        'objet' => $objet,
+                        'listmonk_campaign_id' => $listmonkCampaignId
+                    ];
+                    
+                    // Ajouter le media_id UNIQUEMENT si présent
+                    if (!empty($media_id)) {
+                        $updateData['listmonk_media_id'] = $media_id;
+                    }
+                    
+                    $db->update('campagne_config', $updateData, ['id_campagne_config' => $campagneConfigId]);
+                    
+                    // Nettoyer la session
+                    unset($_SESSION['form_data']);
+                    unset($_SESSION['uploaded_media_id']);
+                    unset($_SESSION['uploaded_file_name']);
+                    unset($_SESSION['uploaded_media_url']);
+                    
+                    $successMsg = "Email enregistré avec succès !";
+                    $successMsg .= "<br>" . count($destinataires) . " destinataire(s) dans la liste Listmonk";
+                    
+                    if ($listmonkCampaignId) {
+                        $successMsg .= "<br>ID Listmonk: <strong>" . $listmonkCampaignId . "</strong>";
+                    }
+                    
+                    if (!empty($media_id)) {
+                        $extension = strtolower(pathinfo($uploadedFileName ?? '', PATHINFO_EXTENSION));
+                        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+                        if (in_array($extension, $imageExtensions)) {
+                            $successMsg .= "<br>Image intégrée dans le message (ID: $media_id)";
+                        } else {
+                            $successMsg .= "<br>📎 Pièce jointe attachée (ID: $media_id)";
+                        }
+                    }
+                    
+                    if ($hasSchedule) {
+                        $dateDisplay = $scheduleDate;
+                        $successMsg .= "<br>Campagne planifiée pour " . date('d/m/Y H:i', strtotime($dateDisplay));
+                    } elseif ($listmonkCampaignId) {
+                        $successMsg .= "<br>Campagne enregistrée en brouillon sur Listmonk (ID: $listmonkCampaignId)";
+                    }
+                    
+                    if ($contactsSansEmailDansListe > 0) {
+                        $successMsg .= "<br><small>$contactsSansEmailDansListe contact(s) n'ont pas d'email et ont été exclus de l'affichage.</small>";
+                    }
+                    $success = $successMsg;
+                    
+                    // Redirection automatique après succès
+                    echo '<meta http-equiv="refresh" content="3;url=index.php?page=campagnes/details&id=' . $campagneConfigId . '">';
+                    
+                } catch (Exception $e) {
+                    $error = "Erreur lors de l'enregistrement en base : " . $e->getMessage();
+                    error_log("=== ERREUR BASE DE DONNÉES: " . $e->getMessage());
                 }
-                $success = $successMsg;
-                
-                // Stocker en session pour l'étape suivante
-                $_SESSION['message_content'] = $corps;
-                $_SESSION['objet'] = $objet;
-                $_SESSION['type_envoi'] = $type_envoi;
-                if ($fichierInfo) {
-                    $_SESSION['piece_jointe'] = $fichierInfo;
-                }
-                
-            } catch (Exception $e) {
-                $error = "Erreur lors de l'enregistrement : " . $e->getMessage();
             }
+        } elseif (empty($error)) {
+            $error = "Aucune liste Listmonk liée à cette campagne.";
         }
     }
 }
+
+// Nettoyer les messages flash après affichage
+$flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
+$flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
+unset($_SESSION['flash_message']);
+unset($_SESSION['flash_error']);
 ?>
 
 <!DOCTYPE html>
@@ -247,7 +668,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Composer l'email - <?= APP_NAME ?></title>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <!-- Summernote - Éditeur HTML gratuit sans clé API -->
     <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
@@ -270,18 +690,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             font-size: 14px;
             font-weight: 500;
+            max-width: 500px;
         }
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.info .toast-content { background: #3b82f6; }
-        
-        .type-envoi-option {
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .type-envoi-option:hover {
-            transform: translateY(-2px);
-        }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
         
         .select2-container--default .select2-selection--single {
             border: 1px solid #d1d5db;
@@ -295,18 +709,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         .select2-container--default .select2-selection--single .select2-selection__arrow {
             height: 40px;
         }
-        .select2-dropdown {
-            border-radius: 0.5rem;
-            border-color: #d1d5db;
-        }
-        .select2-search__field {
-            border-radius: 0.5rem !important;
-            border: 1px solid #d1d5db !important;
-            padding: 6px !important;
-        }
-        .select2-results__option--highlighted {
-            background-color: #d97706 !important;
-        }
         
         .campagne-info {
             background: #f3e8ff;
@@ -314,12 +716,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             border-radius: 12px;
             padding: 12px 16px;
             margin-bottom: 20px;
-        }
-        .campagne-info-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #6b21a5;
-            margin-bottom: 8px;
         }
         
         .step-indicator {
@@ -385,6 +781,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
         }
+        .btn-secondary {
+            background: #10b981;
+            color: white;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-secondary:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
         .btn-outline {
             background: transparent;
             color: #6b7280;
@@ -400,11 +811,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             border-color: #d1d5db;
         }
         
+        .btn-upload {
+            background: #3b82f6;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            height: 44px;
+            white-space: nowrap;
+        }
+        .btn-upload:hover:not(:disabled) {
+            background: #2563eb;
+        }
+        .btn-upload:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-upload.loading {
+            background: #93c5fd;
+            cursor: wait;
+        }
+        .btn-upload-remove {
+            background: #ef4444;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            height: 44px;
+            white-space: nowrap;
+        }
+        .btn-upload-remove:hover {
+            background: #dc2626;
+        }
+        
         .action-buttons {
             display: flex;
             gap: 12px;
             justify-content: flex-end;
             margin-top: 24px;
+            flex-wrap: wrap;
         }
         
         .email-badge {
@@ -420,6 +873,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         #fileUploadArea {
             transition: all 0.2s ease;
             cursor: pointer;
+            min-height: 80px;
         }
         #fileUploadArea.drag-over {
             border-color: #d97706;
@@ -446,6 +900,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         .info-badge.success { background: #dcfce7; color: #166534; }
         .info-badge.warning { background: #fef3c7; color: #92400e; }
         .info-badge.danger { background: #fee2e2; color: #991b1b; }
+        .info-badge.info { background: #dbeafe; color: #1e40af; }
         
         .note-editor {
             border-radius: 8px !important;
@@ -457,6 +912,162 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         }
         .note-editor .note-editable {
             min-height: 300px !important;
+        }
+        
+        .planification-zone {
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 12px;
+        }
+        
+        .sender-info {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+        }
+        .sender-info label {
+            font-weight: 500;
+            color: #166534;
+        }
+        
+        .liste-info {
+            background: #eff6ff;
+            border: 1px solid #93c5fd;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+        }
+        .liste-info label {
+            font-weight: 500;
+            color: #1e40af;
+        }
+        
+        .file-upload-container {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        .file-upload-container .file-input-area {
+            flex: 1;
+            min-width: 200px;
+        }
+        .file-upload-container .upload-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .uploaded-file-info {
+            background: #dcfce7;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .uploaded-file-info .file-details {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .uploaded-file-info .file-details i {
+            color: #16a34a;
+        }
+        .uploaded-file-info .file-details .media-id {
+            font-size: 12px;
+            color: #6b7280;
+            background: #e5e7eb;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        
+        .text-center { text-align: center; }
+        .text-gray-500 { color: #6b7280; }
+        .font-bold { font-weight: 700; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mb-1 { margin-bottom: 4px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-6 { margin-bottom: 24px; }
+        .mr-1 { margin-right: 4px; }
+        .mr-2 { margin-right: 8px; }
+        .mr-4 { margin-right: 16px; }
+        .ml-2 { margin-left: 8px; }
+        .hidden { display: none; }
+        .w-full { width: 100%; }
+        .max-w-4xl { max-width: 56rem; }
+        .mx-auto { margin-left: auto; margin-right: auto; }
+        .py-8 { padding-top: 32px; padding-bottom: 32px; }
+        .px-4 { padding-left: 16px; padding-right: 16px; }
+        .p-3 { padding: 12px; }
+        .p-4 { padding: 16px; }
+        .p-6 { padding: 24px; }
+        .rounded { border-radius: 4px; }
+        .rounded-lg { border-radius: 8px; }
+        .rounded-full { border-radius: 9999px; }
+        .shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .bg-white { background: #ffffff; }
+        .bg-yellow-100 { background: #fef3c7; }
+        .bg-green-100 { background: #d1fae5; }
+        .bg-red-100 { background: #fee2e2; }
+        .text-yellow-600 { color: #d97706; }
+        .text-green-700 { color: #047857; }
+        .text-red-700 { color: #b91c1c; }
+        .text-gray-700 { color: #374151; }
+        .text-gray-800 { color: #1f2937; }
+        .text-white { color: #ffffff; }
+        .text-sm { font-size: 0.875rem; }
+        .text-xs { font-size: 0.75rem; }
+        .text-xl { font-size: 1.25rem; }
+        .text-2xl { font-size: 1.5rem; }
+        .font-medium { font-weight: 500; }
+        .font-semibold { font-weight: 600; }
+        .font-bold { font-weight: 700; }
+        .border { border: 1px solid #e5e7eb; }
+        .border-2 { border-width: 2px; }
+        .border-gray-200 { border-color: #e5e7eb; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .border-yellow-500 { border-color: #d97706; }
+        .border-green-500 { border-color: #10b981; }
+        .border-red-500 { border-color: #ef4444; }
+        .border-l-4 { border-left-width: 4px; }
+        .border-dashed { border-style: dashed; }
+        .grid { display: grid; }
+        .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .gap-3 { gap: 12px; }
+        .gap-4 { gap: 16px; }
+        .flex { display: flex; }
+        .flex-wrap { flex-wrap: wrap; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-end { justify-content: flex-end; }
+        .justify-between { justify-content: space-between; }
+        .cursor-pointer { cursor: pointer; }
+        .transition { transition: all 0.2s ease; }
+        .hover\:border-yellow-300:hover { border-color: #fcd34d; }
+        .hover\:text-gray-700:hover { color: #374151; }
+        .hover\:text-red-700:hover { color: #b91c1c; }
+        .focus\:outline-none:focus { outline: none; }
+        .focus\:border-yellow-500:focus { border-color: #d97706; }
+        .focus\:ring-2:focus { ring-width: 2px; }
+        .focus\:ring-yellow-200:focus { ring-color: #fde68a; }
+        .focus\:ring-yellow-500:focus { ring-color: #d97706; }
+        
+        @media (min-width: 768px) {
+            .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
 </head>
@@ -490,7 +1101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         </div>
         <div>
             <h1 class="text-2xl font-bold text-gray-800">Composer l'email</h1>
-            <p class="text-gray-500">Rédigez votre email et choisissez les destinataires</p>
+            <p class="text-gray-500">Rédigez votre email et choisissez une liste de diffusion</p>
         </div>
     </div>
     
@@ -501,6 +1112,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 <i class="fas fa-bullhorn mr-2"></i>
                 Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
                 <span class="email-badge ml-2"><i class="fas fa-envelope mr-1"></i>Email</span>
+                <?php if (!empty($campagne['listmonk_id'])): ?>
+                    <span class="info-badge info ml-2">
+                        <i class="fab fa-listmonk mr-1"></i> Listmonk ID: <?= $campagne['listmonk_id'] ?>
+                    </span>
+                <?php endif; ?>
+                <?php if (!empty($campagne['date_planification'])): ?>
+                    <span class="info-badge warning ml-2">
+                        <i class="fas fa-calendar-alt mr-1"></i> 
+                        Planifiée le <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
+                    </span>
+                <?php endif; ?>
             </div>
             <div class="text-sm text-purple-700 mt-1">
                 <i class="fas fa-users mr-1"></i> <?= count($contacts) ?> contact(s) avec email disponibles
@@ -517,8 +1139,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded">
                 <i class="fas fa-check-circle mr-2"></i> <?= $success ?>
                 <div class="mt-2">
-                    <a href="index.php?page=campagnes/choix_email&campagne_id=<?= $campagneConfigId ?>" class="text-green-700 underline font-semibold">
-                        Cliquez ici pour continuer vers l'envoi →
+                    <a href="index.php?page=campagnes/details&id=<?= $campagneConfigId ?>" class="text-green-700 underline font-semibold">
+                        Voir la campagne →
                     </a>
                 </div>
             </div>
@@ -527,6 +1149,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         <?php if ($error): ?>
             <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
                 <i class="fas fa-exclamation-circle mr-2"></i> <?= $error ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if ($flashMessage): ?>
+            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded">
+                <i class="fas fa-check-circle mr-2"></i> <?= $flashMessage ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if ($flashError): ?>
+            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+                <i class="fas fa-exclamation-circle mr-2"></i> <?= $flashError ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if ($uploadError): ?>
+            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+                <i class="fas fa-exclamation-circle mr-2"></i> ❌ Erreur d'import: <?= $uploadError ?>
             </div>
         <?php endif; ?>
         
@@ -543,71 +1183,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         <form method="POST" enctype="multipart/form-data" id="composerForm">
             <input type="hidden" name="campagne_config_id" value="<?= $campagneConfigId ?>">
             <input type="hidden" name="action_enregistrer" value="1">
+            <input type="hidden" name="media_id" id="media_id" value="<?= $uploadedMediaId ?>">
             
-            <!-- Type d'envoi -->
-            <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                    <i class="fas fa-envelope mr-1"></i> Type d'envoi *
-                </label>
-                <div class="grid grid-cols-2 gap-3">
-                    <div id="typeSimple" 
-                         class="type-envoi-option border-2 rounded-lg p-3 text-center cursor-pointer transition <?= (!isset($_POST['type_envoi']) || $_POST['type_envoi'] == 'simple') ? 'border-yellow-500 bg-yellow-50' : 'border-gray-200 hover:border-yellow-300' ?>">
-                        <i class="fas fa-user text-yellow-600 text-xl mb-1"></i>
-                        <p class="font-medium text-gray-800">Envoi unique</p>
-                        <p class="text-xs text-gray-500">À un seul destinataire</p>
+            <!-- ============================================ -->
+            <!-- INFORMATIONS EXPÉDITEUR -->
+            <!-- ============================================ -->
+            <div class="sender-info">
+                <h4 class="font-bold text-green-700 mb-2">
+                    <i class="fas fa-user-circle mr-1"></i> Informations de l'expéditeur
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            <i class="fas fa-envelope mr-1"></i> Email expéditeur *
+                        </label>
+                        <input type="email" name="from_email" id="from_email" required
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
+                               placeholder="expediteur@votre-domaine.com"
+                               value="<?= htmlspecialchars($formData['from_email']) ?>">
+                        <p class="text-xs text-gray-500 mt-1">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            L'email qui apparaîtra dans le champ "De" du message
+                        </p>
                     </div>
-                    <div id="typeMultiple" 
-                         class="type-envoi-option border-2 rounded-lg p-3 text-center cursor-pointer transition <?= (isset($_POST['type_envoi']) && $_POST['type_envoi'] == 'multiple') ? 'border-yellow-500 bg-yellow-50' : 'border-gray-200 hover:border-yellow-300' ?>">
-                        <i class="fas fa-list text-yellow-600 text-xl mb-1"></i>
-                        <p class="font-medium text-gray-800">Envoi par liste</p>
-                        <p class="text-xs text-gray-500">À tous les contacts d'une liste</p>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            <i class="fas fa-user mr-1"></i> Nom expéditeur *
+                        </label>
+                        <input type="text" name="from_name" id="from_name" required
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
+                               placeholder="Votre Entreprise"
+                               value="<?= htmlspecialchars($formData['from_name']) ?>">
+                        <p class="text-xs text-gray-500 mt-1">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Le nom qui apparaîtra dans le champ "De" du message
+                        </p>
                     </div>
                 </div>
-                <input type="hidden" name="type_envoi" id="type_envoi" value="<?= isset($_POST['type_envoi']) ? $_POST['type_envoi'] : 'simple' ?>">
             </div>
             
-            <!-- Envoi unique -->
-            <div id="simpleZone" class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    <i class="fas fa-user mr-1"></i> Destinataire *
-                </label>
-                <select name="contact_unique" id="contact_unique" class="w-full" style="width: 100%;">
-                    <option value="">Sélectionnez un contact...</option>
-                    <?php foreach ($contacts as $contact): ?>
-                        <option value="<?= $contact['id_contact'] ?>" <?= (isset($_POST['contact_unique']) && $_POST['contact_unique'] == $contact['id_contact']) ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?> - <?= htmlspecialchars($contact['email']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <?php if (count($contactsSansEmail) > 0): ?>
-                    <p class="text-xs text-yellow-600 mt-1">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        <?= count($contactsSansEmail) ?> contact(s) n'ont pas d'email et ne sont pas affichés.
-                    </p>
-                <?php endif; ?>
-            </div>
-            
-            <!-- Envoi par liste -->
-            <div id="multipleZone" class="mb-4" style="display: none;">
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    <i class="fas fa-list mr-1"></i> Sélectionner une liste *
-                </label>
-                <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
+            <!-- ============================================ -->
+            <!-- SÉLECTION DE LA LISTE -->
+            <!-- ============================================ -->
+            <div class="liste-info">
+                <h4 class="font-bold text-blue-700 mb-2">
+                    <i class="fas fa-list mr-1"></i> Liste de diffusion *
+                </h4>
+                <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;" required>
                     <option value="">-- Sélectionnez une liste --</option>
                     <?php foreach ($listes as $liste): ?>
-                        <option value="<?= $liste['id_liste'] ?>" <?= (isset($_POST['liste_id']) && $_POST['liste_id'] == $liste['id_liste']) ? 'selected' : '' ?>>
+                        <option value="<?= $liste['id_liste'] ?>" <?= ($formData['liste_id'] == $liste['id_liste']) ? 'selected' : '' ?>
+                                data-listmonk-id="<?= $liste['listmonk_id'] ?>">
                             <?= htmlspecialchars($liste['nom_liste']) ?>
                             (<?= $liste['nombre_contacts'] ?> avec email
                             <?php if ($liste['nombre_sans_email'] > 0): ?>
                                 , <span class="text-yellow-600"><?= $liste['nombre_sans_email'] ?> sans email</span>
                             <?php endif; ?>)
+                            <?php if ($liste['listmonk_id']): ?>
+                                <span class="text-green-600 text-xs">✓ Synchronisée avec Listmonk</span>
+                            <?php else: ?>
+                                <span class="text-red-500 text-xs">⚠️ Non synchronisée</span>
+                            <?php endif; ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
-                <p class="text-xs text-gray-500 mt-1">
+                <p class="text-xs text-gray-500 mt-2">
                     <i class="fas fa-info-circle mr-1"></i>
-                    Seuls les contacts avec une adresse email valide seront inclus.
+                    Seuls les contacts avec une adresse email valide seront inclus dans l'envoi.
+                    Les contacts blacklistés pour les emails sont automatiquement exclus.
                 </p>
+                <?php if (count($listes) === 0): ?>
+                    <p class="text-sm text-red-600 mt-2">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        Aucune liste disponible. <a href="index.php?page=listes/creer" class="text-blue-600 underline">Créez une liste</a> avant de continuer.
+                    </p>
+                <?php endif; ?>
             </div>
             
             <!-- Objet -->
@@ -618,7 +1268,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 <input type="text" name="objet" id="objet" required
                        class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
                        placeholder="Objet de l'email..."
-                       value="<?= isset($_POST['objet']) ? htmlspecialchars($_POST['objet']) : '' ?>">
+                       value="<?= htmlspecialchars($formData['objet']) ?>">
             </div>
             
             <!-- Corps du message avec Summernote -->
@@ -628,7 +1278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 </label>
                 <textarea name="corps" id="corps" rows="10"
                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
-                          placeholder="Contenu de l'email..."><?= isset($_POST['corps']) ? htmlspecialchars($_POST['corps']) : '' ?></textarea>
+                          placeholder="Contenu de l'email..."><?= htmlspecialchars($formData['corps']) ?></textarea>
                 <p class="text-xs text-gray-500 mt-1">
                     <i class="fas fa-code mr-1"></i> Le contenu supporte le HTML (mise en forme, images, liens...)
                 </p>
@@ -640,15 +1290,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                     <i class="fas fa-paperclip mr-1"></i> Pièce jointe (optionnel)
                 </label>
                 
-                <div id="fileUploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                    <input type="file" name="piece_jointe" id="piece_jointe" class="hidden">
-                    <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-2"></i>
-                    <p class="text-gray-500">Cliquez ou glissez un fichier ici</p>
-                    <p class="text-xs text-gray-400 mt-1">PDF, images, documents (Max 10 Mo)</p>
-                    <div id="fileInfo" class="mt-3 text-sm hidden">
-                        <i class="fas fa-file mr-1"></i> <span id="fileName"></span>
-                        <button type="button" id="removeFileBtn" class="text-red-500 ml-2 hover:text-red-700">Supprimer</button>
+                <div class="file-upload-container">
+                    <div class="file-input-area">
+                        <div id="fileUploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                            <input type="file" name="piece_jointe" id="piece_jointe" class="hidden" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv">
+                            <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                            <p class="text-gray-500 text-sm" id="fileLabel">Cliquez ou glissez un fichier ici</p>
+                            <p class="text-xs text-gray-400">Images, PDF, Word, Excel, CSV, TXT (Max 10 Mo)</p>
+                        </div>
                     </div>
+                    
+                    <div class="upload-actions">
+                        <button type="button" id="uploadButton" class="btn-upload" disabled>
+                            <i class="fas fa-upload mr-1"></i> Importer
+                        </button>
+                        <?php if ($uploadedMediaId): ?>
+                            <a href="?page=campagnes/composer&campagne_config_id=<?= $campagneConfigId ?>&remove_upload=1" class="btn-upload-remove">
+                                <i class="fas fa-trash mr-1"></i> Supprimer
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                
+                <!-- Info fichier uploadé -->
+                <?php if ($uploadedMediaId && $uploadedFileName): ?>
+                    <div class="uploaded-file-info">
+                        <div class="file-details">
+                            <i class="fas fa-file fa-2x"></i>
+                            <div>
+                                <div class="font-medium text-gray-800"><?= htmlspecialchars($uploadedFileName) ?></div>
+                                <div class="text-xs text-gray-500">
+                                    <i class="fas fa-check-circle text-green-600"></i> Importé sur Listmonk
+                                    <span class="media-id">ID: <?= $uploadedMediaId ?></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+                
+                <p class="text-xs text-blue-600 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Importez d'abord votre fichier sur Listmonk, puis il sera attaché à l'email.
+                    <br>Les images seront intégrées directement dans le message.
+                </p>
+            </div>
+            
+            <!-- Options d'envoi -->
+            <div class="mb-4">
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center">
+                        <input type="radio" name="envoyer_maintenant" id="envoyerMaintenant" value="1" checked
+                               class="h-4 w-4 text-yellow-600 focus:ring-yellow-500">
+                        <label for="envoyerMaintenant" class="ml-2 text-sm text-gray-700">Envoyer maintenant</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="radio" name="envoyer_maintenant" id="envoyerPlusTard" value="0"
+                               class="h-4 w-4 text-yellow-600 focus:ring-yellow-500">
+                        <label for="envoyerPlusTard" class="ml-2 text-sm text-gray-700">Planifier</label>
+                    </div>
+                </div>
+                
+                <div id="planificationZone" class="planification-zone" style="display: none;">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        <i class="fas fa-calendar-alt mr-1"></i> Date et heure de planification *
+                    </label>
+                    <input type="datetime-local" name="date_planification" id="date_planification"
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
+                           min="<?= date('Y-m-d\TH:i') ?>">
+                    <p class="text-xs text-gray-500 mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        La campagne sera envoyée automatiquement à la date et heure sélectionnées.
+                    </p>
                 </div>
             </div>
             
@@ -657,8 +1369,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 <a href="index.php?page=campagnes/choix_type&campagne_id=<?= $campagneConfigId ?>" class="btn-outline">
                     <i class="fas fa-times mr-2"></i>Annuler
                 </a>
-                <button type="submit" class="btn-primary">
-                    <i class="fas fa-save mr-2"></i>Enregistrer l'email
+                <button type="submit" name="action_enregistrer" value="1" class="btn-primary">
+                    <i class="fas fa-save mr-2"></i>Enregistrer & préparer
+                </button>
+                <button type="submit" name="action_enregistrer" value="1" onclick="document.querySelector('input[name=envoyer_maintenant][value=1]').checked = true; document.getElementById('date_planification').value = ''; this.form.submit();" class="btn-secondary">
+                    <i class="fas fa-paper-plane mr-2"></i>Envoyer immédiatement
                 </button>
             </div>
         </form>
@@ -666,17 +1381,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/fr.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
 
 <script>
 $(document).ready(function() {
-    $('#contact_unique').select2({
-        placeholder: "Sélectionnez un contact...",
-        allowClear: true,
-        width: '100%',
-        language: 'fr'
-    });
-    
     $('#liste_id').select2({
         placeholder: "-- Sélectionnez une liste --",
         allowClear: true,
@@ -684,7 +1392,6 @@ $(document).ready(function() {
         language: 'fr'
     });
     
-    // Initialisation de Summernote
     $('#corps').summernote({
         height: 300,
         toolbar: [
@@ -702,56 +1409,27 @@ $(document).ready(function() {
     });
 });
 
-// Gestion du type d'envoi
-const typeSimple = document.getElementById('typeSimple');
-const typeMultiple = document.getElementById('typeMultiple');
-const simpleZone = document.getElementById('simpleZone');
-const multipleZone = document.getElementById('multipleZone');
-const typeEnvoiInput = document.getElementById('type_envoi');
-
-function setTypeEnvoi(type) {
-    if (type === 'simple') {
-        typeSimple.classList.add('border-yellow-500', 'bg-yellow-50');
-        typeSimple.classList.remove('border-gray-200');
-        typeMultiple.classList.remove('border-yellow-500', 'bg-yellow-50');
-        typeMultiple.classList.add('border-gray-200');
-        simpleZone.style.display = 'block';
-        multipleZone.style.display = 'none';
-        typeEnvoiInput.value = 'simple';
-        
-        $('#liste_id').prop('disabled', true);
-        $('#liste_id').next().css('opacity', '0.5');
-        $('#contact_unique').prop('disabled', false);
-        $('#contact_unique').next().css('opacity', '1');
-    } else {
-        typeMultiple.classList.add('border-yellow-500', 'bg-yellow-50');
-        typeMultiple.classList.remove('border-gray-200');
-        typeSimple.classList.remove('border-yellow-500', 'bg-yellow-50');
-        typeSimple.classList.add('border-gray-200');
-        simpleZone.style.display = 'none';
-        multipleZone.style.display = 'block';
-        typeEnvoiInput.value = 'multiple';
-        
-        $('#contact_unique').prop('disabled', true);
-        $('#contact_unique').next().css('opacity', '0.5');
-        $('#liste_id').prop('disabled', false);
-        $('#liste_id').next().css('opacity', '1');
-    }
-}
-
-typeSimple.addEventListener('click', () => setTypeEnvoi('simple'));
-typeMultiple.addEventListener('click', () => setTypeEnvoi('multiple'));
-
-setTypeEnvoi(typeEnvoiInput.value);
+// Gestion de la planification
+document.querySelectorAll('input[name="envoyer_maintenant"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        const planificationZone = document.getElementById('planificationZone');
+        if (this.value === '0') {
+            planificationZone.style.display = 'block';
+        } else {
+            planificationZone.style.display = 'none';
+            document.getElementById('date_planification').value = '';
+        }
+    });
+});
 
 // ============================================
-// GESTION DU FICHIER
+// GESTION DU FICHIER AVEC AJAX
 // ============================================
 const fileUploadArea = document.getElementById('fileUploadArea');
 const pieceJointeInput = document.getElementById('piece_jointe');
-const fileInfo = document.getElementById('fileInfo');
-const fileNameSpan = document.getElementById('fileName');
-const removeFileBtn = document.getElementById('removeFileBtn');
+const uploadButton = document.getElementById('uploadButton');
+const fileLabel = document.getElementById('fileLabel');
+let selectedFile = null;
 
 function handleFile(file) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(2);
@@ -762,52 +1440,157 @@ function handleFile(file) {
         return;
     }
     
-    fileNameSpan.textContent = `${file.name} (${sizeMB} Mo)`;
-    fileInfo.classList.remove('hidden');
+    selectedFile = file;
+    uploadButton.disabled = false;
+    fileLabel.textContent = file.name + ' (' + sizeMB + ' Mo)';
+    fileLabel.style.color = '#16a34a';
+    const icon = fileUploadArea.querySelector('i');
+    if (icon) {
+        icon.className = 'fas fa-file text-3xl text-green-500 mb-2';
+    }
     
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
     pieceJointeInput.files = dataTransfer.files;
 }
 
-fileUploadArea.addEventListener('click', (e) => {
-    if (e.target !== removeFileBtn && !removeFileBtn.contains(e.target)) {
-        pieceJointeInput.click();
+function resetFileUpload() {
+    pieceJointeInput.value = '';
+    selectedFile = null;
+    uploadButton.disabled = true;
+    fileLabel.textContent = 'Cliquez ou glissez un fichier ici';
+    fileLabel.style.color = '#6b7280';
+    const icon = fileUploadArea.querySelector('i');
+    if (icon) {
+        icon.className = 'fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2';
     }
+}
+
+// Upload du fichier via AJAX
+uploadButton.addEventListener('click', function() {
+    if (!selectedFile) {
+        showToast('Veuillez sélectionner un fichier', 'error');
+        return;
+    }
+    
+    uploadButton.disabled = true;
+    uploadButton.classList.add('loading');
+    uploadButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Importation...';
+    
+    const formData = new FormData();
+    formData.append('action_upload_file', '1');
+    formData.append('piece_jointe', selectedFile);
+    formData.append('campagne_config_id', '<?= $campagneConfigId ?>');
+    
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        uploadButton.disabled = false;
+        uploadButton.classList.remove('loading');
+        uploadButton.innerHTML = '<i class="fas fa-upload mr-1"></i> Importer';
+        
+        if (data.success) {
+            document.getElementById('media_id').value = data.media_id;
+            showToast('✅ ' + data.message, 'success');
+            
+            // Mettre à jour l'affichage
+            updateUploadedFileInfo(data.media_id, data.file_name);
+            resetFileUpload();
+        } else {
+            showToast('❌ ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        showToast('❌ Erreur de connexion: ' + error.message, 'error');
+        uploadButton.disabled = false;
+        uploadButton.classList.remove('loading');
+        uploadButton.innerHTML = '<i class="fas fa-upload mr-1"></i> Importer';
+    });
 });
 
-pieceJointeInput.addEventListener('change', (e) => {
+function updateUploadedFileInfo(mediaId, fileName) {
+    // Supprimer l'ancienne info
+    const oldInfo = document.querySelector('.uploaded-file-info');
+    if (oldInfo) {
+        oldInfo.remove();
+    }
+    
+    // Créer la nouvelle info
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'uploaded-file-info';
+    infoDiv.innerHTML = `
+        <div class="file-details">
+            <i class="fas fa-file fa-2x"></i>
+            <div>
+                <div class="font-medium text-gray-800">${escapeHtml(fileName)}</div>
+                <div class="text-xs text-gray-500">
+                    <i class="fas fa-check-circle text-green-600"></i> Importé sur Listmonk
+                    <span class="media-id">ID: ${mediaId}</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const container = document.querySelector('.file-upload-container');
+    if (container) {
+        container.parentNode.insertBefore(infoDiv, container.nextSibling);
+    }
+    
+    // Ajouter le bouton supprimer s'il n'existe pas
+    const removeBtn = document.querySelector('.btn-upload-remove');
+    if (!removeBtn) {
+        const actions = document.querySelector('.upload-actions');
+        if (actions) {
+            const newRemoveBtn = document.createElement('a');
+            newRemoveBtn.href = '?page=campagnes/composer&campagne_config_id=<?= $campagneConfigId ?>&remove_upload=1';
+            newRemoveBtn.className = 'btn-upload-remove';
+            newRemoveBtn.innerHTML = '<i class="fas fa-trash mr-1"></i> Supprimer';
+            actions.appendChild(newRemoveBtn);
+        }
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+fileUploadArea.addEventListener('click', function(e) {
+    if (e.target.closest('button')) return;
+    pieceJointeInput.click();
+});
+
+pieceJointeInput.addEventListener('change', function(e) {
     if (e.target.files.length > 0) {
         handleFile(e.target.files[0]);
     }
 });
 
-fileUploadArea.addEventListener('dragover', (e) => {
+fileUploadArea.addEventListener('dragover', function(e) {
     e.preventDefault();
-    fileUploadArea.classList.add('drag-over');
+    this.classList.add('drag-over');
 });
 
-fileUploadArea.addEventListener('dragleave', (e) => {
+fileUploadArea.addEventListener('dragleave', function(e) {
     e.preventDefault();
-    fileUploadArea.classList.remove('drag-over');
+    this.classList.remove('drag-over');
 });
 
-fileUploadArea.addEventListener('drop', (e) => {
+fileUploadArea.addEventListener('drop', function(e) {
     e.preventDefault();
-    fileUploadArea.classList.remove('drag-over');
+    this.classList.remove('drag-over');
     if (e.dataTransfer.files.length > 0) {
         handleFile(e.dataTransfer.files[0]);
     }
 });
-
-removeFileBtn.addEventListener('click', () => {
-    resetFileUpload();
-});
-
-function resetFileUpload() {
-    pieceJointeInput.value = '';
-    fileInfo.classList.add('hidden');
-}
 
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
@@ -818,32 +1601,45 @@ function showToast(message, type = 'success') {
     const colors = { success: '#10b981', error: '#ef4444', info: '#3b82f6', warning: '#f59e0b' };
     toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+    setTimeout(function() {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.5s';
+        setTimeout(function() {
+            toast.remove();
+        }, 500);
+    }, 5000);
 }
 
 // Validation du formulaire
 document.getElementById('composerForm').addEventListener('submit', function(e) {
-    const type_envoi = document.getElementById('type_envoi').value;
+    const listeId = document.getElementById('liste_id').value;
     const objet = document.getElementById('objet').value.trim();
     const corps = $('#corps').summernote('code');
-    let hasRecipients = false;
+    const fromEmail = document.getElementById('from_email').value.trim();
+    const fromName = document.getElementById('from_name').value.trim();
     
-    if (type_envoi === 'simple') {
-        const contact = $('#contact_unique').val();
-        hasRecipients = contact && contact !== '';
-        if (!hasRecipients) {
-            e.preventDefault();
-            showToast('Veuillez sélectionner un destinataire', 'error');
-            return false;
-        }
-    } else {
-        const liste = $('#liste_id').val();
-        hasRecipients = liste && liste !== '';
-        if (!hasRecipients) {
-            e.preventDefault();
-            showToast('Veuillez sélectionner une liste', 'error');
-            return false;
-        }
+    if (!fromEmail) {
+        e.preventDefault();
+        showToast('Veuillez saisir l\'email de l\'expéditeur', 'error');
+        return false;
+    }
+    if (!fromName) {
+        e.preventDefault();
+        showToast('Veuillez saisir le nom de l\'expéditeur', 'error');
+        return false;
+    }
+    if (!listeId || listeId === '') {
+        e.preventDefault();
+        showToast('Veuillez sélectionner une liste de diffusion', 'error');
+        return false;
+    }
+    
+    const selectedOption = $('#liste_id option:selected');
+    const listmonkId = selectedOption.data('listmonk-id');
+    if (!listmonkId) {
+        e.preventDefault();
+        showToast('Cette liste n\'est pas synchronisée avec Listmonk. Veuillez d\'abord la synchroniser.', 'warning');
+        return false;
     }
     
     if (!objet) {
@@ -858,7 +1654,16 @@ document.getElementById('composerForm').addEventListener('submit', function(e) {
         return false;
     }
     
-    // Mettre à jour le textarea avec le contenu Summernote
+    const envoyerMaintenant = document.querySelector('input[name="envoyer_maintenant"]:checked');
+    if (envoyerMaintenant && envoyerMaintenant.value === '0') {
+        const datePlanif = document.getElementById('date_planification').value;
+        if (!datePlanif) {
+            e.preventDefault();
+            showToast('Veuillez sélectionner une date et heure de planification', 'warning');
+            return false;
+        }
+    }
+    
     $('#corps').val(corps);
 });
 </script>

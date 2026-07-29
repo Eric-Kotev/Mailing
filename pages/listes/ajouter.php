@@ -25,8 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Si on arrive ici, c'est qu'il n'y a pas eu de redirection
-// On va afficher le formulaire
+
 ?>
 <div class="max-w-2xl mx-auto">
     <div class="flex items-center mb-6">
