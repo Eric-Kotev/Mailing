@@ -7,17 +7,37 @@ $idCompte = $_SESSION['user_id'];
 $totalContacts = count($db->select('contact', ['id_compte' => $idCompte]));
 $totalListes = count($db->select('liste', ['id_compte' => $idCompte]));
 
-// 🔥 CORRECTION : Récupérer les dernières campagnes avec 'created_at' dans campagne
-// Utiliser 'created_at' si la colonne existe dans campagne, sinon 'date_envoi'
+// Récupérer les dernières campagnes
 $campagnes = $db->select('campagne', ['id_compte' => $idCompte], '*', 'created_at DESC');
 $dernieresCampagnes = array_slice($campagnes, 0, 5);
 
-// 🔥 CORRECTION : Derniers contacts ajoutés avec 'date_inscription'
+// Derniers contacts ajoutés
 $contacts = $db->select('contact', ['id_compte' => $idCompte], '*', 'date_inscription DESC');
 $derniersContacts = array_slice($contacts, 0, 5);
 
 // Crédits disponibles
 $credits = $_SESSION['user_credits'] ?? 0;
+
+// Fonction pour nettoyer et afficher le contenu des messages
+function afficherMessage($message, $type) {
+    if ($type === 'email') {
+        // Pour les emails, on affiche le HTML tel quel (mais sécurisé)
+        return html_entity_decode($message);
+    } else {
+        // Pour SMS et WhatsApp, on échappe le HTML
+        return htmlspecialchars($message);
+    }
+}
+
+// Fonction pour obtenir le libellé du type de campagne
+function getTypeCampagne($type) {
+    $types = [
+        'whatsapp' => ['label' => 'WhatsApp', 'icon' => 'fab fa-whatsapp', 'color' => 'green'],
+        'sms' => ['label' => 'SMS', 'icon' => 'fas fa-sms', 'color' => 'blue'],
+        'email' => ['label' => 'Email', 'icon' => 'fas fa-envelope', 'color' => 'purple']
+    ];
+    return $types[$type] ?? ['label' => ucfirst($type), 'icon' => 'fas fa-circle', 'color' => 'gray'];
+}
 ?>
 <div class="space-y-6">
     <!-- En-tête -->
@@ -110,26 +130,35 @@ $credits = $_SESSION['user_credits'] ?? 0;
                                 'partiel' => '⚠️ Partiel'
                             ];
                             $statut = $statutText[$campagne['statut']] ?? $campagne['statut'];
+                            
+                            // Récupérer les informations du type de campagne
+                            $typeInfo = getTypeCampagne($campagne['type_campagne']);
+                            $typeLabel = $typeInfo['label'];
+                            $typeIcon = $typeInfo['icon'];
+                            $typeColor = $typeInfo['color'];
+                            
+                            // Déterminer si c'est un email pour le traitement du message
+                            $isEmail = ($campagne['type_campagne'] === 'email');
                             ?>
                             <tr class="hover:bg-gray-50">
                                 <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
                                     <?= date('d/m/Y H:i', strtotime($campagne['created_at'])) ?>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <?php if ($campagne['type_campagne'] == 'whatsapp'): ?>
-                                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs whitespace-nowrap">
-                                            <i class="fab fa-whatsapp mr-1"></i> WhatsApp
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs whitespace-nowrap">
-                                            <i class="fas fa-comment-dots mr-1"></i> SMS
-                                        </span>
-                                    <?php endif; ?>
+                                    <span class="bg-<?= $typeColor ?>-100 text-<?= $typeColor ?>-700 px-2 py-1 rounded-full text-xs whitespace-nowrap">
+                                        <i class="<?= $typeIcon ?> mr-1"></i> <?= $typeLabel ?>
+                                    </span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <div class="text-sm text-gray-800 max-w-md truncate">
-                                        <?= htmlspecialchars(mb_substr($campagne['message'], 0, 50)) ?>
-                                        <?= strlen($campagne['message']) > 50 ? '...' : '' ?>
+                                    <div class="text-sm text-gray-800 max-w-md truncate <?= $isEmail ? 'email-preview' : '' ?>">
+                                        <?php if ($isEmail): ?>
+                                            <!-- Pour les emails, on affiche le HTML avec les balises -->
+                                            <?= html_entity_decode($campagne['message']) ?>
+                                        <?php else: ?>
+                                            <!-- Pour SMS et WhatsApp, on échappe le HTML -->
+                                            <?= htmlspecialchars(mb_substr($campagne['message'], 0, 50)) ?>
+                                            <?= strlen($campagne['message']) > 50 ? '...' : '' ?>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-600 text-center whitespace-nowrap">
@@ -192,7 +221,6 @@ $credits = $_SESSION['user_credits'] ?? 0;
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
                                     <?php 
-                                    // 🔥 CORRECTION : Utiliser date_inscription
                                     $date = $contact['date_inscription'] ?? $contact['created_at'] ?? null;
                                     echo $date ? date('d/m/Y', strtotime($date)) : '-';
                                     ?>
@@ -205,3 +233,44 @@ $credits = $_SESSION['user_credits'] ?? 0;
         </div>
     </div>
 </div>
+
+<style>
+/* Style pour la prévisualisation des emails */
+.email-preview {
+    max-height: 100px;
+    overflow: hidden;
+}
+.email-preview p {
+    margin: 0 0 4px 0;
+}
+.email-preview img {
+    max-width: 50px;
+    max-height: 50px;
+}
+.email-preview a {
+    color: #2563eb;
+    text-decoration: underline;
+}
+.email-preview strong,
+.email-preview b {
+    font-weight: bold;
+}
+.email-preview em,
+.email-preview i {
+    font-style: italic;
+}
+.email-preview h1,
+.email-preview h2,
+.email-preview h3,
+.email-preview h4,
+.email-preview h5,
+.email-preview h6 {
+    font-weight: bold;
+    margin: 4px 0;
+}
+.email-preview ul,
+.email-preview ol {
+    padding-left: 20px;
+    margin: 4px 0;
+}
+</style>

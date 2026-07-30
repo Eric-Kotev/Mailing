@@ -17,15 +17,13 @@ if (empty($campagne)) {
 }
 $campagne = $campagne[0];
 
-// Récupérer tous les envois liés à cette campagne (exclure les brouillons MAIS garder les planifiés)
+// Récupérer tous les envois liés à cette campagne
 $allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
 
 // Filtrer pour exclure les brouillons
 $envois = array_filter($allEnvois, function($e) {
     return $e['statut'] !== 'brouillon';
 });
-
-// Réindexer le tableau
 $envois = array_values($envois);
 
 $totalEnvois = count($envois);
@@ -47,7 +45,6 @@ foreach ($envois as $e) {
     } else {
         $totalSms++;
     }
-    // Ne compter que les messages prêts à envoyer
     if ($e['statut'] == 'pret_a_envoyer') {
         $totalAPreparer++;
     }
@@ -62,7 +59,6 @@ foreach ($envois as $e) {
 function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
     global $db;
     
-    // Récupérer la campagne config actuelle pour connaître son statut
     $campagneConfig = $db->select('campagne_config', [
         'id_campagne_config' => $idCampagneConfig,
         'id_compte' => $idCompte
@@ -75,10 +71,7 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
     $campagneActuelle = $campagneConfig[0];
     $statutActuel = $campagneActuelle['statut'] ?? 'brouillon';
     
-    // Si la campagne est déjà planifiée, on ne change pas son statut
-    // sauf si elle est envoyée ou en échec complet
     if ($statutActuel === 'planifiee') {
-        // Vérifier si des messages ont été envoyés ou ont échoué
         $messages = $db->select('campagne', [
             'id_campagne_config' => $idCampagneConfig,
             'id_compte' => $idCompte
@@ -101,7 +94,6 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
             }
         }
         
-        // Si tous les messages sont envoyés, on passe à envoyee
         if ($nbEnvoyes == $nbTotal && $nbTotal > 0) {
             $db->update('campagne_config', [
                 'statut' => 'envoyee',
@@ -113,7 +105,6 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
             return;
         }
         
-        // Si tous les messages ont échoué, on passe à echoue
         if ($nbEchoues == $nbTotal && $nbTotal > 0) {
             $db->update('campagne_config', [
                 'statut' => 'echoue',
@@ -125,11 +116,9 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
             return;
         }
         
-        // Sinon, on garde planifiee
         return;
     }
     
-    // Si la campagne n'est pas planifiée, on applique la logique normale
     $messages = $db->select('campagne', [
         'id_campagne_config' => $idCampagneConfig,
         'id_compte' => $idCompte
@@ -173,7 +162,6 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
         }
     }
     
-    // Déterminer le statut global
     if ($nbEnvoyes == $nbTotal && $nbTotal > 0) {
         $statut = 'envoyee';
         $sent_at = date('Y-m-d H:i:s');
@@ -194,7 +182,6 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
         $sent_at = null;
     }
     
-    // Mettre à jour la campagne config
     $updateData = ['statut' => $statut];
     if ($statut === 'envoyee') {
         $updateData['sent_at'] = $sent_at;
@@ -206,6 +193,140 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
         'id_campagne_config' => $idCampagneConfig,
         'id_compte' => $idCompte
     ]);
+}
+
+// ============================================
+// FONCTION POUR ENVOYER AVEC OCTOPUSH (CORRIGÉE)
+// ============================================
+function envoyerOctopush($message, $destinataires) {
+    $apiLogin = 'ifb_1b2@agent.sub-accounts.com';
+    $apiKey = '5cvGb4QLW9BkeAhHdwNUjFVTxOX7Z0Yi';
+    $url = 'https://api.octopush.com/v1/public/sms-campaign/send';
+    
+    $recipients = [];
+    
+    foreach ($destinataires as $dest) {
+        $telephone = null;
+        
+        // Cas 1: Le destinataire est un tableau avec 'phone_number'
+        if (is_array($dest) && isset($dest['phone_number'])) {
+            $telephone = $dest['phone_number'];
+        }
+        // Cas 2: Le destinataire est une chaîne avec un numéro entre parenthèses: "Nom (0321234567)"
+        elseif (is_string($dest) && preg_match('/\(([^)]+)\)/', $dest, $matches)) {
+            $telephone = $matches[1];
+        }
+        // Cas 3: Le destinataire est juste un numéro
+        elseif (is_string($dest) && preg_match('/[0-9+\s]+/', $dest, $matches)) {
+            $telephone = trim($matches[0]);
+        }
+        
+        // Si aucun numéro trouvé, passer au suivant
+        if (empty($telephone)) {
+            continue;
+        }
+        
+        // 🔥 NETTOYER LE NUMÉRO : garder uniquement les chiffres et le +
+        $telephone = trim($telephone);
+        $telephone = preg_replace('/[^0-9+]/', '', $telephone);
+        
+        // 🔥 FORMATER POUR OCTOPUSH (garder le + si présent)
+        // Si le numéro ne commence pas par +, ajouter le code pays
+        if (substr($telephone, 0, 1) != '+') {
+            // Nettoyer les chiffres
+            $telephone = preg_replace('/[^0-9]/', '', $telephone);
+            
+            // Si le numéro commence par 0 (ex: 0321234567) -> +261321234567
+            if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
+                $telephone = '+261' . substr($telephone, 1);
+            }
+            // Si le numéro fait 9 chiffres (ex: 321234567) -> +261321234567
+            elseif (strlen($telephone) == 9) {
+                $telephone = '+261' . $telephone;
+            }
+            // Si le numéro a déjà le code pays 261
+            elseif (strlen($telephone) == 12 && substr($telephone, 0, 3) == '261') {
+                $telephone = '+' . $telephone;
+            }
+            // Si le numéro est plus long, prendre les 10 derniers chiffres
+            elseif (strlen($telephone) > 10) {
+                $telephone = substr($telephone, -10);
+                if (substr($telephone, 0, 1) == '0') {
+                    $telephone = '+261' . substr($telephone, 1);
+                } else {
+                    $telephone = '+261' . $telephone;
+                }
+            }
+            // Par défaut
+            else {
+                $telephone = '+261' . $telephone;
+            }
+        }
+        
+        // 🔥 VÉRIFIER QUE LE NUMÉRO EST VALIDE
+        // Supprimer le + pour vérifier la longueur
+        $checkNumber = preg_replace('/[^0-9]/', '', $telephone);
+        if (strlen($checkNumber) >= 9 && strlen($checkNumber) <= 13) {
+            $recipients[] = ['phone_number' => $telephone];
+        }
+    }
+    
+    // Si aucun destinataire valide
+    if (empty($recipients)) {
+        return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé. Format attendu: +261XXXXXXXXX'];
+    }
+    
+    // 🔥 PRÉPARER LES DONNÉES (SIMILAIRE À VOTRE TEST)
+    $data = [
+        'text' => $message,
+        'recipients' => $recipients,
+        'sender' => 'IFB',
+        'type' => 'sms_premium',
+        'purpose' => 'alert',
+        'simulation_mode' => true
+    ];
+    
+    // 🔥 ENVOYER LA REQUÊTE (COMME DANS VOTRE TEST)
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'api-login: ' . $apiLogin,
+        'api-key: ' . $apiKey
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+    
+    if ($error) {
+        return ['success' => false, 'error' => 'Erreur cURL: ' . $error];
+    }
+    
+    $responseData = json_decode($response, true);
+    
+    if ($httpCode === 200 || $httpCode === 201) {
+        return [
+            'success' => true,
+            'data' => $responseData,
+            'http_code' => $httpCode
+        ];
+    } else {
+        $errorMsg = isset($responseData['message']) ? $responseData['message'] : $response;
+        if (isset($responseData['errors'])) {
+            $errorMsg .= ' - Détails: ' . json_encode($responseData['errors']);
+        }
+        return [
+            'success' => false,
+            'error' => 'Erreur API (HTTP ' . $httpCode . '): ' . $errorMsg,
+            'http_code' => $httpCode
+        ];
+    }
 }
 
 // ============================================
@@ -241,7 +362,6 @@ function updateListmonkCampaignStatus($campaignId, $status) {
 // Mettre à jour le statut au chargement de la page
 // ============================================
 mettreAJourStatutCampagne($campagneId, $idCompte);
-// Recharger la campagne pour avoir le statut à jour
 $campagne = $db->select('campagne_config', ['id_campagne_config' => $campagneId, 'id_compte' => $idCompte]);
 if (!empty($campagne)) {
     $campagne = $campagne[0];
@@ -252,6 +372,7 @@ if (!empty($campagne)) {
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_message'])) {
     $id_campagne_historique = $_POST['id_campagne_historique'] ?? null;
+    $isOctopush = isset($_POST['is_octopush']) && $_POST['is_octopush'] === '1';
     
     if (!$id_campagne_historique) {
         $_SESSION['flash_error'] = "Message non trouvé";
@@ -260,7 +381,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
     }
     
     try {
-        // Récupérer l'historique du message
         $historique = $db->select('campagne', [
             'id_campagne' => $id_campagne_historique,
             'id_compte' => $idCompte
@@ -275,7 +395,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
         $campagneData = $historique[0];
         $typeMessage = $campagneData['type_campagne'] ?? 'sms';
         
-        // Récupérer les destinataires
         $destinataires = json_decode($campagneData['destinataires'] ?? '[]', true);
         if (empty($destinataires)) {
             $_SESSION['flash_error'] = "Aucun destinataire trouvé pour ce message";
@@ -283,7 +402,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
             exit;
         }
         
-        // Récupérer le message
         $message = $campagneData['message'] ?? '';
         if (empty($message)) {
             $_SESSION['flash_error'] = "Aucun message trouvé";
@@ -291,7 +409,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
             exit;
         }
         
-        // Récupérer la campagne config pour avoir provider et session
         $campagneConfig = $db->select('campagne_config', [
             'id_campagne_config' => $campagneId,
             'id_compte' => $idCompte
@@ -305,17 +422,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
         
         $campagne = $campagneConfig[0];
         
-        // Récupérer les délais
+        // 🔥 SI C'EST OCTOPUSH
+        if ($isOctopush) {
+            $resultat = envoyerOctopush($message, $destinataires);
+            
+            if ($resultat['success']) {
+                $db->update('campagne', [
+                    'statut' => 'envoye',
+                    'nb_envoyes' => count($destinataires),
+                    'nb_succes' => count($destinataires),
+                    'nb_erreurs' => 0,
+                    'appareil_utilise' => 'Octopush API',
+                    'reponse_api' => json_encode($resultat['data']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ], ['id_campagne' => $id_campagne_historique]);
+                
+                $_SESSION['octopush_response'] = $resultat['data'];
+                $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush!";
+            } else {
+                $db->update('campagne', [
+                    'statut' => 'echoue',
+                    'nb_erreurs' => count($destinataires),
+                    'erreur' => $resultat['error'],
+                    'updated_at' => date('Y-m-d H:i:s')
+                ], ['id_campagne' => $id_campagne_historique]);
+                
+                $_SESSION['flash_error'] = "❌ " . $resultat['error'];
+            }
+            
+            mettreAJourStatutCampagne($campagneId, $idCompte);
+            header('Location: index.php?page=campagnes/details&id=' . $campagneId);
+            exit;
+        }
+        
+        // ============================================
+        // POUR LES AUTRES TYPES DE MESSAGE
+        // ============================================
+        
         $min_delay = $_SESSION['min_delay'] ?? $campagne['min_delay'] ?? 60;
         $max_delay = $_SESSION['max_delay'] ?? $campagne['max_delay'] ?? 180;
         
-        // Récupérer la pièce jointe si présente
         $pieceJointe = null;
         if (!empty($campagneData['piece_jointe'])) {
             $pieceJointe = json_decode($campagneData['piece_jointe'], true);
         }
         
-        // Traiter l'envoi selon le type de message
         switch ($typeMessage) {
             case 'sms':
                 $resultat = envoyerSMS($idCompte, $campagneId, $campagne, $campagneData, $message, $destinataires);
@@ -338,7 +489,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
             $_SESSION['flash_error'] = "❌ Erreur lors de l'envoi : " . $resultat['error'];
         }
         
-        // Mettre à jour le statut global de la campagne
         mettreAJourStatutCampagne($campagneId, $idCompte);
         
     } catch (Exception $e) {
@@ -350,14 +500,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
 }
 
 // ============================================
-// FONCTIONS D'ENVOI
+// FONCTIONS D'ENVOI (SMS, WhatsApp, Email)
 // ============================================
 
 function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires) {
     global $db;
     
     try {
-        // Récupérer les infos depuis la campagne
         $device_id = $campagne['device_id'] ?? null;
         $appareilId = $campagne['appareil_id'] ?? null;
         $providerId = $campagne['provider_id'] ?? null;
@@ -634,7 +783,6 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
     global $db;
     
     try {
-        // Récupérer les informations d'envoi
         $from_email = $campagneData['from_email'] ?? 'noreply@votre-domaine.com';
         $from_name = $campagneData['from_name'] ?? 'Votre Entreprise';
         $objet = $campagneData['objet'] ?? 'Email';
@@ -644,7 +792,6 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
             return ['success' => false, 'error' => 'ID de campagne Listmonk manquant. Veuillez recréer le message.'];
         }
         
-        // Mettre à jour le statut dans Listmonk pour envoyer immédiatement (running)
         $result = updateListmonkCampaignStatus($listmonkCampaignId, 'running');
         
         if ($result['success']) {
@@ -673,10 +820,28 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
     }
 }
 
+// ============================================
+// FLASH MESSAGES
+// ============================================
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
+$octopushResponse = isset($_SESSION['octopush_response']) ? $_SESSION['octopush_response'] : null;
 unset($_SESSION['flash_message']);
 unset($_SESSION['flash_error']);
+unset($_SESSION['octopush_response']);
+
+// ============================================
+// VÉRIFIER SI LE PROVIDER EST OCTOPUSH
+// ============================================
+$isOctopush = isset($campagne['provider_id']) && !empty($campagne['provider_id']);
+if ($isOctopush) {
+    $provider = $db->select('provider', ['id_provider' => $campagne['provider_id']]);
+    if (!empty($provider)) {
+        $isOctopush = stripos($provider[0]['nom_providers'], 'octopush') !== false;
+    } else {
+        $isOctopush = false;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -685,7 +850,6 @@ unset($_SESSION['flash_error']);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($campagne['nom_campagne']) ?> - <?= APP_NAME ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * { box-sizing: border-box; }
@@ -993,6 +1157,148 @@ unset($_SESSION['flash_error']);
             color: #4b5563;
         }
         
+        /* Badge Octopush */
+        .badge-octopush {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 9px;
+            font-weight: 700;
+            background: #f97316;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-left: 4px;
+        }
+        
+        /* Flash message */
+        .flash-message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .flash-message.success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            color: #065f46;
+        }
+        .flash-message.error {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            color: #991b1b;
+        }
+        .flash-message.info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            color: #1e40af;
+        }
+        .flash-message i { font-size: 18px; }
+        
+        /* Modal Octopush */
+        .modal-octopush {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-octopush.active {
+            display: flex;
+        }
+        .modal-octopush .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 0;
+            animation: modalFadeIn 0.3s ease;
+        }
+        @keyframes modalFadeIn {
+            from { transform: scale(0.9) translateY(-20px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        .modal-octopush .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8fafc;
+            border-radius: 16px 16px 0 0;
+        }
+        .modal-octopush .modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+            color: #1f2937;
+        }
+        .modal-octopush .modal-header .close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #9ca3af;
+            transition: color 0.2s;
+        }
+        .modal-octopush .modal-header .close:hover {
+            color: #4b5563;
+        }
+        .modal-octopush .modal-body {
+            padding: 24px;
+        }
+        .modal-octopush .modal-body .response-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .modal-octopush .modal-body .response-item:last-child {
+            border-bottom: none;
+        }
+        .modal-octopush .modal-body .response-item .label {
+            font-weight: 600;
+            color: #6b7280;
+        }
+        .modal-octopush .modal-body .response-item .value {
+            font-weight: 500;
+            color: #1f2937;
+            text-align: right;
+        }
+        .modal-octopush .modal-body .response-item .value.success {
+            color: #10b981;
+        }
+        .modal-octopush .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: flex-end;
+            background: #f8fafc;
+            border-radius: 0 0 16px 16px;
+        }
+        .modal-octopush .modal-footer button {
+            padding: 8px 24px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .modal-octopush .modal-footer button:hover {
+            background: #2563eb;
+        }
+        
         @media (max-width: 768px) {
             .container { padding: 12px; }
             .header-title { font-size: 20px; }
@@ -1071,6 +1377,9 @@ unset($_SESSION['flash_error']);
                         echo $statusText[$campagne['statut']] ?? $campagne['statut'];
                         ?>
                     </span>
+                    <?php if ($isOctopush): ?>
+                        <span class="badge-octopush"><i class="fas fa-bolt mr-1"></i>Octopush</span>
+                    <?php endif; ?>
                 </div>
             </div>
             <div>
@@ -1176,7 +1485,7 @@ unset($_SESSION['flash_error']);
                     </thead>
                     <tbody id="envoisTableBody">
                         <?php foreach ($envois as $envoi): 
-                            // Déterminer la classe CSS du statut
+                            // Statut
                             $statutClass = 'text-gray-600';
                             $statutIcon = 'fa-circle';
                             $statutLabel = 'Inconnu';
@@ -1213,7 +1522,7 @@ unset($_SESSION['flash_error']);
                                     $statutLabel = $envoi['statut'] ?? 'Inconnu';
                             }
                             
-                            // Gestion des types de message
+                            // Type
                             if ($envoi['type_campagne'] == 'whatsapp') {
                                 $typeClass = 'bg-green-100 text-green-700';
                                 $typeIcon = 'fab fa-mobile-alt';
@@ -1228,25 +1537,32 @@ unset($_SESSION['flash_error']);
                                 $typeLabel = 'SMS';
                             }
                             
-                            // Nettoyer le message pour l'affichage (strip_tags pour le résumé)
+                            // Message display
                             $messageDisplay = strip_tags($envoi['message']);
                             if (strlen($messageDisplay) > 50) {
                                 $messageDisplay = substr($messageDisplay, 0, 50) . '...';
                             }
                             
-                            // Déterminer si le bouton Envoyer doit être affiché
+                            // Bouton Envoyer
                             $showSendButton = false;
                             $buttonClass = 'btn-send-message';
                             $buttonIcon = 'fa-paper-plane';
                             $buttonText = 'Envoyer';
+                            $isOctopushMessage = false;
                             
                             if ($envoi['statut'] == 'pret_a_envoyer') {
                                 $showSendButton = true;
-                                $buttonClass = 'btn-send-message';
-                                $buttonIcon = 'fa-paper-plane';
-                                $buttonText = 'Envoyer';
+                                if ($isOctopush) {
+                                    $isOctopushMessage = true;
+                                    $buttonClass = 'btn-send-message';
+                                    $buttonIcon = 'fa-bolt';
+                                    $buttonText = 'Envoyer (Octopush)';
+                                } else {
+                                    $buttonClass = 'btn-send-message';
+                                    $buttonIcon = 'fa-paper-plane';
+                                    $buttonText = 'Envoyer';
+                                }
                             }
-                            // Pour les emails planifiés, on affiche aussi le bouton Envoyer
                             if ($envoi['statut'] == 'planifiee' && $envoi['type_campagne'] == 'email') {
                                 $showSendButton = true;
                                 $buttonClass = 'btn-send-email';
@@ -1267,6 +1583,9 @@ unset($_SESSION['flash_error']);
                                         <i class="<?= $typeIcon ?> mr-1"></i>
                                         <?= $typeLabel ?>
                                     </span>
+                                    <?php if ($isOctopushMessage): ?>
+                                        <span class="badge-octopush"><i class="fas fa-bolt mr-1"></i>Octopush</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="px-4 py-3">
                                     <div class="text-gray-800 max-w-xs truncate" title="<?= htmlspecialchars($messageDisplay) ?>">
@@ -1284,6 +1603,9 @@ unset($_SESSION['flash_error']);
                                             <form method="POST" style="display:inline;" id="sendForm_<?= $envoi['id_campagne'] ?>">
                                                 <input type="hidden" name="action_envoyer_message" value="1">
                                                 <input type="hidden" name="id_campagne_historique" value="<?= $envoi['id_campagne'] ?>">
+                                                <?php if ($isOctopushMessage): ?>
+                                                    <input type="hidden" name="is_octopush" value="1">
+                                                <?php endif; ?>
                                                 <button type="submit" class="<?= $buttonClass ?>" title="Envoyer le message">
                                                     <i class="fas <?= $buttonIcon ?>"></i> <?= $buttonText ?>
                                                 </button>
@@ -1302,6 +1624,56 @@ unset($_SESSION['flash_error']);
                 </table>
             </div>
         <?php endif; ?>
+    </div>
+</div>
+
+<!-- ===== MODAL OCTOPUSH ===== -->
+<div id="octopushModal" class="modal-octopush <?= $octopushResponse ? 'active' : '' ?>">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-bolt text-orange-500 mr-2"></i>Réponse Octopush</h3>
+            <button class="close" onclick="closeOctopushModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <?php if ($octopushResponse): ?>
+                <div style="text-align:center;margin-bottom:16px;">
+                    <i class="fas fa-check-circle" style="font-size:48px;color:#10b981;"></i>
+                    <p style="color:#10b981;font-weight:600;margin-top:8px;">✅ Envoi effectué avec succès</p>
+                </div>
+                <div class="response-item">
+                    <span class="label">Ticket SMS</span>
+                    <span class="value"><?= htmlspecialchars($octopushResponse['sms_ticket'] ?? '-') ?></span>
+                </div>
+                <div class="response-item">
+                    <span class="label">Nombre de contacts</span>
+                    <span class="value"><?= htmlspecialchars($octopushResponse['number_of_contacts'] ?? '-') ?></span>
+                </div>
+                <div class="response-item">
+                    <span class="label">Coût total</span>
+                    <span class="value"><?= isset($octopushResponse['total_cost']) ? number_format($octopushResponse['total_cost'], 2) . ' €' : '-' ?></span>
+                </div>
+                <div class="response-item">
+                    <span class="label">Nombre de SMS nécessaires</span>
+                    <span class="value"><?= htmlspecialchars($octopushResponse['number_of_sms_needed'] ?? '-') ?></span>
+                </div>
+                <div class="response-item">
+                    <span class="label">Crédit restant</span>
+                    <span class="value"><?= isset($octopushResponse['residual_credit']) ? number_format($octopushResponse['residual_credit'], 2) . ' €' : '-' ?></span>
+                </div>
+                <div class="response-item">
+                    <span class="label">Message</span>
+                    <span class="value success"><?= htmlspecialchars($octopushResponse['message'] ?? 'Succès') ?></span>
+                </div>
+            <?php else: ?>
+                <div style="text-align:center;padding:20px;">
+                    <i class="fas fa-info-circle" style="font-size:48px;color:#3b82f6;"></i>
+                    <p style="color:#6b7280;margin-top:12px;">Aucune réponse disponible</p>
+                </div>
+            <?php endif; ?>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeOctopushModal()">Fermer</button>
+        </div>
     </div>
 </div>
 
@@ -1354,6 +1726,12 @@ function showToast(message, type = 'success') {
         toast.style.transition = 'opacity 0.5s';
         setTimeout(() => toast.remove(), 500);
     }, 3000);
+}
+
+// ===== MODAL OCTOPUSH =====
+function closeOctopushModal() {
+    const modal = document.getElementById('octopushModal');
+    modal.classList.remove('active');
 }
 
 // ===== FILTRES =====
@@ -1457,11 +1835,14 @@ function showDetails(envoi) {
     let destHtml = '';
     if (destinataires && destinataires.length > 0) {
         destHtml = '<div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">';
-        for (let i = 0; i < destinataires.length; i++) {
+        for (let i = 0; i < Math.min(destinataires.length, 20); i++) {
             destHtml += '<div class="flex items-center p-2 bg-gray-50 rounded-lg">' +
                         '<i class="fas fa-user-circle text-gray-400 mr-2"></i>' +
                         '<span class="text-sm">' + escapeHtml(destinataires[i]) + '</span>' +
                         '</div>';
+        }
+        if (destinataires.length > 20) {
+            destHtml += '<div class="text-center text-gray-500 text-sm col-span-2">+ ' + (destinataires.length - 20) + ' autres</div>';
         }
         destHtml += '</div>';
     } else {
@@ -1502,7 +1883,6 @@ function showDetails(envoi) {
     let messageContent = escapeHtml(envoi.message || '-');
     let isHtml = false;
     
-    // Détecter si le message contient du HTML
     if (envoi.message && (
         envoi.message.includes('<p>') || 
         envoi.message.includes('<div>') || 
@@ -1531,6 +1911,28 @@ function showDetails(envoi) {
                 <p class="text-sm text-gray-700 whitespace-pre-wrap">${messageContent}</p>
             </div>
         `;
+    }
+    
+    // Vérifier si la réponse API existe
+    let apiResponseHtml = '';
+    if (envoi.reponse_api) {
+        try {
+            const apiData = JSON.parse(envoi.reponse_api);
+            apiResponseHtml = `
+                <div>
+                    <div class="text-xs text-gray-500 font-semibold mb-1">Réponse API Octopush</div>
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div><span class="text-gray-500">Ticket:</span> ${escapeHtml(apiData.sms_ticket || '-')}</div>
+                            <div><span class="text-gray-500">Contacts:</span> ${apiData.number_of_contacts || 0}</div>
+                            <div><span class="text-gray-500">Coût total:</span> ${apiData.total_cost ? apiData.total_cost + ' €' : '-'}</div>
+                            <div><span class="text-gray-500">SMS nécessaires:</span> ${apiData.number_of_sms_needed || 0}</div>
+                            <div><span class="text-gray-500">Crédit restant:</span> ${apiData.residual_credit ? apiData.residual_credit + ' €' : '-'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch(e) {}
     }
     
     modalContent.innerHTML = `
@@ -1576,6 +1978,8 @@ function showDetails(envoi) {
                     </div>
                 </div>
             </div>
+            
+            ${apiResponseHtml}
             
             <div>
                 <div class="text-xs text-gray-500 font-semibold mb-1">Destinataires (${envoi.nb_destinataires || 0})</div>
@@ -1624,11 +2028,23 @@ function escapeHtml(text) {
 }
 
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') {
+        closeModal();
+        closeOctopushModal();
+    }
 });
 
 document.getElementById('detailsModal')?.addEventListener('click', function(e) {
     if (e.target === this) closeModal();
+});
+
+document.getElementById('octopushModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeOctopushModal();
+});
+
+// Initialisation des filtres
+document.addEventListener('DOMContentLoaded', function() {
+    applyFilters();
 });
 </script>
 

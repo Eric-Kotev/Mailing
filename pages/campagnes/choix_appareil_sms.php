@@ -706,11 +706,8 @@ if (!$appareilActif && !empty($smsAppareils)) {
             <div class="empty-state">
                 <i class="fas fa-mobile-alt"></i>
                 <h3>Aucun appareil disponible</h3>
-                <p>Vous n'avez pas encore configuré d'appareil SMS.</p>
-                <p class="help-text">Veuillez configurer un appareil SMS avant de continuer.</p>
-                <a href="index.php?page=parametres/sms" class="btn-config">
-                    <i class="fas fa-plus-circle"></i> Configurer un appareil
-                </a>
+                <p>Vous n'avez pas encore d'appareil SMS.</p>
+                <p class="help-text">Veuillez configurer contacter votre administrateur avant de continuer.</p>
             </div>
         <?php else: ?>
             <form method="POST" id="appareilForm">
