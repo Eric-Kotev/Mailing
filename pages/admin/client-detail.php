@@ -903,7 +903,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_session
     exit;
 }
 
-// --- Créer une session WhatsApp (AJAX) AVEC APPEL À WAHA (IP 192.168.88.116) ---
+// --- Créer une session WhatsApp (AJAX) AVEC APPEL À WAHA (IP 164.68.103.147) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_whatsapp_session'])) {
     ob_clean();
     header('Content-Type: application/json');
@@ -1008,7 +1008,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_whatsap
 // NOUVELLES FONCTIONS : RESTART, REQUEST-CODE ET STATUS
 // ============================================
 
-// --- Redémarrer une session WhatsApp (AJAX) (IP 192.168.88.116) ---
+// --- Redémarrer une session WhatsApp (AJAX) (IP 164.68.103.147) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_restart_whatsapp_session'])) {
     ob_clean();
     header('Content-Type: application/json');
@@ -1022,7 +1022,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_restart_whatsa
             throw new Exception('Nom de session requis');
         }
         
-        $wahaUrl = 'http://192.168.88.116:8081/api/controller.php/sessions/' . urlencode($nom_session) . '/restart';
+        $wahaUrl = 'http://164.68.103.147:8081/api/controller.php/sessions/' . urlencode($nom_session) . '/restart';
         $wahaKey = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
         
         $ch = curl_init($wahaUrl);
@@ -1065,7 +1065,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_restart_whatsa
     exit;
 }
 
-// --- Demander un code d'appairage (AJAX) (IP 192.168.88.116) ---
+// --- Demander un code d'appairage (AJAX) (IP 164.68.103.147) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_request_code'])) {
     ob_clean();
     header('Content-Type: application/json');
@@ -1088,7 +1088,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_request_code']
             throw new Exception('Numéro de téléphone invalide');
         }
         
-        $wahaUrl = 'http://192.168.88.116:8081/api/controller.php/sessions/request-code';
+        $wahaUrl = 'http://164.68.103.147:8081/api/controller.php/sessions/request-code';
         $wahaKey = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
         $postData = json_encode([
             'session' => $nom_session,
