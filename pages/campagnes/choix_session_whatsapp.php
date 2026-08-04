@@ -116,8 +116,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_sessio
                 unset($_SESSION['provider_whatsapp_id']);
                 unset($_SESSION['fichier_info']);
                 
-                // 🔥 REDIRECTION VERS details.php AVEC LE campagne_id
-                $_SESSION['flash_message'] = "✅ Message WhatsApp ajouté avec succès à la campagne !";
+                // REDIRECTION VERS details.php AVEC LE campagne_id
+                $_SESSION['flash_message'] = " Message WhatsApp ajouté avec succès à la campagne !";
                 header('Location: index.php?page=campagnes/details&id=' . $campagneConfigId);
                 exit;
             }
@@ -622,10 +622,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_sessio
                 <i class="fab fa-whatsapp"></i>
                 <h3>Aucune session disponible</h3>
                 <p>Vous n'avez pas encore configuré de session WhatsApp.</p>
-                <p class="help-text">Veuillez configurer une session WhatsApp avant de continuer.</p>
-                <a href="index.php?page=parametres/whatsapp" class="btn-config">
-                    <i class="fas fa-plus-circle"></i> Configurer une session
-                </a>
+                <p class="help-text">Veuillez contacter votre administrateur pour avoir une session WhatsApp avant de continuer.</p>
             </div>
         <?php else: ?>
             <form method="POST" id="sessionForm">

@@ -141,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_sessio
             unset($_SESSION['campagne_config_id_temp']);
             unset($_SESSION['octopush_provider_id']);
             
-            $_SESSION['flash_message'] = "✅ Session Octopush sélectionnée avec succès. La campagne est prête à être envoyée.";
+            $_SESSION['flash_message'] = " Session Octopush sélectionnée avec succès. La campagne est prête à être envoyée.";
             
             // 🔥 REDIRIGER VERS LA PAGE DES DÉTAILS
             header('Location: index.php?page=campagnes/details&id=' . $campagneConfigId);
@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_sessio
             
         } catch (Exception $e) {
             $error = "Erreur lors de la sélection de la session : " . $e->getMessage();
-            error_log("❌ Erreur: " . $e->getMessage());
+            error_log("Erreur: " . $e->getMessage());
         }
     }
 }
@@ -757,10 +757,7 @@ if ($destinatairesPreview) {
                 <i class="fas fa-bolt"></i>
                 <h3>Aucune session Octopush</h3>
                 <p>Vous n'avez pas encore configuré de session Octopush.</p>
-                <p class="help-text">Ajoutez une configuration Octopush pour pouvoir envoyer des SMS via cette plateforme.</p>
-                <a href="index.php?page=comptes/octopush_config" class="btn-add">
-                    <i class="fas fa-plus"></i> Ajouter une configuration
-                </a>
+                <p class="help-text">Contactez votre administrateur pour pouvoir envoyer des SMS via cette plateforme.</p>
             </div>
         <?php else: ?>
             <form method="POST" id="sessionForm">
