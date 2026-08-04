@@ -355,6 +355,50 @@ function getDefaultListmonkConn() {
     ];
 }
 
+
+/**
+ * 🔥 Fonction utilitaire pour extraire un ID client
+ * Gère les tableaux, objets et chaînes
+ */
+function extractClientId($input) {
+    // Si c'est déjà une chaîne non vide, la retourner
+    if (is_string($input) && !empty($input)) {
+        return trim($input);
+    }
+    
+    // Si c'est un tableau
+    if (is_array($input)) {
+        // Chercher 'id_compte' dans le tableau
+        if (isset($input['id_compte'])) {
+            return trim($input['id_compte']);
+        }
+        // Chercher 'id' dans le tableau
+        if (isset($input['id'])) {
+            return trim($input['id']);
+        }
+        // Prendre la première valeur
+        if (!empty($input)) {
+            $first = reset($input);
+            return trim($first);
+        }
+        return '';
+    }
+    
+    // Si c'est un objet
+    if (is_object($input)) {
+        if (isset($input->id_compte)) {
+            return trim($input->id_compte);
+        }
+        if (isset($input->id)) {
+            return trim($input->id);
+        }
+        return '';
+    }
+    
+    // Sinon retourner la valeur telle quelle
+    return trim((string)$input);
+}
+
 // ============================================
 // GESTION DES OPÉRATEURS ASSOCIÉS
 // ============================================
@@ -367,7 +411,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_associate_prov
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         $providerId = intval($_POST['id_provider'] ?? 0);
         $estActif = isset($_POST['est_actif']) && $_POST['est_actif'] === 'true';
         
@@ -445,7 +489,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_detach_provide
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $idClientProvider = intval($_POST['id_client_provider'] ?? 0);
         
         if (empty($clientId)) {
@@ -494,7 +538,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_toggle_provide
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $idClientProvider = intval($_POST['id_client_provider'] ?? 0);
         $nouveauStatut = $_POST['est_actif'] === 'true';
         
@@ -552,7 +596,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_whatsapp_s
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         if (empty($clientId)) {
             throw new Exception('ID client invalide');
         }
@@ -592,7 +636,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_whatsap
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $sessionId = trim($_POST['session_id'] ?? '');
         $sessionName = trim($_POST['session_name'] ?? '');
         
@@ -767,7 +811,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_sms_appare
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         if (empty($clientId)) {
             throw new Exception('ID client invalide');
         }
@@ -810,7 +854,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_save_sms_appar
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         $device_id = trim($_POST['device_id'] ?? '');
         $device_name = trim($_POST['device_name'] ?? '');
         $api_username = trim($_POST['api_username'] ?? '');
@@ -911,7 +955,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_whatsap
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         $nom_session = trim($_POST['nom_session'] ?? '');
         
         if (empty($clientId)) {
@@ -1250,7 +1294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_activate_sms_a
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $appareilId = trim($_POST['appareil_id'] ?? '');
         
         if (empty($clientId)) {
@@ -1306,7 +1350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_email_acco
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         if (empty($clientId)) {
             throw new Exception('ID client invalide');
         }
@@ -1392,7 +1436,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_serve
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $name = trim($_POST['name'] ?? '');
         $username = trim($_POST['username'] ?? '');
         $password = trim($_POST['password'] ?? '');
@@ -1534,7 +1578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_smtp_se
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $accountId = trim($_POST['account_id'] ?? '');
         $accountName = trim($_POST['account_name'] ?? '');
         
@@ -1613,7 +1657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_activate_email
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         $accountId = trim($_POST['account_id'] ?? '');
         
         if (empty($clientId)) {
@@ -1654,6 +1698,196 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_activate_email
         
     } catch (Exception $e) {
         error_log("ERREUR activate_email_account: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// ============================================
+// GESTION DES CONFIGURATIONS OCTOPUSH
+// ============================================
+
+// --- Récupérer les configurations Octopush du client (AJAX) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_octopush_configs'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        
+        $configs = $db->select('octopush_config', ['id_compte' => $clientId], '*', 'created_at DESC');
+        
+        $configList = [];
+        foreach ($configs as $config) {
+            $configList[] = [
+                'id_config' => $config['id_config'],
+                'nom_config' => $config['nom_config'],
+                'api_login' => $config['api_login'],
+                'api_key' => $config['api_key'],
+                'sender_name' => $config['sender_name'],
+                'type' => $config['type'],
+                'purpose' => $config['purpose'],
+                'est_active' => $config['est_active'],
+                'created_at' => date('d/m/Y H:i', strtotime($config['created_at']))
+            ];
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'configs' => $configList
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR get_octopush_configs: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// --- Ajouter ou modifier une configuration Octopush (AJAX) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_save_octopush_config'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
+        $idConfig = $_POST['id_config'] ?? null;
+        $nom_config = trim($_POST['nom_config'] ?? '');
+        $api_login = trim($_POST['api_login'] ?? '');
+        $api_key = trim($_POST['api_key'] ?? '');
+        $sender_name = trim($_POST['sender_name'] ?? 'IFB');
+        $type = $_POST['type'] ?? 'sms_premium';
+        $purpose = $_POST['purpose'] ?? 'alert';
+        $est_active = isset($_POST['est_active']) && $_POST['est_active'] === 'true' ? 1 : 0;
+        
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+         // Vérifier le format UUID
+        if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $clientId)) {
+            throw new Exception('ID client invalide (format UUID attendu, reçu: ' . $clientId . ')');
+        }
+
+        if (empty($nom_config)) {
+            throw new Exception('Nom de la configuration requis');
+        }
+        if (empty($api_login)) {
+            throw new Exception('API Login requis');
+        }
+        if (empty($api_key)) {
+            throw new Exception('API Key requise');
+        }
+        if (empty($sender_name)) {
+            throw new Exception('Nom de l\'expéditeur requis');
+        }
+        
+        $data = [
+            'id_compte' => $clientId,
+            'nom_config' => $nom_config,
+            'api_login' => $api_login,
+            'api_key' => $api_key,
+            'sender_name' => $sender_name,
+            'type' => $type,
+            'purpose' => $purpose,
+            'est_active' => $est_active,
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+        
+        if ($idConfig) {
+            // Modification
+            $existing = $db->select('octopush_config', [
+                'id_config' => $idConfig,
+                'id_compte' => $clientId
+            ]);
+            if (empty($existing)) {
+                throw new Exception('Configuration non trouvée');
+            }
+            $db->update('octopush_config', $data, ['id_config' => $idConfig]);
+            $message = 'Configuration Octopush mise à jour avec succès';
+        } else {
+            // Création
+            $data['created_at'] = date('Y-m-d H:i:s');
+            $idConfig = $db->insert('octopush_config', $data);
+            $message = 'Configuration Octopush créée avec succès';
+        }
+        
+        // Récupérer la config mise à jour
+
+        // Normaliser le retour au cas où insert() renvoie un tableau/ligne au lieu d'un scalaire
+        if (is_array($idConfig)) {
+            // Cas: insert() renvoie la ligne insérée (ou un tableau de lignes)
+            $row = isset($idConfig[0]) && is_array($idConfig[0]) ? $idConfig[0] : $idConfig;
+            $idConfig = $row['id_config'] ?? null;
+        }
+
+if (empty($idConfig)) {
+    throw new Exception("Erreur: impossible de récupérer l'ID de la configuration créée");
+}
+        
+        echo json_encode([
+            'success' => true,
+            'message' => $message,
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR save_octopush_config: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// --- Supprimer une configuration Octopush (AJAX) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_octopush_config'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
+        $idConfig = $_POST['id_config'] ?? null;
+        
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        if (empty($idConfig)) {
+            throw new Exception('ID configuration invalide');
+        }
+        
+        $existing = $db->select('octopush_config', [
+            'id_config' => $idConfig,
+            'id_compte' => $clientId
+        ]);
+        
+        if (empty($existing)) {
+            throw new Exception('Configuration non trouvée');
+        }
+        
+        $db->delete('octopush_config', $idConfig, 'id_config');
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Configuration Octopush supprimée avec succès'
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR delete_octopush_config: " . $e->getMessage());
         echo json_encode([
             'success' => false,
             'error' => $e->getMessage()
@@ -1721,7 +1955,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_toggle_status'
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $newStatut = $_POST['statut'] ?? 'actif';
         
         if (empty($clientId)) {
@@ -1753,7 +1987,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $nouveauCredit = floatval($_POST['credit'] ?? 0);
         
         if (empty($clientId)) {
@@ -1789,7 +2023,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_info'])
     ini_set('display_errors', 0);
     
     try {
-        $clientId = $_POST['id_compte'] ?? '';
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
         $entreprise = trim($_POST['entreprise'] ?? '');
         $nom = trim($_POST['nom'] ?? '');
         $prenom = trim($_POST['prenom'] ?? '');
@@ -2886,6 +3120,138 @@ $initials = getInitials($client['prenom'], $client['nom']);
 </div>
 
 <!-- ============================================ -->
+<!-- MODALE OCTOPUSH POUR LA GESTION DES CONFIGURATIONS -->
+<!-- ============================================ -->
+<div id="octopushModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card modal-card-sms" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800" id="octopushModalTitle">⚡ Gestion Octopush</h3>
+                <p class="text-sm text-gray-500" id="octopushModalSubtitle"><?= htmlspecialchars($client['entreprise']) ?></p>
+            </div>
+            <button onclick="closeOctopushModal()" class="modal-close-btn">&times;</button>
+        </div>
+        
+        <input type="hidden" id="octopushProviderId" value="">
+        
+        <div id="octopushContent">
+            <div class="text-center py-8">
+                <i class="fas fa-spinner fa-spin text-3xl text-orange-500"></i>
+                <p class="text-gray-500 mt-2">Chargement...</p>
+            </div>
+        </div>
+        
+        <div class="mt-4 flex justify-end gap-2" id="octopushFooter">
+            <button onclick="closeOctopushModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                Fermer
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODALE DE CRÉATION/MODIFICATION CONFIG OCTOPUSH -->
+<!-- ============================================ -->
+<div id="createOctopushConfigModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 500px;" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800" id="octopushConfigModalTitle">⚡ Nouvelle configuration Octopush</h3>
+                <p class="text-sm text-gray-500">Configurez un compte Octopush pour l'envoi de SMS</p>
+            </div>
+            <button onclick="closeCreateOctopushConfigModal()" class="modal-close-btn">&times;</button>
+        </div>
+        
+        <form id="createOctopushConfigForm">
+            <input type="hidden" id="octopush_config_id" value="">
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Nom de la configuration *
+                    </label>
+                    <input type="text" id="octopush_nom_config" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition"
+                           placeholder="Ex: Octopush Principal">
+                    <p class="text-xs text-gray-400 mt-1">Identifiant unique pour cette configuration</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        API Login *
+                    </label>
+                    <input type="text" id="octopush_api_login" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition"
+                           placeholder="Ex: ifb_1b2@agent.sub-accounts.com">
+                    <p class="text-xs text-gray-400 mt-1">Email ou identifiant de connexion à l'API Octopush</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        API Key *
+                    </label>
+                    <div class="password-container">
+                        <input type="password" id="octopush_api_key" 
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition"
+                               placeholder="Entrez votre clé API Octopush">
+                        <button type="button" class="toggle-password" onclick="togglePassword('octopush_api_key', this)">
+                            <i class="far fa-eye"></i>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Clé API fournie par Octopush</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Nom de l'expéditeur *
+                    </label>
+                    <input type="text" id="octopush_sender_name" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition"
+                           placeholder="Ex: IFB" value="IFB">
+                    <p class="text-xs text-gray-400 mt-1">Le nom qui apparaîtra comme expéditeur (max 11 caractères)</p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                        <select id="octopush_type" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition">
+                            <option value="sms_premium">SMS Premium</option>
+                            <option value="sms_lowcost">SMS Lowcost</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Purpose</label>
+                        <select id="octopush_purpose" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition">
+                            <option value="alert">Alert</option>
+                            <option value="marketing">Marketing</option>
+                            <option value="transactionnal">Transactionnel</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" id="octopush_est_active" checked class="w-4 h-4 text-orange-600 rounded">
+                        <span>Configuration active</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-2 mt-6">
+                <button type="button" onclick="closeCreateOctopushConfigModal()" 
+                        class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                    Annuler
+                </button>
+                <button type="submit" 
+                        class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+                    <i class="fas fa-save"></i> Enregistrer
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============================================ -->
 <!-- MODALE POUR LE CODE D'APPAIRAGE -->
 <!-- ============================================ -->
 <div id="codeModal" class="modal-overlay" style="display: none;">
@@ -3809,7 +4175,16 @@ function openProviderModal(providerId, providerName, providerType) {
     if (typeLower === 'whatsapp') {
         openSessionModal(providerId, providerName, providerType);
     } else if (typeLower === 'sms') {
-        openSessionModal(providerId, providerName, providerType);
+        // Vérifier si c'est Octopush par le nom du provider
+        if (providerName.toLowerCase().includes('octopush')) {
+            document.getElementById('octopushModalTitle').textContent = `⚡ Gestion Octopush - ${providerName}`;
+            document.getElementById('octopushModalSubtitle').textContent = `Client: <?= htmlspecialchars($client['entreprise']) ?>`;
+            document.getElementById('octopushProviderId').value = providerId;
+            document.getElementById('octopushModal').style.display = 'flex';
+            loadOctopushConfigs();
+        } else {
+            openSessionModal(providerId, providerName, providerType);
+        }
     } else if (typeLower === 'email') {
         document.getElementById('emailModalTitle').textContent = `✉️ Gestion des emails - ${providerName}`;
         document.getElementById('emailModalSubtitle').textContent = `Client: <?= htmlspecialchars($client['entreprise']) ?>`;
@@ -5305,6 +5680,424 @@ document.getElementById('rechargeAmount').addEventListener('keydown', function(e
         confirmRecharge();
     }
 });
+
+// ============================================
+// FONCTIONS OCTOPUSH - GESTION DES CONFIGURATIONS
+// ============================================
+
+async function loadOctopushConfigs() {
+     console.log('🔍 clientId:', clientId);
+    console.log('🔍 Type de clientId:', typeof clientId);
+    const container = document.getElementById('octopushContent');
+    const footer = document.getElementById('octopushFooter');
+    
+    try {
+        const formData = new FormData();
+        formData.append('action_get_octopush_configs', '1');
+        formData.append('id_compte', clientId);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            let html = `
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Configurations Octopush</label>
+                    <div class="space-y-2 max-h-60 overflow-y-auto">
+            `;
+            
+            if (result.configs.length === 0) {
+                html += `
+                    <div class="text-center text-gray-500 py-4">
+                        <i class="fas fa-info-circle mb-2"></i>
+                        <p>Aucune configuration Octopush</p>
+                        <p class="text-sm mt-1">Ajoutez une configuration ci-dessous</p>
+                    </div>
+                `;
+            } else {
+                result.configs.forEach(config => {
+                    const isActive = config.est_active;
+                    html += `
+                        <div class="device-item ${isActive ? 'email-active' : ''}" 
+                             onclick="activateOctopushConfig('${config.id_config}')">
+                            <div class="flex items-center gap-3 flex-1">
+                                <div class="device-icon email-icon ${isActive ? '' : 'inactive'}">
+                                    <i class="fas fa-bolt"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="font-medium text-gray-800">${escapeHtml(config.nom_config)}</p>
+                                    <p class="text-xs text-gray-500">Login: ${escapeHtml(config.api_login)}</p>
+                                    <p class="text-xs text-gray-400">Expéditeur: ${escapeHtml(config.sender_name)}</p>
+                                    <p class="text-xs text-gray-400">Créée le ${config.created_at}</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-medium px-2 py-1 rounded-full ${isActive ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}">
+                                    ${isActive ? 'Actif' : 'Inactif'}
+                                </span>
+                                <button data-config-id="${config.id_config}" 
+                                        data-config-name="${escapeHtml(config.nom_config)}"
+                                        class="btn-sm btn-sm-warning edit-octopush-btn"
+                                        onclick="event.stopPropagation(); editOctopushConfig('${config.id_config}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button data-config-id="${config.id_config}" 
+                                        data-config-name="${escapeHtml(config.nom_config)}"
+                                        class="btn-sm btn-sm-danger delete-octopush-btn"
+                                        onclick="event.stopPropagation(); deleteOctopushConfig('${config.id_config}', '${escapeHtml(config.nom_config)}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            html += `
+                    </div>
+                </div>
+                <div class="border-t pt-4 mt-2">
+                    <button onclick="openCreateOctopushConfigModal()" 
+                            class="w-full px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition flex items-center justify-center gap-2">
+                        <i class="fas fa-plus-circle"></i> Ajouter une configuration Octopush
+                    </button>
+                    <p class="text-xs text-gray-500 mt-2 text-center">
+                        <i class="fas fa-info-circle"></i> Configurez vos identifiants Octopush pour l'envoi de SMS
+                    </p>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            footer.innerHTML = `
+                <button onclick="closeOctopushModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                    Fermer
+                </button>
+            `;
+            
+        } else {
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="fas fa-exclamation-circle text-3xl text-red-500"></i>
+                    <p class="text-gray-600 mt-2">Erreur: ${escapeHtml(result.error || 'Impossible de charger les configurations')}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        container.innerHTML = `
+            <div class="text-center py-8">
+                <i class="fas fa-exclamation-circle text-3xl text-red-500"></i>
+                <p class="text-gray-600 mt-2">Erreur réseau: ${escapeHtml(error.message)}</p>
+            </div>
+        `;
+    }
+}
+
+function closeOctopushModal() {
+    document.getElementById('octopushModal').style.display = 'none';
+    document.getElementById('octopushContent').innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-orange-500"></i>
+            <p class="text-gray-500 mt-2">Chargement...</p>
+        </div>
+    `;
+    document.getElementById('octopushFooter').innerHTML = `
+        <button onclick="closeOctopushModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+            Fermer
+        </button>
+    `;
+}
+
+function openCreateOctopushConfigModal(configData = null) {
+    const modal = document.getElementById('createOctopushConfigModal');
+    const title = document.getElementById('octopushConfigModalTitle');
+    
+    if (configData) {
+        title.textContent = '✏️ Modifier la configuration Octopush';
+        document.getElementById('octopush_config_id').value = configData.id_config || '';
+        document.getElementById('octopush_nom_config').value = configData.nom_config || '';
+        document.getElementById('octopush_api_login').value = configData.api_login || '';
+        document.getElementById('octopush_api_key').value = configData.api_key || '';
+        document.getElementById('octopush_sender_name').value = configData.sender_name || 'IFB';
+        document.getElementById('octopush_type').value = configData.type || 'sms_premium';
+        document.getElementById('octopush_purpose').value = configData.purpose || 'alert';
+        document.getElementById('octopush_est_active').checked = configData.est_active === true || configData.est_active === 1;
+    } else {
+        title.textContent = '⚡ Nouvelle configuration Octopush';
+        document.getElementById('createOctopushConfigForm').reset();
+        document.getElementById('octopush_config_id').value = '';
+        document.getElementById('octopush_sender_name').value = 'IFB';
+        document.getElementById('octopush_type').value = 'sms_premium';
+        document.getElementById('octopush_purpose').value = 'alert';
+        document.getElementById('octopush_est_active').checked = true;
+    }
+    
+    modal.style.display = 'flex';
+}
+
+function closeCreateOctopushConfigModal() {
+    document.getElementById('createOctopushConfigModal').style.display = 'none';
+}
+
+async function editOctopushConfig(configId) {
+    try {
+        // Récupérer les détails de la configuration
+        const formData = new FormData();
+        formData.append('action_get_octopush_configs', '1');
+        formData.append('id_compte', clientId);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const config = result.configs.find(c => c.id_config == configId);
+            if (config) {
+                openCreateOctopushConfigModal(config);
+            } else {
+                showToast('Configuration non trouvée', 'error');
+            }
+        } else {
+            showToast(result.error || 'Erreur lors du chargement', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    }
+}
+
+function deleteOctopushConfig(configId, configName) {
+    const cleanName = (configName || 'cette configuration').replace(/['"\\]/g, '');
+    
+    const modalHtml = `
+        <div id="deleteOctopushConfirmModal" class="modal-overlay" style="display: flex;">
+            <div class="modal-card" style="max-width: 400px;" onclick="event.stopPropagation()">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center">
+                        <div class="bg-red-100 p-2 rounded-full mr-3">
+                            <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-800">Confirmer la suppression</h3>
+                    </div>
+                    <button onclick="closeDeleteOctopushConfirmModal()" class="modal-close-btn">&times;</button>
+                </div>
+                
+                <p class="text-gray-600 mb-4">
+                    Êtes-vous sûr de vouloir supprimer la configuration <strong>${escapeHtml(cleanName)}</strong> ?
+                </p>
+                <p class="text-sm text-red-600 mb-4">Cette action est irréversible.</p>
+                
+                <div class="flex justify-end gap-2">
+                    <button onclick="closeDeleteOctopushConfirmModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                        Annuler
+                    </button>
+                    <button onclick="confirmDeleteOctopushConfig('${configId}')" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
+                        <i class="fas fa-trash-alt mr-2"></i>Supprimer
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const oldModal = document.getElementById('deleteOctopushConfirmModal');
+    if (oldModal) oldModal.remove();
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeDeleteOctopushConfirmModal() {
+    const modal = document.getElementById('deleteOctopushConfirmModal');
+    if (modal) modal.remove();
+}
+
+async function confirmDeleteOctopushConfig(configId) {
+    closeDeleteOctopushConfirmModal();
+    
+    try {
+        showToast('Suppression en cours...', 'info');
+        
+        const formData = new FormData();
+        formData.append('action_delete_octopush_config', '1');
+        formData.append('id_compte', clientId);
+        formData.append('id_config', configId);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadOctopushConfigs();
+        } else {
+            showToast(result.error || 'Erreur lors de la suppression', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    }
+}
+
+async function activateOctopushConfig(configId) {
+    try {
+        showToast('Activation de la configuration...', 'info');
+        
+        // Récupérer la config pour savoir son nom
+        const formData = new FormData();
+        formData.append('action_get_octopush_configs', '1');
+        formData.append('id_compte', clientId);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const config = result.configs.find(c => c.id_config == configId);
+            if (!config) {
+                showToast('Configuration non trouvée', 'error');
+                return;
+            }
+            
+            // Sauvegarder avec est_active = true
+            const saveFormData = new FormData();
+            saveFormData.append('action_save_octopush_config', '1');
+            saveFormData.append('id_compte', clientId);
+            saveFormData.append('id_config', configId);
+            saveFormData.append('nom_config', config.nom_config);
+            saveFormData.append('api_login', config.api_login);
+            saveFormData.append('api_key', config.api_key);
+            saveFormData.append('sender_name', config.sender_name);
+            saveFormData.append('type', config.type);
+            saveFormData.append('purpose', config.purpose);
+            saveFormData.append('est_active', 'true');
+            
+            const saveResponse = await fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: saveFormData
+            });
+            
+            const saveResult = await saveResponse.json();
+            
+            if (saveResult.success) {
+                showToast('Configuration activée avec succès', 'success');
+                await loadOctopushConfigs();
+            } else {
+                showToast(saveResult.error || 'Erreur lors de l\'activation', 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    }
+}
+
+// --- Gestionnaire de formulaire Octopush ---
+document.getElementById('createOctopushConfigForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const idConfig = document.getElementById('octopush_config_id').value;
+    const nom_config = document.getElementById('octopush_nom_config').value.trim();
+    const api_login = document.getElementById('octopush_api_login').value.trim();
+    const api_key = document.getElementById('octopush_api_key').value.trim();
+    const sender_name = document.getElementById('octopush_sender_name').value.trim();
+    const type = document.getElementById('octopush_type').value;
+    const purpose = document.getElementById('octopush_purpose').value;
+    const est_active = document.getElementById('octopush_est_active').checked;
+    
+    if (!nom_config) {
+        showToast('Veuillez entrer un nom pour la configuration', 'error');
+        return;
+    }
+    if (!api_login) {
+        showToast('Veuillez entrer l\'API Login', 'error');
+        return;
+    }
+    if (!api_key) {
+        showToast('Veuillez entrer l\'API Key', 'error');
+        return;
+    }
+    if (!sender_name) {
+        showToast('Veuillez entrer le nom de l\'expéditeur', 'error');
+        return;
+    }
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enregistrement...';
+    submitBtn.disabled = true;
+    
+    try {
+        const formData = new FormData();
+        formData.append('action_save_octopush_config', '1');
+        formData.append('id_compte', clientId);
+        if (idConfig) formData.append('id_config', idConfig);
+        formData.append('nom_config', nom_config);
+        formData.append('api_login', api_login);
+        formData.append('api_key', api_key);
+        formData.append('sender_name', sender_name);
+        formData.append('type', type);
+        formData.append('purpose', purpose);
+        formData.append('est_active', est_active ? 'true' : 'false');
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeCreateOctopushConfigModal();
+            await loadOctopushConfigs();
+        } else {
+            showToast(result.error || 'Erreur lors de l\'enregistrement', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    } finally {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
 </script>
 </body>
 </html>
