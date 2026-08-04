@@ -196,72 +196,88 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
 }
 
 // ============================================
+// FONCTION POUR FORMATER LES NUMÉROS (UNIQUEMENT FRANCE)
+// ============================================
+function formaterNumerosOctopush($destinataires) {
+    $formatted = [];
+    
+    foreach ($destinataires as $dest) {
+        $telephone = null;
+        
+        if (is_array($dest) && isset($dest['phone_number'])) {
+            $telephone = $dest['phone_number'];
+        } elseif (is_string($dest) && preg_match('/\(([^)]+)\)/', $dest, $matches)) {
+            $telephone = $matches[1];
+        } elseif (is_string($dest) && preg_match('/[0-9+\s]+/', $dest, $matches)) {
+            $telephone = trim($matches[0]);
+        }
+        
+        if (empty($telephone)) {
+            continue;
+        }
+        
+        $telephone = trim($telephone);
+        
+        // Si le numéro a déjà un +, on le garde tel quel
+        if (substr($telephone, 0, 1) == '+') {
+            $checkNumber = preg_replace('/[^0-9]/', '', $telephone);
+            if (strlen($checkNumber) >= 9 && strlen($checkNumber) <= 15) {
+                $formatted[] = $telephone;
+            }
+            continue;
+        }
+        
+        // Nettoyer le numéro (garder uniquement les chiffres)
+        $telephone = preg_replace('/[^0-9]/', '', $telephone);
+        
+        // Si le numéro commence par 0 (format national français)
+        if (substr($telephone, 0, 1) == '0') {
+            // Numéro français (06, 07, 05, 04, 03, 02, 09)
+            $telephone = '+33' . substr($telephone, 1);
+        } else {
+            // Numéro sans 0 au début
+            if (strlen($telephone) == 10) {
+                // Numéro français à 10 chiffres sans le 0 (ex: 612345678)
+                $telephone = '+33' . $telephone;
+            } elseif (strlen($telephone) == 11 && substr($telephone, 0, 2) == '33') {
+                // Numéro français avec indicatif 33 (ex: 33612345678)
+                $telephone = '+' . $telephone;
+            } elseif (strlen($telephone) == 12 && substr($telephone, 0, 3) == '261') {
+                // Si numéro Madagascar, on le garde tel quel avec +
+                $telephone = '+' . $telephone;
+            } elseif (strlen($telephone) > 10 && substr($telephone, 0, 2) == '33') {
+                // Numéro français avec 33 au début
+                $telephone = '+' . $telephone;
+            } else {
+                // Par défaut : on ajoute +33 (France)
+                $telephone = '+33' . $telephone;
+            }
+        }
+        
+        $checkNumber = preg_replace('/[^0-9]/', '', $telephone);
+        if (strlen($checkNumber) >= 9 && strlen($checkNumber) <= 15) {
+            $formatted[] = $telephone;
+        }
+    }
+    
+    return $formatted;
+}
+
+// ============================================
 // FONCTION POUR ENVOYER AVEC OCTOPUSH (CORRIGÉE AVEC SESSION)
 // ============================================
 function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
     $url = 'https://api.octopush.com/v1/public/sms-campaign/send';
     
     $recipients = [];
+    $formattedNumbers = formaterNumerosOctopush($destinataires);
     
-    foreach ($destinataires as $dest) {
-        $telephone = null;
-        
-        // Cas 1: Le destinataire est un tableau avec 'phone_number'
-        if (is_array($dest) && isset($dest['phone_number'])) {
-            $telephone = $dest['phone_number'];
-        }
-        // Cas 2: Le destinataire est une chaîne avec un numéro entre parenthèses: "Nom (0321234567)"
-        elseif (is_string($dest) && preg_match('/\(([^)]+)\)/', $dest, $matches)) {
-            $telephone = $matches[1];
-        }
-        // Cas 3: Le destinataire est juste un numéro
-        elseif (is_string($dest) && preg_match('/[0-9+\s]+/', $dest, $matches)) {
-            $telephone = trim($matches[0]);
-        }
-        
-        // Si aucun numéro trouvé, passer au suivant
-        if (empty($telephone)) {
-            continue;
-        }
-        
-       // NETTOYER LE NUMÉRO : garder uniquement les chiffres et le +
-        $telephone = trim($telephone);
-        $telephone = preg_replace('/[^0-9+]/', '', $telephone);
-        
-        // FORMATER POUR OCTOPUSH (garder le + si présent)
-        if (substr($telephone, 0, 1) != '+') {
-            $telephone = preg_replace('/[^0-9]/', '', $telephone);
-            
-            if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
-                $telephone = '+261' . substr($telephone, 1);
-            }
-            elseif (strlen($telephone) == 9) {
-                $telephone = '+261' . $telephone;
-            }
-            elseif (strlen($telephone) == 12 && substr($telephone, 0, 3) == '261') {
-                $telephone = '+' . $telephone;
-            }
-            elseif (strlen($telephone) > 10) {
-                $telephone = substr($telephone, -10);
-                if (substr($telephone, 0, 1) == '0') {
-                    $telephone = '+261' . substr($telephone, 1);
-                } else {
-                    $telephone = '+261' . $telephone;
-                }
-            }
-            else {
-                $telephone = '+261' . $telephone;
-            }
-        }
-        
-        $checkNumber = preg_replace('/[^0-9]/', '', $telephone);
-        if (strlen($checkNumber) >= 9 && strlen($checkNumber) <= 13) {
-            $recipients[] = ['phone_number' => $telephone];
-        }
+    foreach ($formattedNumbers as $numero) {
+        $recipients[] = ['phone_number' => $numero];
     }
     
     if (empty($recipients)) {
-        return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé. Format attendu: +261XXXXXXXXX'];
+        return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé. Format attendu: +33XXXXXXXXX'];
     }
     
     $data = [
@@ -892,7 +908,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
     <title><?= htmlspecialchars($campagne['nom_campagne']) ?> - <?= APP_NAME ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* ===== STYLES (CONSERVÉS IDENTIQUES) ===== */
+        /* ===== STYLES ===== */
         * { box-sizing: border-box; }
         body { 
             margin: 0; 
@@ -985,6 +1001,24 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .btn-send-email:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+        }
+        
+        .btn-send-octopush {
+            background: #f97316;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-send-octopush:hover {
+            background: #ea580c;
         }
         
         .header-title {
@@ -1334,22 +1368,53 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             border-top: 1px solid #e5e7eb;
             display: flex;
             justify-content: flex-end;
+            gap: 12px;
             background: #f8fafc;
             border-radius: 0 0 16px 16px;
         }
         .modal-octopush .modal-footer button {
             padding: 8px 24px;
-            background: #3b82f6;
-            color: white;
-            border: none;
             border-radius: 8px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            border: none;
         }
-        .modal-octopush .modal-footer button:hover {
-            background: #2563eb;
+        .modal-octopush .modal-footer .btn-confirm {
+            background: #f97316;
+            color: white;
+        }
+        .modal-octopush .modal-footer .btn-confirm:hover {
+            background: #ea580c;
+        }
+        .modal-octopush .modal-footer .btn-cancel {
+            background: #e5e7eb;
+            color: #4b5563;
+        }
+        .modal-octopush .modal-footer .btn-cancel:hover {
+            background: #d1d5db;
+        }
+        
+        .numero-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            border-bottom: 1px solid #f3f4f6;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .numero-item:last-child {
+            border-bottom: none;
+        }
+        .numero-item .badge-valid {
+            color: #10b981;
+            font-size: 12px;
+        }
+        .numero-item .badge-invalid {
+            color: #ef4444;
+            font-size: 12px;
         }
         
         .flex { display: flex; }
@@ -1395,6 +1460,9 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .tracking-wider { letter-spacing: 0.5px; }
         .overflow-hidden { overflow: hidden; }
         .divide-y > * + * { border-top: 1px solid #e5e7eb; }
+        
+        .max-h-60 { max-height: 240px; }
+        .overflow-y-auto { overflow-y: auto; }
         
         @media (max-width: 768px) {
             .container { padding: 12px; }
@@ -1658,7 +1726,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                 $showSendButton = true;
                                 if ($isOctopush) {
                                     $isOctopushMessage = true;
-                                    $buttonClass = 'btn-send-message';
+                                    $buttonClass = 'btn-send-octopush';
                                     $buttonIcon = 'fa-bolt';
                                     $buttonText = 'Envoyer';
                                 } else {
@@ -1673,12 +1741,17 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                 $buttonIcon = 'fa-envelope';
                                 $buttonText = 'Envoyer Email';
                             }
+                            
+                            // Échapper les données pour JavaScript en utilisant base64 pour éviter les problèmes de guillemets
+                            $destinatairesBase64 = base64_encode(json_encode($envoi['destinataires']));
+                            $messageBase64 = base64_encode($envoi['message'] ?? '');
+                            $envoiJson = htmlspecialchars(json_encode($envoi), ENT_QUOTES, 'UTF-8');
                         ?>
                             <tr class="envoi-row" 
                                 data-id="<?= $envoi['id_campagne'] ?>"
                                 data-type="<?= $envoi['type_campagne'] ?>"
                                 data-status="<?= $envoi['statut'] ?>"
-                                onclick="showDetails(<?= htmlspecialchars(json_encode($envoi)) ?>)">
+                                onclick="if(event.target.closest('button, form, a')) return; showDetailsFromRow(this)">
                                 <td class="px-4 py-3 text-gray-600 whitespace-nowrap">
                                     <?= date('d/m/Y H:i', strtotime($envoi['created_at'])) ?>
                                 </td>
@@ -1709,19 +1782,30 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                 <td class="px-4 py-3 text-center">
                                     <div class="flex items-center justify-center gap-2">
                                         <?php if ($showSendButton): ?>
-                                            <form method="POST" style="display:inline;" id="sendForm_<?= $envoi['id_campagne'] ?>">
-                                                <input type="hidden" name="action_envoyer_message" value="1">
-                                                <input type="hidden" name="id_campagne_historique" value="<?= $envoi['id_campagne'] ?>">
-                                                <?php if ($isOctopushMessage): ?>
+                                            <?php if ($isOctopushMessage): ?>
+                                                <!-- Bouton Envoyer Octopush -->
+                                                <form method="POST" style="display:inline;" onclick="event.stopPropagation();">
+                                                    <input type="hidden" name="action_envoyer_message" value="1">
+                                                    <input type="hidden" name="id_campagne_historique" value="<?= $envoi['id_campagne'] ?>">
                                                     <input type="hidden" name="is_octopush" value="1">
-                                                <?php endif; ?>
-                                                <button type="submit" class="<?= $buttonClass ?>" title="Envoyer le message">
-                                                    <i class="fas <?= $buttonIcon ?>"></i> <?= $buttonText ?>
-                                                </button>
-                                            </form>
+                                                    <button type="submit" class="<?= $buttonClass ?>" title="Envoyer le message via Octopush">
+                                                        <i class="fas <?= $buttonIcon ?>"></i> <?= $buttonText ?>
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
+                                                <!-- Bouton Envoyer normal -->
+                                                <form method="POST" style="display:inline;" onclick="event.stopPropagation();">
+                                                    <input type="hidden" name="action_envoyer_message" value="1">
+                                                    <input type="hidden" name="id_campagne_historique" value="<?= $envoi['id_campagne'] ?>">
+                                                    <button type="submit" class="<?= $buttonClass ?>" title="Envoyer le message">
+                                                        <i class="fas <?= $buttonIcon ?>"></i> <?= $buttonText ?>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
                                         <?php endif; ?>
                                         
-                                        <button onclick="event.stopPropagation(); showDetails(<?= htmlspecialchars(json_encode($envoi)) ?>)" 
+                                        <!-- Bouton Voir détails -->
+                                        <button onclick="event.stopPropagation(); showDetails(<?= $envoiJson ?>)" 
                                                 class="text-blue-600 hover:text-blue-800" title="Voir détails">
                                             <i class="fas fa-eye"></i>
                                         </button>
@@ -1736,7 +1820,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
     </div>
 </div>
 
-<!-- ===== MODAL OCTOPUSH ===== -->
+<!-- ===== MODAL OCTOPUSH (RÉPONSE) ===== -->
 <div id="octopushModal" class="modal-octopush <?= $octopushResponse ? 'active' : '' ?>">
     <div class="modal-content">
         <div class="modal-header">
@@ -1786,7 +1870,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             <?php endif; ?>
         </div>
         <div class="modal-footer">
-            <button onclick="closeOctopushModal()">Fermer</button>
+            <button onclick="closeOctopushModal()" class="btn-cancel">Fermer</button>
         </div>
     </div>
 </div>
@@ -1846,6 +1930,16 @@ function showToast(message, type = 'success') {
 function closeOctopushModal() {
     const modal = document.getElementById('octopushModal');
     modal.classList.remove('active');
+}
+
+// ===== AFFICHER LES DÉTAILS DEPUIS UNE LIGNE =====
+function showDetailsFromRow(row) {
+    const envoi = {
+        id_campagne: row.dataset.id,
+        type_campagne: row.dataset.type,
+        statut: row.dataset.status,
+    };
+    showDetails(envoi);
 }
 
 // ===== FILTRES =====
