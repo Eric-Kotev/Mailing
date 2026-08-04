@@ -1578,7 +1578,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         <div class="bg-white rounded-xl shadow-md stat-card text-center">
             <div class="stat-number text-green-600"><?= $totalWhatsApp ?></div>
             <div class="stat-label">
-                <span class="stat-type stat-type-whatsapp"><i class="fab fa-mobile-alt mr-1"></i> WhatsApp</span>
+                <span class="stat-type stat-type-whatsapp"><i class="fas fa-mobile-alt mr-1"></i> WhatsApp</span>
             </div>
         </div>
         <div class="bg-white rounded-xl shadow-md stat-card text-center">
