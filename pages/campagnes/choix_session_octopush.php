@@ -4,7 +4,7 @@ global $db;
 $idCompte = $_SESSION['user_id'];
 
 // Récupérer l'ID de la campagne
-$campagneConfigId = $_GET['campagne_id'] ?? $_SESSION['campagne_config_id'] ?? null;
+$campagneConfigId = $_GET['campagne_id'] ?? $_SESSION['campagne_config_id_temp'] ?? null;
 
 if (!$campagneConfigId) {
     header('Location: index.php?page=campagnes/index');
@@ -25,129 +25,44 @@ if (empty($campagneConfig)) {
 
 $campagne = $campagneConfig[0];
 
-// Vérifier que le type de message est SMS
-$typeMessage = $_SESSION['type_message'] ?? null;
-if ($typeMessage !== 'sms') {
-    $_SESSION['flash_error'] = "Type de message non valide";
-    header('Location: index.php?page=campagnes/choix_type&campagne_id=' . $campagneConfigId);
-    exit;
-}
-
-// Récupérer l'ID du type SMS (INTEGER)
-$typeMessageSms = $db->select('type_message', ['libelle_type' => 'SMS']);
-if (empty($typeMessageSms)) {
-    $typeMessageSms = $db->select('type_message', ['libelle_type' => 'sms']);
-}
-$smsTypeId = !empty($typeMessageSms) ? (int)$typeMessageSms[0]['id_type_message'] : null;
-
-// Récupérer les providers SMS disponibles
-$providers = $db->select('provider', ['id_type_message' => $smsTypeId]);
-
-// Récupérer le provider actif de l'utilisateur
-$providerActif = null;
-$providerActifData = $db->select('provider_actif', [
-    'id_compte' => $idCompte,
-    'id_type_message' => $smsTypeId
+// Récupérer les sessions Octopush de l'utilisateur
+$octopushSessions = $db->select('octopush_config', [
+    'id_compte' => $idCompte
 ]);
-
-if (!empty($providerActifData)) {
-    $providerActif = $providerActifData[0]['id_provider'];
-}
 
 $error = '';
 $success = '';
 
 // ============================================
-// TRAITEMENT DU FORMULAIRE - Sélection du provider
+// TRAITEMENT DU FORMULAIRE - Sélection de la session
 // ============================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_provider'])) {
-    $id_provider = (int)($_POST['id_provider'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_session'])) {
+    $idConfig = (int)($_POST['id_config'] ?? 0);
     
-    if (!$id_provider) {
-        $error = "Veuillez sélectionner un provider";
+    if (!$idConfig) {
+        $error = "Veuillez sélectionner une session Octopush";
     } else {
         try {
-            // Récupérer le nom du provider sélectionné
-            $providerSelected = $db->select('provider', ['id_provider' => $id_provider]);
-            $providerName = !empty($providerSelected) ? $providerSelected[0]['nom_providers'] : '';
-            
-            // Vérifier si le provider existe déjà pour ce compte
-            $existing = $db->select('provider_actif', [
-                'id_compte' => $idCompte,
-                'id_type_message' => $smsTypeId
+            // Récupérer les détails de la session sélectionnée
+            $selectedSession = $db->select('octopush_config', [
+                'id_config' => $idConfig,
+                'id_compte' => $idCompte
             ]);
             
-            if (!empty($existing)) {
-                $db->update('provider_actif', [
-                    'id_provider' => $id_provider,
-                    'updated_at' => date('Y-m-d H:i:s')
-                ], [
-                    'id_compte' => $idCompte,
-                    'id_type_message' => $smsTypeId
-                ]);
-            } else {
-                $db->insert('provider_actif', [
-                    'id_compte' => $idCompte,
-                    'id_type_message' => $smsTypeId,
-                    'id_provider' => $id_provider,
-                    'created_at' => date('Y-m-d H:i:s')
-                ]);
+            if (empty($selectedSession)) {
+                throw new Exception("Session non trouvée");
             }
             
-            $_SESSION['provider_sms_id'] = $id_provider;
+            $session = $selectedSession[0];
             
-            // Vérifier si Octopush
-            $isOctopush = stripos($providerName, 'octopush') !== false;
+            // Récupérer les données du message depuis la session temporaire
+            $message = $_SESSION['message_sms_temp'] ?? null;
+            $destinataires = $_SESSION['destinataires_sms_temp'] ?? null;
+            $titre = $_SESSION['titre_sms_temp'] ?? 'SMS';
+            $typeEnvoi = $_SESSION['type_envoi_temp'] ?? 'simple';
+            $providerId = $_SESSION['octopush_provider_id'] ?? null;
             
-            // 🔥 POUR OCTOPUSH - REDIRIGER VERS LE CHOIX DE SESSION
-            if ($isOctopush) {
-                // Sauvegarder l'ID du provider dans la session
-                $_SESSION['octopush_provider_id'] = $id_provider;
-                
-                // Récupérer les données du message depuis la session
-                $message = $_SESSION['message_sms'] ?? null;
-                $destinataires = $_SESSION['destinataires_sms'] ?? null;
-                $titre = $_SESSION['titre_sms'] ?? 'SMS';
-                $typeEnvoi = $_SESSION['type_envoi'] ?? 'simple';
-                
-                // Si les sessions sont vides, récupérer depuis la base
-                if (empty($message) || empty($destinataires)) {
-                    $lastMessage = $db->select('campagne', [
-                        'id_campagne_config' => $campagneConfigId,
-                        'id_compte' => $idCompte
-                    ], '*', 'created_at DESC', 1);
-                    
-                    if (!empty($lastMessage)) {
-                        $message = $lastMessage[0]['message'] ?? null;
-                        $destinataires = $lastMessage[0]['destinataires'] ?? null;
-                        $titre = $lastMessage[0]['titre'] ?? 'SMS';
-                        $typeEnvoi = $lastMessage[0]['type_envoi'] ?? 'simple';
-                    }
-                }
-                
-                // Sauvegarder les données du message dans la session pour les réutiliser
-                $_SESSION['message_sms_temp'] = $message;
-                $_SESSION['destinataires_sms_temp'] = $destinataires;
-                $_SESSION['titre_sms_temp'] = $titre;
-                $_SESSION['type_envoi_temp'] = $typeEnvoi;
-                $_SESSION['campagne_config_id_temp'] = $campagneConfigId;
-                
-                // 🔥 REDIRIGER VERS LE CHOIX DE SESSION OCTOPUSH
-                header('Location: index.php?page=campagnes/choix_session_octopush&campagne_id=' . $campagneConfigId);
-                exit;
-            }
-            
-            // ============================================
-            // POUR LES AUTRES PROVIDERS (NON OCTOPUSH)
-            // ============================================
-            
-            // Sauvegarder les données du message pour les autres providers
-            $message = $_SESSION['message_sms'] ?? null;
-            $destinataires = $_SESSION['destinataires_sms'] ?? null;
-            $titre = $_SESSION['titre_sms'] ?? 'SMS';
-            $typeEnvoi = $_SESSION['type_envoi'] ?? 'simple';
-            
-            // Si les sessions sont vides, récupérer depuis la base
+            // Si les sessions temporaires sont vides, récupérer depuis la base
             if (empty($message) || empty($destinataires)) {
                 $lastMessage = $db->select('campagne', [
                     'id_campagne_config' => $campagneConfigId,
@@ -162,115 +77,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_provid
                 }
             }
             
-            // Sauvegarder les données dans la session pour la prochaine étape
-            $_SESSION['message_sms'] = $message;
-            $_SESSION['destinataires_sms'] = $destinataires;
-            $_SESSION['titre_sms'] = $titre;
-            $_SESSION['type_envoi'] = $typeEnvoi;
+            // Compter les destinataires
+            $destArray = json_decode($destinataires, true);
+            $nbDestinataires = is_array($destArray) ? count($destArray) : 0;
             
-            // Mettre à jour le provider dans campagne_config
-            $updateData = [
-                'provider_id' => $id_provider,
+            // Vérifier s'il y a un enregistrement existant pour cette campagne
+            $existingCampagne = $db->select('campagne', [
+                'id_campagne_config' => $campagneConfigId,
+                'id_compte' => $idCompte
+            ], '*', 'created_at DESC', 1);
+            
+            // Préparer les données de la campagne
+            $campagneData = [
+                'message' => $message,
+                'destinataires' => $destinataires,
+                'titre' => $titre,
+                'type_campagne' => 'sms',
+                'nb_destinataires' => $nbDestinataires,
                 'statut' => 'pret_a_envoyer',
+                'provider_id' => $providerId,
+                'appareil_utilise' => 'Octopush - ' . $session['nom_config'],
+                'api_login' => $session['api_login'],
+                'api_key' => $session['api_key'],
+                'octopush_config_id' => $idConfig,
                 'updated_at' => date('Y-m-d H:i:s')
             ];
             
-            // Récupérer l'appareil depuis la session
-            $appareilId = $_SESSION['sms_appareil_id'] ?? null;
-            $deviceId = $_SESSION['sms_device_id'] ?? null;
-            $deviceName = $_SESSION['sms_device_name'] ?? null;
-            
-            if ($appareilId) {
-                $updateData['appareil_id'] = $appareilId;
-                $updateData['device_id'] = $deviceId;
-            }
-            
-            // Mettre à jour ou créer un historique
-            if ($message && $destinataires) {
-                $destArray = json_decode($destinataires, true);
-                $nbDestinataires = is_array($destArray) ? count($destArray) : 0;
-                
-                // Vérifier s'il y a un enregistrement existant
-                $existingCampagne = $db->select('campagne', [
-                    'id_campagne_config' => $campagneConfigId,
-                    'id_compte' => $idCompte
-                ], '*', 'created_at DESC', 1);
-                
-                if (!empty($existingCampagne)) {
-                    $db->update('campagne', [
-                        'message' => $message,
-                        'destinataires' => $destinataires,
-                        'titre' => $titre,
-                        'type_campagne' => 'sms',
-                        'nb_destinataires' => $nbDestinataires,
-                        'statut' => 'pret_a_envoyer',
-                        'provider_id' => $id_provider,
-                        'appareil_id' => $appareilId,
-                        'device_id' => $deviceId,
-                        'appareil_utilise' => $deviceName,
-                        'updated_at' => date('Y-m-d H:i:s')
-                    ], [
-                        'id_campagne' => $existingCampagne[0]['id_campagne']
-                    ]);
-                } else {
-                    $db->insert('campagne', [
-                        'id_compte' => $idCompte,
-                        'id_campagne_config' => $campagneConfigId,
-                        'type_campagne' => 'sms',
-                        'titre' => $titre,
-                        'message' => $message,
-                        'destinataires' => $destinataires,
-                        'nb_destinataires' => $nbDestinataires,
-                        'statut' => 'pret_a_envoyer',
-                        'provider_id' => $id_provider,
-                        'appareil_id' => $appareilId,
-                        'device_id' => $deviceId,
-                        'appareil_utilise' => $deviceName,
-                        'created_at' => date('Y-m-d H:i:s'),
-                        'updated_at' => date('Y-m-d H:i:s')
-                    ]);
-                }
+            if (!empty($existingCampagne)) {
+                // Mettre à jour l'enregistrement existant
+                $db->update('campagne', $campagneData, [
+                    'id_campagne' => $existingCampagne[0]['id_campagne']
+                ]);
+            } else {
+                // Créer un nouvel enregistrement
+                $campagneData['id_compte'] = $idCompte;
+                $campagneData['id_campagne_config'] = $campagneConfigId;
+                $campagneData['created_at'] = date('Y-m-d H:i:s');
+                $db->insert('campagne', $campagneData);
             }
             
             // Mettre à jour la campagne config
-            $db->update('campagne_config', $updateData, [
+            $db->update('campagne_config', [
+                'provider_id' => $providerId,
+                'statut' => 'pret_a_envoyer',
+                'type_envoi' => $typeEnvoi,
+                'octopush_config_id' => $idConfig,
+                'updated_at' => date('Y-m-d H:i:s')
+            ], [
                 'id_campagne_config' => $campagneConfigId,
                 'id_compte' => $idCompte
             ]);
             
-            // Nettoyer les variables de session
-            unset($_SESSION['message_sms']);
-            unset($_SESSION['destinataires_sms']);
-            unset($_SESSION['titre_sms']);
-            unset($_SESSION['type_envoi']);
+            // Sauvegarder l'ID de la session dans la session PHP
+            $_SESSION['octopush_session_id'] = $idConfig;
+            $_SESSION['octopush_api_login'] = $session['api_login'];
+            $_SESSION['octopush_api_key'] = $session['api_key'];
             
-            // Rediriger vers le choix de l'appareil
-            $_SESSION['flash_message'] = "✅ Provider sélectionné avec succès. Veuillez choisir un appareil.";
-            header('Location: index.php?page=campagnes/choix_appareil_sms&campagne_id=' . $campagneConfigId);
+            // Nettoyer les variables de session temporaires
+            unset($_SESSION['message_sms_temp']);
+            unset($_SESSION['destinataires_sms_temp']);
+            unset($_SESSION['titre_sms_temp']);
+            unset($_SESSION['type_envoi_temp']);
+            unset($_SESSION['campagne_config_id_temp']);
+            unset($_SESSION['octopush_provider_id']);
+            
+            $_SESSION['flash_message'] = "✅ Session Octopush sélectionnée avec succès. La campagne est prête à être envoyée.";
+            
+            // 🔥 REDIRIGER VERS LA PAGE DES DÉTAILS
+            header('Location: index.php?page=campagnes/details&id=' . $campagneConfigId);
             exit;
             
         } catch (Exception $e) {
-            $error = "Erreur lors de la sélection du provider : " . $e->getMessage();
+            $error = "Erreur lors de la sélection de la session : " . $e->getMessage();
             error_log("❌ Erreur: " . $e->getMessage());
         }
     }
 }
 
 // ============================================
-// FONCTION POUR VÉRIFIER SI LE PROVIDER EST OCTOPUSH
-// ============================================
-function isOctopushProvider($providerName) {
-    return stripos($providerName, 'octopush') !== false;
-}
-
-// ============================================
 // RÉCUPÉRER LES INFOS DU MESSAGE
 // ============================================
-$messagePreview = $_SESSION['message_sms'] ?? null;
-$destinatairesPreview = $_SESSION['destinataires_sms'] ?? null;
-$titrePreview = $_SESSION['titre_sms'] ?? 'SMS';
+$messagePreview = $_SESSION['message_sms_temp'] ?? null;
+$destinatairesPreview = $_SESSION['destinataires_sms_temp'] ?? null;
+$titrePreview = $_SESSION['titre_sms_temp'] ?? 'SMS';
 
-// Si les sessions sont vides, récupérer depuis la base
+// Si les sessions temporaires sont vides, récupérer depuis la base
 if (empty($messagePreview) || empty($destinatairesPreview)) {
     $lastMessage = $db->select('campagne', [
         'id_campagne_config' => $campagneConfigId,
@@ -297,10 +188,10 @@ if ($destinatairesPreview) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Choisir le provider SMS - <?= APP_NAME ?></title>
+    <title>Choisir la session Octopush - <?= APP_NAME ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* ===== STYLES (Garder les mêmes que précédemment) ===== */
+        /* ===== STYLES ===== */
         * { box-sizing: border-box; }
         body { 
             margin: 0; 
@@ -418,13 +309,13 @@ if ($destinatairesPreview) {
             color: #374151;
         }
         .header-section .icon-wrapper {
-            background: #dbeafe;
+            background: #fff7ed;
             padding: 10px;
             border-radius: 12px;
             margin-right: 14px;
         }
         .header-section .icon-wrapper i {
-            color: #2563eb;
+            color: #ea580c;
             font-size: 22px;
         }
         .header-section .title {
@@ -524,80 +415,74 @@ if ($destinatairesPreview) {
             margin-right: 4px;
         }
         
-        /* Provider cards */
-        .provider-option {
+        /* Session cards */
+        .session-option {
             cursor: pointer;
             transition: all 0.3s ease;
             border: 2px solid #e5e7eb;
             background: white;
             border-radius: 12px;
             padding: 20px 16px;
-            text-align: center;
             position: relative;
         }
-        .provider-option:hover {
+        .session-option:hover {
             transform: translateY(-4px);
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
-        .provider-option.selected {
-            border-color: #3b82f6;
-            background-color: #eff6ff;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        .session-option.selected {
+            border-color: #ea580c;
+            background-color: #fff7ed;
+            box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.15);
         }
-        .provider-option .icon-wrapper {
-            width: 64px;
-            height: 64px;
+        .session-option .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .session-option .icon-wrapper {
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 10px;
-            font-size: 26px;
-            background: #dbeafe;
-            color: #2563eb;
+            font-size: 20px;
+            background: #fff7ed;
+            color: #ea580c;
+            flex-shrink: 0;
         }
-        .provider-option .provider-name {
+        .session-option .session-name {
             font-size: 16px;
             font-weight: 700;
             color: #1f2937;
-            margin-bottom: 2px;
         }
-        .provider-option .provider-desc {
+        .session-option .session-details {
+            margin-top: 8px;
+            padding-left: 60px;
+        }
+        .session-option .session-details .detail-item {
             font-size: 13px;
             color: #6b7280;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
-        .provider-option .badge-actif {
-            display: inline-block;
-            padding: 3px 12px;
-            border-radius: 14px;
+        .session-option .session-details .detail-item i {
+            width: 18px;
+            color: #9ca3af;
+        }
+        .session-option .badge-selected {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #ea580c;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
-            background: #dcfce7;
-            color: #166534;
         }
-        .provider-option .badge-actif i {
+        .session-option .badge-selected i {
             margin-right: 4px;
-        }
-        
-        /* Badge Octopush spécial */
-        .provider-option .badge-octopush {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: #f97316;
-            color: white;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
-        }
-        .provider-option .badge-octopush i {
-            margin-right: 4px;
-            font-size: 10px;
         }
         
         /* Info Octopush */
@@ -616,9 +501,6 @@ if ($destinatairesPreview) {
         .octopush-info i {
             font-size: 18px;
             color: #ea580c;
-        }
-        .octopush-info strong {
-            color: #7c2d12;
         }
         
         /* Empty state */
@@ -646,6 +528,22 @@ if ($destinatairesPreview) {
             color: #9ca3af;
             margin-top: 6px;
         }
+        .empty-state .btn-add {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 10px 24px;
+            background: #ea580c;
+            color: white;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .empty-state .btn-add:hover {
+            background: #c2410c;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);
+        }
         
         /* Boutons */
         .action-buttons {
@@ -657,7 +555,7 @@ if ($destinatairesPreview) {
             border-top: 2px solid #f3f4f6;
         }
         .btn-primary {
-            background: #3b82f6;
+            background: #ea580c;
             color: white;
             padding: 11px 28px;
             border-radius: 8px;
@@ -671,9 +569,9 @@ if ($destinatairesPreview) {
             gap: 8px;
         }
         .btn-primary:hover:not(:disabled) {
-            background: #2563eb;
+            background: #c2410c;
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 6px 20px rgba(234, 88, 12, 0.3);
         }
         .btn-primary:disabled {
             opacity: 0.4;
@@ -723,7 +621,7 @@ if ($destinatairesPreview) {
         }
         
         /* Grille */
-        .providers-grid {
+        .sessions-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 16px;
@@ -744,10 +642,10 @@ if ($destinatairesPreview) {
             .step { font-size: 12px; }
             .step .number { width: 24px; height: 24px; font-size: 10px; }
             .step-line { width: 24px; }
-            .providers-grid { grid-template-columns: 1fr; gap: 12px; }
-            .provider-option { padding: 16px 12px; }
-            .provider-option .icon-wrapper { width: 56px; height: 56px; font-size: 22px; }
-            .provider-option .provider-name { font-size: 15px; }
+            .sessions-grid { grid-template-columns: 1fr; gap: 12px; }
+            .session-option { padding: 16px; }
+            .session-option .session-details { padding-left: 0; }
+            .session-option .header { flex-wrap: wrap; }
             .action-buttons { flex-direction: column; }
             .action-buttons .btn-primary,
             .action-buttons .btn-outline { width: 100%; justify-content: center; }
@@ -758,7 +656,7 @@ if ($destinatairesPreview) {
         
         @media (min-width: 769px) and (max-width: 1024px) {
             .main-card { padding: 22px; }
-            .providers-grid { gap: 14px; }
+            .sessions-grid { gap: 14px; }
         }
     </style>
 </head>
@@ -777,14 +675,14 @@ if ($destinatairesPreview) {
             <span>Composition</span>
         </div>
         <div class="step-line done"></div>
-        <div class="step active">
-            <span class="number">3</span>
+        <div class="step done">
+            <span class="number"><i class="fas fa-check"></i></span>
             <span>Provider</span>
         </div>
-        <div class="step-line"></div>
-        <div class="step">
+        <div class="step-line done"></div>
+        <div class="step active">
             <span class="number">4</span>
-            <span>Envoi</span>
+            <span>Session</span>
         </div>
     </div>
 
@@ -794,11 +692,11 @@ if ($destinatairesPreview) {
             <i class="fas fa-arrow-left"></i> Retour
         </a>
         <div class="icon-wrapper">
-            <i class="fas fa-server"></i>
+            <i class="fas fa-bolt"></i>
         </div>
         <div>
-            <div class="title">Choisir le provider SMS</div>
-            <div class="subtitle">Sélectionnez le provider pour l'envoi de vos SMS</div>
+            <div class="title">Choisir la session Octopush</div>
+            <div class="subtitle">Sélectionnez la configuration Octopush à utiliser pour l'envoi</div>
         </div>
     </div>
 
@@ -812,7 +710,7 @@ if ($destinatairesPreview) {
                 <span class="sms-badge"><i class="fas fa-comment-dots mr-1"></i>SMS</span>
             </div>
             <div class="info-right">
-                <i class="fas fa-arrow-right"></i> Étape 3 sur 4
+                <i class="fas fa-arrow-right"></i> Étape 4 sur 4
             </div>
         </div>
         
@@ -831,7 +729,7 @@ if ($destinatairesPreview) {
             <div class="message-preview" style="background: #fef2f2; border-color: #fecaca;">
                 <div class="preview-left">
                     <span class="label" style="color: #991b1b;"><i class="fas fa-exclamation-triangle"></i> Avertissement :</span>
-                    <span class="message-text" style="color: #991b1b;">Aucun message n'a été composé. Veuillez composer un message d'abord.</span>
+                    <span class="message-text" style="color: #991b1b;">Aucun message trouvé.</span>
                 </div>
             </div>
         <?php endif; ?>
@@ -840,8 +738,8 @@ if ($destinatairesPreview) {
         <div class="octopush-info">
             <i class="fas fa-info-circle"></i>
             <span>
-                <strong>Info :</strong> 
-                Si vous sélectionnez <strong>Octopush</strong>, vous serez redirigé vers le choix de la session Octopush à utiliser.
+                Sélectionnez la configuration Octopush que vous souhaitez utiliser pour l'envoi de vos SMS.
+                Les identifiants seront utilisés pour l'API Octopush.
             </span>
         </div>
         
@@ -853,69 +751,61 @@ if ($destinatairesPreview) {
             </div>
         <?php endif; ?>
         
-        <!-- Providers -->
-        <?php if (empty($providers)): ?>
+        <!-- Sessions -->
+        <?php if (empty($octopushSessions)): ?>
             <div class="empty-state">
-                <i class="fas fa-server"></i>
-                <h3>Aucun provider disponible</h3>
-                <p>Aucun provider SMS n'est configuré pour le moment.</p>
-                <p class="help-text">Contactez l'administrateur pour ajouter des providers.</p>
+                <i class="fas fa-bolt"></i>
+                <h3>Aucune session Octopush</h3>
+                <p>Vous n'avez pas encore configuré de session Octopush.</p>
+                <p class="help-text">Ajoutez une configuration Octopush pour pouvoir envoyer des SMS via cette plateforme.</p>
+                <a href="index.php?page=comptes/octopush_config" class="btn-add">
+                    <i class="fas fa-plus"></i> Ajouter une configuration
+                </a>
             </div>
         <?php else: ?>
-            <form method="POST" id="providerForm">
-                <input type="hidden" name="action_choisir_provider" value="1">
+            <form method="POST" id="sessionForm">
+                <input type="hidden" name="action_choisir_session" value="1">
                 
-                <!-- ===== PROVIDERS CARDS ===== -->
-                <div class="providers-grid">
-                    <?php foreach ($providers as $provider): 
-                        $isOctopush = isOctopushProvider($provider['nom_providers']);
-                    ?>
-                        <div class="provider-option <?= ($providerActif == $provider['id_provider']) ? 'selected' : '' ?>" 
-                             data-provider-id="<?= $provider['id_provider'] ?>"
-                             data-is-octopush="<?= $isOctopush ? 'true' : 'false' ?>"
-                             onclick="selectProvider('<?= $provider['id_provider'] ?>')"
+                <!-- ===== SESSIONS CARDS ===== -->
+                <div class="sessions-grid">
+                    <?php foreach ($octopushSessions as $session): ?>
+                        <div class="session-option" 
+                             data-session-id="<?= $session['id_config'] ?>"
+                             onclick="selectSession('<?= $session['id_config'] ?>')"
                              role="button"
                              tabindex="0"
-                             aria-label="Sélectionner <?= htmlspecialchars($provider['nom_providers']) ?>">
+                             aria-label="Sélectionner <?= htmlspecialchars($session['nom_config']) ?>">
                             
-                            <?php if ($isOctopush): ?>
-                                <span class="badge-octopush"><i class="fas fa-bolt"></i> API</span>
-                            <?php endif; ?>
+                            <div class="header">
+                                <div class="icon-wrapper">
+                                    <i class="fas fa-bolt"></i>
+                                </div>
+                                <div>
+                                    <div class="session-name"><?= htmlspecialchars($session['nom_config']) ?></div>
+                                </div>
+                            </div>
                             
-                            <div class="icon-wrapper">
-                                <?php if ($isOctopush): ?>
-                                    <i class="fas fa-bolt" style="color: #ea580c;"></i>
-                                <?php else: ?>
-                                    <i class="fas fa-building"></i>
-                                <?php endif; ?>
+                            <div class="session-details">
+                                <div class="detail-item">
+                                    <i class="fas fa-user"></i> API Login: <?= htmlspecialchars(substr($session['api_login'], 0, 10)) ?>...
+                                </div>
+                                <div class="detail-item">
+                                    <i class="fas fa-key"></i> API Key: ••••••••••••••••••••
+                                </div>
                             </div>
-                            <div class="provider-name">
-                                <?= htmlspecialchars($provider['nom_providers']) ?>
-                                <?php if ($isOctopush): ?>
-                                    <span style="font-size: 11px; color: #ea580c; font-weight: 600; display: block; margin-top: 2px;">
-                                        <i class="fas fa-arrow-right"></i> Choix de session
-                                    </span>
-                                <?php endif; ?>
-                            </div>
-                            <?php if (!empty($provider['description'])): ?>
-                                <div class="provider-desc"><?= htmlspecialchars($provider['description']) ?></div>
-                            <?php endif; ?>
-                            <?php if ($providerActif == $provider['id_provider']): ?>
-                                <span class="badge-actif"><i class="fas fa-check-circle"></i>Actif</span>
-                            <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
                 
-                <input type="hidden" name="id_provider" id="id_provider" value="<?= $providerActif ?>">
+                <input type="hidden" name="id_config" id="id_config" value="">
                 
                 <!-- ===== BOUTONS ACTION ===== -->
                 <div class="action-buttons">
-                    <a href="index.php?page=campagnes/composer_sms&campagne_id=<?= $campagneConfigId ?>" class="btn-outline">
-                        <i class="fas fa-times"></i> Annuler
+                    <a href="index.php?page=campagnes/choisir_provider_sms&campagne_id=<?= $campagneConfigId ?>" class="btn-outline">
+                        <i class="fas fa-arrow-left"></i> Retour
                     </a>
-                    <button type="submit" class="btn-primary" id="btnContinuer" <?= !$providerActif ? 'disabled' : '' ?>>
-                        <span>Continuer</span>
+                    <button type="submit" class="btn-primary" id="btnContinuer" disabled>
+                        <span>Confirmer et voir les détails</span>
                         <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
@@ -925,74 +815,59 @@ if ($destinatairesPreview) {
 </div>
 
 <script>
-let selectedProvider = <?= json_encode($providerActif) ?>;
-let selectedIsOctopush = false;
+let selectedSession = null;
 
-function selectProvider(providerId) {
-    selectedProvider = providerId;
-    
-    // Vérifier si c'est Octopush
-    const selectedEl = document.querySelector(`.provider-option[data-provider-id="${providerId}"]`);
-    if (selectedEl) {
-        selectedIsOctopush = selectedEl.dataset.isOctopush === 'true';
-    }
+function selectSession(sessionId) {
+    selectedSession = sessionId;
     
     // Mettre à jour l'interface
-    document.querySelectorAll('.provider-option').forEach(el => {
+    document.querySelectorAll('.session-option').forEach(el => {
         el.classList.remove('selected');
-        // Supprimer le badge actif
-        const badge = el.querySelector('.badge-actif');
+        // Supprimer le badge sélectionné
+        const badge = el.querySelector('.badge-selected');
         if (badge) badge.remove();
     });
     
     // Sélectionner la carte
+    const selectedEl = document.querySelector(`.session-option[data-session-id="${sessionId}"]`);
     if (selectedEl) {
         selectedEl.classList.add('selected');
         
-        // Ajouter le badge actif
-        const badge = document.createElement('span');
-        badge.className = 'badge-actif';
-        badge.innerHTML = '<i class="fas fa-check-circle"></i>Actif';
+        // Ajouter le badge sélectionné
+        const badge = document.createElement('div');
+        badge.className = 'badge-selected';
+        badge.innerHTML = '<i class="fas fa-check"></i> Sélectionné';
         selectedEl.appendChild(badge);
     }
     
     // Activer le bouton
-    document.getElementById('id_provider').value = providerId;
+    document.getElementById('id_config').value = sessionId;
     document.getElementById('btnContinuer').disabled = false;
-    
-    // Mettre à jour le texte du bouton si Octopush
-    const btnContinuer = document.getElementById('btnContinuer');
-    if (selectedIsOctopush) {
-        btnContinuer.innerHTML = '<span>Choisir la session</span> <i class="fas fa-arrow-right"></i>';
-    } else {
-        btnContinuer.innerHTML = '<span>Continuer vers l\'appareil</span> <i class="fas fa-arrow-right"></i>';
-    }
 }
 
-// Si un provider est déjà sélectionné, activer le bouton
-document.addEventListener('DOMContentLoaded', function() {
-    if (selectedProvider) {
-        document.getElementById('btnContinuer').disabled = false;
-        
-        // Vérifier si le provider actif est Octopush
-        const activeEl = document.querySelector(`.provider-option[data-provider-id="${selectedProvider}"]`);
-        if (activeEl && activeEl.dataset.isOctopush === 'true') {
-            selectedIsOctopush = true;
-            document.getElementById('btnContinuer').innerHTML = '<span>Choisir la session</span> <i class="fas fa-arrow-right"></i>';
-        }
-    }
-});
-
 // Gestion du clavier pour l'accessibilité
-document.querySelectorAll('.provider-option').forEach(el => {
+document.querySelectorAll('.session-option').forEach(el => {
     el.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            const providerId = this.dataset.providerId;
-            selectProvider(providerId);
+            const sessionId = this.dataset.sessionId;
+            selectSession(sessionId);
         }
     });
 });
+
+// Toast notification
+function showToast(message, type = 'success') {
+    const existingToasts = document.querySelectorAll('.toast-notification');
+    existingToasts.forEach(toast => toast.remove());
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    const colors = { success: '#10b981', error: '#ef4444', info: '#3b82f6', warning: '#f59e0b' };
+    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+}
 </script>
 
 </body>

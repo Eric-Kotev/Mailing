@@ -196,11 +196,9 @@ function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
 }
 
 // ============================================
-// FONCTION POUR ENVOYER AVEC OCTOPUSH (CORRIGÉE)
+// FONCTION POUR ENVOYER AVEC OCTOPUSH (CORRIGÉE AVEC SESSION)
 // ============================================
-function envoyerOctopush($message, $destinataires) {
-    $apiLogin = 'ifb_1b2@agent.sub-accounts.com';
-    $apiKey = '5cvGb4QLW9BkeAhHdwNUjFVTxOX7Z0Yi';
+function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
     $url = 'https://api.octopush.com/v1/public/sms-campaign/send';
     
     $recipients = [];
@@ -226,29 +224,23 @@ function envoyerOctopush($message, $destinataires) {
             continue;
         }
         
-        // 🔥 NETTOYER LE NUMÉRO : garder uniquement les chiffres et le +
+       // NETTOYER LE NUMÉRO : garder uniquement les chiffres et le +
         $telephone = trim($telephone);
         $telephone = preg_replace('/[^0-9+]/', '', $telephone);
         
-        // 🔥 FORMATER POUR OCTOPUSH (garder le + si présent)
-        // Si le numéro ne commence pas par +, ajouter le code pays
+        // FORMATER POUR OCTOPUSH (garder le + si présent)
         if (substr($telephone, 0, 1) != '+') {
-            // Nettoyer les chiffres
             $telephone = preg_replace('/[^0-9]/', '', $telephone);
             
-            // Si le numéro commence par 0 (ex: 0321234567) -> +261321234567
             if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
                 $telephone = '+261' . substr($telephone, 1);
             }
-            // Si le numéro fait 9 chiffres (ex: 321234567) -> +261321234567
             elseif (strlen($telephone) == 9) {
                 $telephone = '+261' . $telephone;
             }
-            // Si le numéro a déjà le code pays 261
             elseif (strlen($telephone) == 12 && substr($telephone, 0, 3) == '261') {
                 $telephone = '+' . $telephone;
             }
-            // Si le numéro est plus long, prendre les 10 derniers chiffres
             elseif (strlen($telephone) > 10) {
                 $telephone = substr($telephone, -10);
                 if (substr($telephone, 0, 1) == '0') {
@@ -257,36 +249,29 @@ function envoyerOctopush($message, $destinataires) {
                     $telephone = '+261' . $telephone;
                 }
             }
-            // Par défaut
             else {
                 $telephone = '+261' . $telephone;
             }
         }
         
-        // 🔥 VÉRIFIER QUE LE NUMÉRO EST VALIDE
-        // Supprimer le + pour vérifier la longueur
         $checkNumber = preg_replace('/[^0-9]/', '', $telephone);
         if (strlen($checkNumber) >= 9 && strlen($checkNumber) <= 13) {
             $recipients[] = ['phone_number' => $telephone];
         }
     }
     
-    // Si aucun destinataire valide
     if (empty($recipients)) {
         return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé. Format attendu: +261XXXXXXXXX'];
     }
     
-    // 🔥 PRÉPARER LES DONNÉES (SIMILAIRE À VOTRE TEST)
     $data = [
         'text' => $message,
         'recipients' => $recipients,
         'sender' => 'IFB',
         'type' => 'sms_premium',
         'purpose' => 'alert',
-        'simulation_mode' => true
     ];
     
-    // 🔥 ENVOYER LA REQUÊTE (COMME DANS VOTRE TEST)
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -422,9 +407,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
         
         $campagne = $campagneConfig[0];
         
-        // 🔥 SI C'EST OCTOPUSH
+        // SI C'EST OCTOPUSH - UTILISER LES IDENTIFIANTS DE LA SESSION
         if ($isOctopush) {
-            $resultat = envoyerOctopush($message, $destinataires);
+            // Récupérer les identifiants depuis la session
+            $apiLogin = $_SESSION['octopush_api_login'] ?? null;
+            $apiKey = $_SESSION['octopush_api_key'] ?? null;
+            $sessionName = $_SESSION['octopush_session_name'] ?? 'Octopush API';
+            
+            // Si les identifiants ne sont pas en session, les récupérer depuis la base
+            if (empty($apiLogin) || empty($apiKey)) {
+                // Récupérer depuis la table campagne
+                $campagneDb = $db->select('campagne', [
+                    'id_campagne' => $id_campagne_historique,
+                    'id_compte' => $idCompte
+                ]);
+                
+                if (!empty($campagneDb) && !empty($campagneDb[0]['api_login']) && !empty($campagneDb[0]['api_key'])) {
+                    $apiLogin = $campagneDb[0]['api_login'];
+                    $apiKey = $campagneDb[0]['api_key'];
+                } else {
+                    // Essayer de récupérer depuis la configuration de la campagne
+                    $octopushConfigId = $campagneData['octopush_config_id'] ?? $campagne['octopush_config_id'] ?? null;
+                    
+                    if ($octopushConfigId) {
+                        $config = $db->select('octopush_config', [
+                            'id_config' => $octopushConfigId,
+                            'id_compte' => $idCompte
+                        ]);
+                        
+                        if (!empty($config)) {
+                            $apiLogin = $config[0]['api_login'];
+                            $apiKey = $config[0]['api_key'];
+                            $sessionName = $config[0]['nom_config'];
+                        }
+                    }
+                }
+            }
+            
+            // Vérifier que les identifiants sont disponibles
+            if (empty($apiLogin) || empty($apiKey)) {
+                $_SESSION['flash_error'] = "❌ Identifiants Octopush manquants. Veuillez sélectionner une session Octopush.";
+                header('Location: index.php?page=campagnes/choix_session_octopush&campagne_id=' . $campagneId);
+                exit;
+            }
+            
+            // Envoyer avec Octopush en utilisant les identifiants de la session
+            $resultat = envoyerOctopush($message, $destinataires, $apiLogin, $apiKey);
             
             if ($resultat['success']) {
                 $db->update('campagne', [
@@ -432,13 +460,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                     'nb_envoyes' => count($destinataires),
                     'nb_succes' => count($destinataires),
                     'nb_erreurs' => 0,
-                    'appareil_utilise' => 'Octopush API',
+                    'appareil_utilise' => 'Octopush - ' . $sessionName,
                     'reponse_api' => json_encode($resultat['data']),
                     'updated_at' => date('Y-m-d H:i:s')
                 ], ['id_campagne' => $id_campagne_historique]);
                 
                 $_SESSION['octopush_response'] = $resultat['data'];
-                $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush!";
+                $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush (Session: " . $sessionName . ")!";
             } else {
                 $db->update('campagne', [
                     'statut' => 'echoue',
@@ -842,6 +870,18 @@ if ($isOctopush) {
         $isOctopush = false;
     }
 }
+
+// Récupérer le nom de la session Octopush pour l'affichage
+$octopushSessionName = $_SESSION['octopush_session_name'] ?? null;
+if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
+    $config = $db->select('octopush_config', [
+        'id_config' => $campagne['octopush_config_id'],
+        'id_compte' => $idCompte
+    ]);
+    if (!empty($config)) {
+        $octopushSessionName = $config[0]['nom_config'];
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -852,6 +892,7 @@ if ($isOctopush) {
     <title><?= htmlspecialchars($campagne['nom_campagne']) ?> - <?= APP_NAME ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* ===== STYLES (CONSERVÉS IDENTIQUES) ===== */
         * { box-sizing: border-box; }
         body { 
             margin: 0; 
@@ -1112,7 +1153,6 @@ if ($isOctopush) {
         .grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
         .gap-4 { gap: 16px; }
         
-        /* Styles pour le rendu HTML dans la modal */
         .html-render {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
@@ -1157,7 +1197,6 @@ if ($isOctopush) {
             color: #4b5563;
         }
         
-        /* Badge Octopush */
         .badge-octopush {
             display: inline-block;
             padding: 2px 8px;
@@ -1171,7 +1210,22 @@ if ($isOctopush) {
             margin-left: 4px;
         }
         
-        /* Flash message */
+        .badge-octopush-session {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #fff7ed;
+            color: #9a3412;
+            border: 1px solid #fed7aa;
+            margin-left: 4px;
+        }
+        .badge-octopush-session i {
+            margin-right: 4px;
+            color: #ea580c;
+        }
+        
         .flash-message {
             padding: 12px 16px;
             border-radius: 8px;
@@ -1197,7 +1251,6 @@ if ($isOctopush) {
         }
         .flash-message i { font-size: 18px; }
         
-        /* Modal Octopush */
         .modal-octopush {
             display: none;
             position: fixed;
@@ -1299,6 +1352,50 @@ if ($isOctopush) {
             background: #2563eb;
         }
         
+        .flex { display: flex; }
+        .flex-wrap { flex-wrap: wrap; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-4 { gap: 16px; }
+        .mb-6 { margin-bottom: 24px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mr-2 { margin-right: 8px; }
+        .mr-4 { margin-right: 16px; }
+        .text-center { text-align: center; }
+        
+        .bg-white { background: white; }
+        .bg-gray-50 { background: #f9fafb; }
+        .bg-purple-100 { background: #f3e8ff; }
+        .text-purple-600 { color: #7c3aed; }
+        .text-blue-600 { color: #2563eb; }
+        .text-green-600 { color: #16a34a; }
+        .text-red-600 { color: #dc2626; }
+        .text-gray-800 { color: #1f2937; }
+        .text-gray-500 { color: #6b7280; }
+        
+        .rounded-xl { border-radius: 12px; }
+        .rounded-full { border-radius: 9999px; }
+        .shadow-md { box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .p-5 { padding: 20px; }
+        .p-4 { padding: 16px; }
+        .px-4 { padding-left: 16px; padding-right: 16px; }
+        .py-3 { padding-top: 12px; padding-bottom: 12px; }
+        .py-4 { padding-top: 16px; padding-bottom: 16px; }
+        
+        .font-semibold { font-weight: 600; }
+        .font-bold { font-weight: 700; }
+        .text-xs { font-size: 12px; }
+        .text-sm { font-size: 14px; }
+        .text-lg { font-size: 18px; }
+        .text-xl { font-size: 20px; }
+        .text-2xl { font-size: 24px; }
+        
+        .uppercase { text-transform: uppercase; }
+        .tracking-wider { letter-spacing: 0.5px; }
+        .overflow-hidden { overflow: hidden; }
+        .divide-y > * + * { border-top: 1px solid #e5e7eb; }
+        
         @media (max-width: 768px) {
             .container { padding: 12px; }
             .header-title { font-size: 20px; }
@@ -1324,12 +1421,19 @@ if ($isOctopush) {
             <div>
                 <h1 class="header-title text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></h1>
                 <p class="header-subtitle">Gérez les messages de cette campagne</p>
+                <?php if ($isOctopush && $octopushSessionName): ?>
+                    <span class="badge-octopush-session">
+                        <i class="fas fa-bolt"></i> Session: <?= htmlspecialchars($octopushSessionName) ?>
+                    </span>
+                <?php endif; ?>
             </div>
         </div>
-        <a href="index.php?page=campagnes/choix_type&campagne_id=<?= $campagneId ?>" 
-           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition font-semibold text-sm">
-            <i class="fas fa-plus mr-2"></i>Nouveau message
-        </a>
+        <div>
+            <a href="index.php?page=campagnes/choix_type&campagne_id=<?= $campagneId ?>" 
+               class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition font-semibold text-sm">
+                <i class="fas fa-plus mr-2"></i>Nouveau message
+            </a>
+        </div>
     </div>
 
     <!-- ===== TOASTS ===== -->
@@ -1556,7 +1660,7 @@ if ($isOctopush) {
                                     $isOctopushMessage = true;
                                     $buttonClass = 'btn-send-message';
                                     $buttonIcon = 'fa-bolt';
-                                    $buttonText = 'Envoyer (Octopush)';
+                                    $buttonText = 'Envoyer';
                                 } else {
                                     $buttonClass = 'btn-send-message';
                                     $buttonIcon = 'fa-paper-plane';
@@ -1585,6 +1689,11 @@ if ($isOctopush) {
                                     </span>
                                     <?php if ($isOctopushMessage): ?>
                                         <span class="badge-octopush"><i class="fas fa-bolt mr-1"></i>Octopush</span>
+                                    <?php endif; ?>
+                                    <?php if ($isOctopush && $octopushSessionName): ?>
+                                        <span class="badge-octopush-session" style="display:block;margin-top:4px;">
+                                            <i class="fas fa-user"></i> <?= htmlspecialchars($octopushSessionName) ?>
+                                        </span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-4 py-3">
@@ -1631,14 +1740,19 @@ if ($isOctopush) {
 <div id="octopushModal" class="modal-octopush <?= $octopushResponse ? 'active' : '' ?>">
     <div class="modal-content">
         <div class="modal-header">
-            <h3><i class="fas fa-bolt text-orange-500 mr-2"></i>Réponse Octopush</h3>
+            <h3><i class="fas fa-bolt text-orange-500 mr-2"></i>Accusé de réception</h3>
             <button class="close" onclick="closeOctopushModal()">&times;</button>
         </div>
         <div class="modal-body">
             <?php if ($octopushResponse): ?>
                 <div style="text-align:center;margin-bottom:16px;">
                     <i class="fas fa-check-circle" style="font-size:48px;color:#10b981;"></i>
-                    <p style="color:#10b981;font-weight:600;margin-top:8px;">✅ Envoi effectué avec succès</p>
+                    <p style="color:#10b981;font-weight:600;margin-top:8px;"> Envoi effectué avec succès</p>
+                    <?php if ($octopushSessionName): ?>
+                        <p style="color:#9a3412;font-size:13px;margin-top:4px;">
+                            <i class="fas fa-user mr-1"></i> Session: <?= htmlspecialchars($octopushSessionName) ?>
+                        </p>
+                    <?php endif; ?>
                 </div>
                 <div class="response-item">
                     <span class="label">Ticket SMS</span>
@@ -1813,7 +1927,6 @@ function showDetails(envoi) {
     const modalIcon = document.getElementById('modalIcon');
     const modalIconImg = document.getElementById('modalIconImg');
     
-    // Configurer l'icône selon le type
     if (envoi.type_campagne === 'whatsapp') {
         modalIcon.className = 'w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mr-3';
         modalIconImg.className = 'fab fa-mobile-alt text-green-600 text-xl';
@@ -1827,7 +1940,6 @@ function showDetails(envoi) {
     
     modalTitle.textContent = envoi.titre || 'Détails du message';
     
-    // Traiter les destinataires
     let destinataires = [];
     try { destinataires = JSON.parse(envoi.destinataires); } 
     catch(e) { destinataires = [envoi.destinataires]; }
@@ -1879,7 +1991,6 @@ function showDetails(envoi) {
         typeBadge = '<span class="bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-comment-dots mr-1"></i>SMS</span>';
     }
     
-    // Construire le contenu du message (HTML ou texte)
     let messageContent = escapeHtml(envoi.message || '-');
     let isHtml = false;
     
@@ -1913,7 +2024,6 @@ function showDetails(envoi) {
         `;
     }
     
-    // Vérifier si la réponse API existe
     let apiResponseHtml = '';
     if (envoi.reponse_api) {
         try {
@@ -1935,8 +2045,24 @@ function showDetails(envoi) {
         } catch(e) {}
     }
     
+    // Afficher la session Octopush si disponible
+    let sessionInfo = '';
+    if (envoi.appareil_utilise && envoi.appareil_utilise.includes('Octopush')) {
+        sessionInfo = `
+            <div class="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-bolt text-orange-500"></i>
+                    <span class="font-semibold text-orange-800">Session Octopush:</span>
+                    <span class="text-orange-700">${escapeHtml(envoi.appareil_utilise)}</span>
+                </div>
+            </div>
+        `;
+    }
+    
     modalContent.innerHTML = `
         <div class="space-y-4">
+            ${sessionInfo}
+            
             <div class="grid grid-cols-2 gap-3">
                 <div class="bg-gray-50 rounded-lg p-3">
                     <div class="text-xs text-gray-500 font-semibold mb-1">Date d'envoi</div>
