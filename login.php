@@ -19,81 +19,107 @@ if (isset($_SESSION['user_id'])) {
 
 $error = '';
 $success = '';
+$login_value = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $login = trim($_POST['login'] ?? '');
     $password = $_POST['password'] ?? '';
+    $login_value = htmlspecialchars($login);
     
     if (empty($login) || empty($password)) {
         $error = "Veuillez remplir tous les champs";
     } else {
         $compte = null;
         $isClient = false;
+        $userFound = false;
         
-        // 1. Vérifier d'abord dans la table compte (admins, managers, users)
-        $compte = getCompteByUser($login);
-        
-        // 2. Si non trouvé dans compte, chercher dans la table clients (clients)
-        if (!$compte) {
-            $clientData = $db->select('clients', ['email' => $login]);
-            if (!empty($clientData)) {
-                $client = $clientData[0];
-                $isClient = true;
-                
-                // Vérifier le mot de passe du client
-                if (password_verify($password, $client['mot_de_passe'])) {
-                    if ($client['statut'] === 'inactif') {
-                        $error = "Votre compte client est désactivé. Contactez l'administrateur.";
-                    } else {
-                        // Stocker les informations du client en session
-                        $_SESSION['user_id'] = $client['id_client'];
-                        $_SESSION['user_name'] = $client['prenom'] . ' ' . $client['nom'];
-                        $_SESSION['user_prenom'] = $client['prenom'];
-                        $_SESSION['user_nom'] = $client['nom'];
-                        $_SESSION['user_entreprise'] = $client['societe'];
-                        $_SESSION['user_email'] = $client['email'];
-                        $_SESSION['user_credits'] = floatval($client['credit'] ?? 0);
-                        $_SESSION['user_role'] = 'client';
-                        $_SESSION['is_client'] = true;
-                        $_SESSION['user_type'] = 'client';
+        try {
+            // 1. Vérifier d'abord dans la table compte (admins, managers, users)
+            $compte = getCompteByUser($login);
+            
+            // 2. Si non trouvé dans compte, chercher dans la table clients (clients)
+            if (!$compte) {
+                // Vérifier si la table clients existe avant de faire la requête
+                try {
+                    $clientData = $db->select('clients', ['email' => $login]);
+                    if (!empty($clientData)) {
+                        $client = $clientData[0];
+                        $isClient = true;
+                        $userFound = true;
                         
-                        // Mettre à jour la date de dernière connexion
-                        $db->update('clients', ['derniere_connexion' => date('Y-m-d H:i:s')], ['id_client' => $client['id_client']]);
+                        // Vérifier le mot de passe du client
+                        if (password_verify($password, $client['mot_de_passe'])) {
+                            if ($client['statut'] === 'inactif') {
+                                $error = "Votre compte client est désactivé. Contactez l'administrateur.";
+                            } else {
+                                // Stocker les informations du client en session
+                                $_SESSION['user_id'] = $client['id_client'];
+                                $_SESSION['user_name'] = $client['prenom'] . ' ' . $client['nom'];
+                                $_SESSION['user_prenom'] = $client['prenom'];
+                                $_SESSION['user_nom'] = $client['nom'];
+                                $_SESSION['user_entreprise'] = $client['societe'];
+                                $_SESSION['user_email'] = $client['email'];
+                                $_SESSION['user_credits'] = floatval($client['credit'] ?? 0);
+                                $_SESSION['user_role'] = 'client';
+                                $_SESSION['is_client'] = true;
+                                $_SESSION['user_type'] = 'client';
+                                
+                                // Mettre à jour la date de dernière connexion
+                                try {
+                                    $db->update('clients', ['derniere_connexion' => date('Y-m-d H:i:s')], ['id_client' => $client['id_client']]);
+                                } catch (Exception $e) {
+                                    // Ignorer l'erreur de mise à jour si la colonne n'existe pas
+                                    error_log("Erreur lors de la mise à jour de la dernière connexion : " . $e->getMessage());
+                                }
+                                
+                                header('Location: index.php');
+                                exit;
+                            }
+                        } else {
+                            $error = "Mot de passe incorrect. Veuillez vérifier vos identifiants.";
+                        }
+                    }
+                } catch (Exception $e) {
+                    // La table clients n'existe pas ou une autre erreur
+                    error_log("Erreur lors de la recherche dans la table clients : " . $e->getMessage());
+                    // Continuer sans chercher dans clients
+                }
+            } 
+            // 3. Si trouvé dans compte, vérifier le mot de passe
+            else {
+                $userFound = true;
+                if (password_verify($password, $compte['password'])) {
+                    if (!$compte['actif']) {
+                        $error = "Votre compte est suspendu. Contactez l'administrateur.";
+                    } else {
+                        // Stocker les informations du compte en session
+                        $_SESSION['user_id'] = $compte['id_compte'];
+                        $_SESSION['user_name'] = $compte['prenom'] . ' ' . $compte['nom'];
+                        $_SESSION['user_prenom'] = $compte['prenom'];
+                        $_SESSION['user_nom'] = $compte['nom'];
+                        $_SESSION['user_entreprise'] = $compte['entreprise'];
+                        $_SESSION['user_email'] = $compte['user'];
+                        $_SESSION['user_credits'] = floatval($compte['credits_total']);
+                        $_SESSION['user_role'] = $compte['role'] ?? 'user';
+                        $_SESSION['is_client'] = false;
+                        $_SESSION['user_type'] = 'compte';
                         
                         header('Location: index.php');
                         exit;
                     }
                 } else {
-                    $error = "Mot de passe incorrect";
+                    $error = "Mot de passe incorrect. Veuillez vérifier vos identifiants.";
                 }
-            } else {
-                $error = "Identifiant inconnu";
             }
-        } 
-        // 3. Si trouvé dans compte, vérifier le mot de passe
-        else {
-            if (password_verify($password, $compte['password'])) {
-                if (!$compte['actif']) {
-                    $error = "Votre compte est suspendu. Contactez l'administrateur.";
-                } else {
-                    // Stocker les informations du compte en session
-                    $_SESSION['user_id'] = $compte['id_compte'];
-                    $_SESSION['user_name'] = $compte['prenom'] . ' ' . $compte['nom'];
-                    $_SESSION['user_prenom'] = $compte['prenom'];
-                    $_SESSION['user_nom'] = $compte['nom'];
-                    $_SESSION['user_entreprise'] = $compte['entreprise'];
-                    $_SESSION['user_email'] = $compte['user'];
-                    $_SESSION['user_credits'] = floatval($compte['credits_total']);
-                    $_SESSION['user_role'] = $compte['role'] ?? 'user';
-                    $_SESSION['is_client'] = false;
-                    $_SESSION['user_type'] = 'compte';
-                    
-                    header('Location: index.php');
-                    exit;
-                }
-            } else {
-                $error = "Mot de passe incorrect";
-            }
+        } catch (Exception $e) {
+            // Erreur générale de base de données
+            error_log("Erreur de connexion : " . $e->getMessage());
+            $error = "Une erreur technique est survenue. Veuillez réessayer ultérieurement.";
+        }
+        
+        // 4. Si aucun utilisateur n'est trouvé
+        if (!$userFound && !$error) {
+            $error = "Identifiant inconnu. Aucun compte trouvé avec cet email ou nom d'utilisateur.";
         }
     }
 }
@@ -220,6 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .animate-shake {
             animation: animate-shake 0.5s ease-in-out;
         }
+        
         @keyframes bounce {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-10px); }
@@ -232,6 +259,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 11px;
             color: #9ca3af;
             margin-top: 4px;
+        }
+
+        /* Message d'erreur amélioré */
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+        }
+
+        .error-message .error-icon {
+            background: #fee2e2;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .error-message .error-text {
+            color: #991b1b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .error-message .error-subtext {
+            color: #7f1d1d;
+            font-size: 13px;
+            font-weight: 400;
+        }
+
+        /* Message de succès amélioré */
+        .success-message {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+        }
+
+        .success-message .success-icon {
+            background: #dcfce7;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .success-message .success-text {
+            color: #14532d;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .error-boundary {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
         }
     </style>
 </head>
@@ -259,22 +350,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h2 class="text-2xl font-bold text-slate-800 mb-2 text-center">Bienvenue</h2>
             <p class="text-slate-500 text-center text-sm mb-6">Connectez-vous à votre compte</p>
             
-            <!-- Message d'erreur -->
+            <!-- Message d'erreur amélioré -->
             <?php if ($error): ?>
-                <div class="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-lg shadow-sm animate-shake">
-                    <div class="flex items-center">
-                        <i class="fas fa-exclamation-circle mr-3 text-red-500"></i>
-                        <span class="text-sm"><?= $error ?></span>
+                <div class="error-message animate-shake">
+                    <div class="flex items-start gap-3">
+                        <div class="error-icon flex-shrink-0">
+                            <i class="fas fa-exclamation-triangle text-red-500"></i>
+                        </div>
+                        <div>
+                            <p class="error-text"><?= htmlspecialchars($error) ?></p>
+                            <?php if (strpos($error, 'Identifiant inconnu') !== false): ?>
+                                <p class="error-subtext mt-1">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Vérifiez que vous utilisez le bon email (clients) ou nom d'utilisateur (administrateur)
+                                </p>
+                            <?php elseif (strpos($error, 'Mot de passe incorrect') !== false): ?>
+                                <p class="error-subtext mt-1">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Si vous avez oublié votre mot de passe, contactez l'administrateur
+                                </p>
+                            <?php elseif (strpos($error, 'technique') !== false): ?>
+                                <p class="error-subtext mt-1">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    L'équipe technique a été informée. Veuillez réessayer dans quelques instants.
+                                </p>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
             <?php endif; ?>
             
-            <!-- Message de succès -->
+            <!-- Message de succès amélioré -->
             <?php if ($success): ?>
-                <div class="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded-lg shadow-sm">
-                    <div class="flex items-center">
-                        <i class="fas fa-check-circle mr-3 text-green-500"></i>
-                        <span class="text-sm"><?= $success ?></span>
+                <div class="success-message">
+                    <div class="flex items-start gap-3">
+                        <div class="success-icon flex-shrink-0">
+                            <i class="fas fa-check text-green-500"></i>
+                        </div>
+                        <div>
+                            <p class="success-text"><?= htmlspecialchars($success) ?></p>
+                        </div>
                     </div>
                 </div>
             <?php endif; ?>
@@ -288,11 +403,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </label>
                     <input type="text" name="login" id="login" required 
                            value="<?= htmlspecialchars($_POST['login'] ?? '') ?>"
-                           class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-blue-600 input-focus transition"
+                           class="w-full px-4 py-3 border <?= ($error && strpos($error, 'Identifiant inconnu') !== false) ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50' ?> rounded-xl focus:outline-none focus:border-blue-600 input-focus transition"
                            placeholder="Entrez votre email ou nom d'utilisateur">
                     <p class="login-hint">
                         <i class="fas fa-info-circle mr-1"></i>
-                        Utilisez votre email (clients) ou nom d'utilisateur (admin/manager)
+                        Utilisez votre email (clients) ou nom d'utilisateur (administrateur)
                     </p>
                 </div>
                 
@@ -303,7 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </label>
                     <div class="password-container">
                         <input type="password" name="password" id="password" required 
-                               class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:border-blue-600 input-focus transition"  
+                               class="w-full px-4 py-3 border <?= ($error && strpos($error, 'Mot de passe incorrect') !== false) ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50' ?> rounded-xl focus:outline-none focus:border-blue-600 input-focus transition"  
                                placeholder="Votre mot de passe">
                         <button type="button" id="togglePassword" class="toggle-password">
                             <i class="far fa-eye"></i>
@@ -318,6 +433,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </button>
             </form>
             
+            <!-- Liens supplémentaires -->
+            <div class="mt-6 text-center text-sm">
+                <p class="text-slate-500">
+                    <i class="fas fa-question-circle mr-1"></i>
+                    Besoin d'aide ? Contactez le support
+                </p>
+            </div>
         </div>
         
         <!-- Footer -->
@@ -350,6 +472,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             });
         }
+
+        // Masquer les messages d'erreur après 8 secondes
+        setTimeout(function() {
+            const errorMessages = document.querySelectorAll('.error-message, .success-message');
+            errorMessages.forEach(function(message) {
+                message.style.transition = 'opacity 0.5s ease';
+                message.style.opacity = '0';
+                setTimeout(function() {
+                    message.style.display = 'none';
+                }, 500);
+            });
+        }, 8000);
+
+        // Empêcher la soumission multiple du formulaire
+        document.getElementById('loginForm')?.addEventListener('submit', function(e) {
+            const button = this.querySelector('button[type="submit"]');
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Connexion...';
+            }
+        });
     </script>
 </body>
 </html>
