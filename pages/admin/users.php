@@ -7,11 +7,8 @@ $idCompte = $_SESSION['user_id'];
 // TRAITEMENT DE LA CRÉATION DE COMPTE (AJAX)
 // ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_user'])) {
-    // 🔥 FORCER le type de contenu JSON et vider le buffer
     ob_clean();
     header('Content-Type: application/json');
-    
-    // 🔥 Désactiver l'affichage des erreurs pour éviter le HTML
     error_reporting(0);
     ini_set('display_errors', 0);
     
@@ -24,15 +21,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_user'])
         $credits_total = floatval($_POST['credits_total'] ?? 0);
         $role = $_POST['role'] ?? 'user';
         
-        // Log pour debug
-        error_log("=== CRÉATION COMPTE ===");
-        error_log("Entreprise: " . $entreprise);
-        error_log("Prenom: " . $prenom);
-        error_log("Nom: " . $nom);
-        error_log("User: " . $user);
-        error_log("Role: " . $role);
-        error_log("Credits total: " . $credits_total);
-        
         $errors = [];
         if (empty($entreprise)) $errors[] = "Le nom de l'entreprise est requis";
         if (empty($prenom)) $errors[] = 'Le prénom est requis';
@@ -41,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_user'])
         if (empty($password) || strlen($password) < 6) $errors[] = 'Le mot de passe doit contenir au moins 6 caractères';
         
         $existingUser = $db->select('compte', ['user' => $user]);
-        if (!empty($existingUser)) $errors[] = "Ce nom d'utilisateur est déjà utilisé";
+        if (!empty($existingUser) && is_array($existingUser)) $errors[] = "Ce nom d'utilisateur est déjà utilisé";
         
         if (!empty($errors)) {
             echo json_encode(['success' => false, 'error' => implode(', ', $errors)]);
@@ -74,7 +62,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_user'])
         
     } catch (Exception $e) {
         error_log("ERREUR création compte: " . $e->getMessage());
-        error_log("TRACE: " . $e->getTraceAsString());
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
@@ -99,15 +86,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_user'])) 
         $credits_total = floatval($_POST['credits_total'] ?? 0);
         $role = $_POST['role'] ?? 'user';
         
-        error_log("=== MODIFICATION COMPTE ===");
-        error_log("ID: " . $compteId);
-        error_log("Entreprise: " . $entreprise);
-        error_log("Prenom: " . $prenom);
-        error_log("Nom: " . $nom);
-        error_log("User: " . $user);
-        error_log("Role: " . $role);
-        error_log("Credits total: " . $credits_total);
-        
         $errors = [];
         if (!$compteId) $errors[] = "ID compte manquant";
         if (empty($entreprise)) $errors[] = "Le nom de l'entreprise est requis";
@@ -115,9 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_user'])) 
         if (empty($nom)) $errors[] = 'Le nom est requis';
         if (empty($user)) $errors[] = "Le nom d'utilisateur est requis";
         
-        // Vérifier si le nom d'utilisateur existe déjà (sauf pour le compte actuel)
         $existingUser = $db->select('compte', ['user' => $user]);
-        if (!empty($existingUser) && $existingUser[0]['id_compte'] != $compteId) {
+        if (!empty($existingUser) && is_array($existingUser) && $existingUser[0]['id_compte'] != $compteId) {
             $errors[] = "Ce nom d'utilisateur est déjà utilisé par un autre compte";
         }
         
@@ -135,7 +112,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_user'])) 
             'role' => $role
         ];
         
-        // Si un nouveau mot de passe est fourni, le hasher et l'ajouter
         if (!empty($password)) {
             if (strlen($password) < 6) {
                 echo json_encode(['success' => false, 'error' => 'Le mot de passe doit contenir au moins 6 caractères']);
@@ -154,51 +130,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_user'])) 
         
     } catch (Exception $e) {
         error_log("ERREUR modification compte: " . $e->getMessage());
-        error_log("TRACE: " . $e->getTraceAsString());
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-    }
-    exit;
-}
-
-// ============================================
-// TRAITEMENT DU CHANGEMENT DE RÔLE (AJAX)
-// ============================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_change_role'])) {
-    ob_clean();
-    header('Content-Type: application/json');
-    error_reporting(0);
-    ini_set('display_errors', 0);
-    
-    try {
-        $compteId = $_POST['id_compte'] ?? null;
-        $newRole = $_POST['role'] ?? null;
-        
-        if (!$compteId) {
-            echo json_encode(['success' => false, 'error' => 'ID compte manquant']);
-            exit;
-        }
-        if (!$newRole) {
-            echo json_encode(['success' => false, 'error' => 'Rôle manquant']);
-            exit;
-        }
-        
-        // EMPÊCHER LA MODIFICATION DE SON PROPRE COMPTE
-        if ($compteId == $idCompte) {
-            echo json_encode(['success' => false, 'error' => 'Vous ne pouvez pas modifier le rôle de votre propre compte']);
-            exit;
-        }
-        
-        $allowedRoles = ['admin', 'user', 'manager'];
-        if (!in_array($newRole, $allowedRoles)) {
-            echo json_encode(['success' => false, 'error' => 'Rôle non autorisé']);
-            exit;
-        }
-        
-        $db->update('compte', ['role' => $newRole], ['id_compte' => $compteId]);
-        echo json_encode(['success' => true, 'message' => 'Rôle modifié avec succès']);
-        
-    } catch (Exception $e) {
-        error_log("ERREUR changement rôle: " . $e->getMessage());
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
@@ -217,8 +148,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_user' && isset($_GET['id'
         $compteId = $_GET['id'];
         $user = $db->select('compte', ['id_compte' => $compteId]);
         
-        if (!empty($user)) {
-            // Ne pas renvoyer le mot de passe
+        if (!empty($user) && is_array($user)) {
             unset($user[0]['password']);
             echo json_encode(['success' => true, 'user' => $user[0]]);
         } else {
@@ -232,7 +162,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_user' && isset($_GET['id'
 }
 
 // ============================================
-// TRAITEMENT DES ACTIONS (Activer/Suspendre)
+// TRAITEMENT DES ACTIONS (Activer/Suspendre/Supprimer)
 // ============================================
 
 if (isset($_GET['action']) && $_GET['action'] === 'activer' && isset($_GET['id'])) {
@@ -243,8 +173,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'activer' && isset($_GET['id']
             'date_suspension' => null
         ], ['id_compte' => $compteId]);
         $_SESSION['flash_message'] = "Compte activé avec succès";
+        $_SESSION['flash_type'] = "success";
     } catch (Exception $e) {
-        $_SESSION['flash_error'] = "Erreur lors de l'activation: " . $e->getMessage();
+        $_SESSION['flash_message'] = "Erreur lors de l'activation: " . $e->getMessage();
+        $_SESSION['flash_type'] = "error";
     }
     header('Location: index.php?page=admin/users');
     exit;
@@ -258,15 +190,91 @@ if (isset($_GET['action']) && $_GET['action'] === 'suspendre' && isset($_GET['id
             'date_suspension' => date('Y-m-d H:i:s')
         ], ['id_compte' => $compteId]);
         $_SESSION['flash_message'] = "Compte suspendu avec succès";
+        $_SESSION['flash_type'] = "success";
     } catch (Exception $e) {
-        $_SESSION['flash_error'] = "Erreur lors de la suspension: " . $e->getMessage();
+        $_SESSION['flash_message'] = "Erreur lors de la suspension: " . $e->getMessage();
+        $_SESSION['flash_type'] = "error";
     }
     header('Location: index.php?page=admin/users');
     exit;
 }
 
-// Récupérer tous les utilisateurs (comptes)
+// ============================================
+// TRAITEMENT DE LA SUPPRESSION DE COMPTE
+// ============================================
+if (isset($_GET['action']) && $_GET['action'] === 'supprimer' && isset($_GET['id'])) {
+    $compteId = $_GET['id'];
+    
+    try {
+        // Vérifier que l'utilisateur ne supprime pas son propre compte
+        if ($compteId == $idCompte) {
+            $_SESSION['flash_message'] = "Vous ne pouvez pas supprimer votre propre compte";
+            $_SESSION['flash_type'] = "error";
+            header('Location: index.php?page=admin/users');
+            exit;
+        }
+        
+        // Vérifier que le compte existe
+        $user = $db->select('compte', ['id_compte' => $compteId]);
+        if (empty($user) || !is_array($user)) {
+            $_SESSION['flash_message'] = "Compte non trouvé";
+            $_SESSION['flash_type'] = "error";
+            header('Location: index.php?page=admin/users');
+            exit;
+        }
+        
+        // Supprimer le compte - Utilisation correcte de la méthode delete()
+        // delete($table, $id, $idField)
+        $result = $db->delete('compte', $compteId, 'id_compte');
+        
+        if ($result !== false) {
+            $_SESSION['flash_message'] = "Compte supprimé avec succès";
+            $_SESSION['flash_type'] = "success";
+        } else {
+            $_SESSION['flash_message'] = "Erreur lors de la suppression du compte";
+            $_SESSION['flash_type'] = "error";
+        }
+    } catch (Exception $e) {
+        $_SESSION['flash_message'] = "Erreur lors de la suppression: " . $e->getMessage();
+        $_SESSION['flash_type'] = "error";
+        error_log("ERREUR suppression compte: " . $e->getMessage());
+    }
+    
+    header('Location: index.php?page=admin/users');
+    exit;
+}
+// ============================================
+// RÉCUPÉRATION DES UTILISATEURS
+// ============================================
+$search_query = $_GET['search'] ?? '';
+
+// Récupérer tous les utilisateurs
 $users = $db->select('compte', [], '*', 'date_creation.desc');
+
+// Vérifier que $users est bien un tableau
+if (!is_array($users)) {
+    $users = [];
+}
+
+// Filtrer par recherche si nécessaire
+if (!empty($search_query)) {
+    $search = strtolower($search_query);
+    $filteredUsers = [];
+    foreach ($users as $user) {
+        $prenom = strtolower($user['prenom'] ?? '');
+        $nom = strtolower($user['nom'] ?? '');
+        $entreprise = strtolower($user['entreprise'] ?? '');
+        $userName = strtolower($user['user'] ?? '');
+        
+        if (strpos($prenom, $search) !== false || 
+            strpos($nom, $search) !== false || 
+            strpos($entreprise, $search) !== false || 
+            strpos($userName, $search) !== false) {
+            $filteredUsers[] = $user;
+        }
+    }
+    $users = $filteredUsers;
+}
 
 $totalUsers = count($users);
 
@@ -302,25 +310,11 @@ function getRoleClass($role) {
     return $classes[$role] ?? '';
 }
 
+// Récupérer les messages flash
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
-$flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
+$flashType = isset($_SESSION['flash_type']) ? $_SESSION['flash_type'] : 'success';
 unset($_SESSION['flash_message']);
-unset($_SESSION['flash_error']);
-
-// Statistiques
-$actifs = 0;
-$inactifs = 0;
-$totalCredits = 0;
-$roleCounts = ['admin' => 0, 'manager' => 0, 'user' => 0];
-
-foreach ($users as $u) {
-    $isActive = isset($u['actif']) ? (bool)$u['actif'] : true;
-    if ($isActive) $actifs++;
-    else $inactifs++;
-    $totalCredits += floatval($u['credits_total'] ?? 0);
-    $role = $u['role'] ?? 'user';
-    if (isset($roleCounts[$role])) $roleCounts[$role]++;
-}
+unset($_SESSION['flash_type']);
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -398,41 +392,60 @@ foreach ($users as $u) {
         .btn-suspendre:hover { background: #fecaca; }
         .btn-edit { background: #e0f2fe; color: #0369a1; }
         .btn-edit:hover { background: #bae6fd; }
+        .btn-delete { background: #fee2e2; color: #dc2626; }
+        .btn-delete:hover { background: #fecaca; }
         .btn-add-user { background: #8b5cf6; color: white; }
         .btn-add-user:hover { background: #7c3aed; }
-        .btn-role { background: #f3f4f6; color: #374151; padding: 6px 10px; border-radius: 6px; font-size: 11px; }
-        .btn-role:hover { background: #e5e7eb; }
-        .btn-role.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-role.disabled:hover {
-            transform: none;
-            background: #f3f4f6;
-        }
         
+        /* Toast Notification */
         .toast-notification {
             position: fixed;
             top: 20px;
             right: 20px;
             z-index: 9999;
             animation: slideInRight 0.3s ease-out;
+            max-width: 400px;
+            width: 100%;
         }
         @keyframes slideInRight {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
         .toast-notification .toast-content {
             color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 14px 20px;
+            border-radius: 10px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
             font-size: 14px;
             font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.info .toast-content { background: #3b82f6; }
+        .toast-notification .toast-icon {
+            font-size: 20px;
+        }
+        .toast-notification .toast-close {
+            margin-left: auto;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 18px;
+            padding: 0 4px;
+        }
+        .toast-notification .toast-close:hover {
+            opacity: 1;
+        }
         
         .confirm-modal {
             position: fixed;
@@ -486,6 +499,11 @@ foreach ($users as $u) {
             color: #374151;
             line-height: 1.5;
         }
+        .confirm-modal-body .warning-text {
+            color: #dc2626;
+            font-size: 13px;
+            font-weight: 500;
+        }
         .confirm-modal-footer {
             padding: 16px 24px;
             background: #f9fafb;
@@ -522,25 +540,23 @@ foreach ($users as $u) {
         .btn-confirm-action.activate:hover {
             background: #15803d;
         }
-        
-        .alert {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 16px;
+        .btn-confirm-action.delete {
+            background: #dc2626;
         }
-        .alert-success { background: #dcfce7; border-left: 4px solid #16a34a; color: #166534; }
-        .alert-error { background: #fee2e2; border-left: 4px solid #dc2626; color: #991b1b; }
+        .btn-confirm-action.delete:hover {
+            background: #b91c1c;
+        }
         
         .modal-show {
             opacity: 1 !important;
             transform: scale(1) !important;
         }
-        .modal-add-user, .modal-role, .modal-edit-user {
+        .modal-add-user, .modal-edit-user {
             transition: all 0.3s ease;
             transform: scale(0.95);
             opacity: 0;
         }
-        .modal-add-user.modal-show, .modal-role.modal-show, .modal-edit-user.modal-show {
+        .modal-add-user.modal-show, .modal-edit-user.modal-show {
             opacity: 1 !important;
             transform: scale(1) !important;
         }
@@ -572,6 +588,67 @@ foreach ($users as $u) {
         }
         .password-toggle:hover {
             color: #4b5563;
+        }
+        
+        .search-box {
+            position: relative;
+            flex: 1;
+            max-width: 400px;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 10px 16px 10px 40px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        .search-box input:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        .search-box .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+        }
+        .search-box .clear-search {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #9ca3af;
+            padding: 4px 8px;
+            border-radius: 50%;
+            transition: all 0.2s;
+            background: none;
+            border: none;
+        }
+        .search-box .clear-search:hover {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .no-results i {
+            font-size: 48px;
+            color: #d1d5db;
+            margin-bottom: 16px;
+        }
+        .no-results h3 {
+            font-size: 18px;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+        .no-results p {
+            color: #6b7280;
         }
     </style>
 </head>
@@ -762,103 +839,49 @@ foreach ($users as $u) {
     </div>
 </div>
 
-<!-- MODALE DE CHANGEMENT DE RÔLE -->
-<div id="roleModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display: none;">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-role">
-        <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-                <div class="flex items-center">
-                    <div class="bg-blue-100 p-2 rounded-full mr-3">
-                        <i class="fas fa-user-tag text-blue-600 text-xl"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-800">Changer le rôle</h3>
-                </div>
-                <button type="button" onclick="closeRoleModal()" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-            
-            <form id="roleForm">
-                <input type="hidden" name="id_compte" id="roleUserId">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Nouveau rôle</label>
-                    <select name="role" id="roleSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                        <option value="user">Utilisateur</option>
-                        <option value="admin">Admin</option>
-                    </select>
-                    <p class="text-xs text-gray-500 mt-1">Le rôle détermine les permissions du compte</p>
-                </div>
-                
-                <div class="mt-6 flex justify-end space-x-2">
-                    <button type="button" onclick="closeRoleModal()" 
-                            class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                        Annuler
-                    </button>
-                    <button type="submit" id="changeRoleBtn"
-                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
-                        <i class="fas fa-save mr-2"></i>Modifier le rôle
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <div class="space-y-6">
-    <div class="flex justify-between items-center">
+    <div class="flex flex-wrap justify-between items-center gap-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-800">Gestion des comptes</h1>
             <p class="text-gray-500">Gérez tous les comptes de la plateforme</p>
         </div>
-        <div class="flex items-center gap-2">
-            <span class="text-sm text-gray-500">Total: <strong><?= $totalUsers ?></strong> compte(s)</span>
-
-            <button onclick="openAddUserModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition">
-                <i class="fas fa-user-plus mr-2"></i>Nouveau compte
+        <div class="flex items-center gap-3">
+            <button onclick="openAddUserModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+                <i class="fas fa-user-plus"></i>
+                Nouveau compte
             </button>
         </div>
     </div>
 
-    <?php if ($flashMessage): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($flashMessage) ?></div>
-    <?php endif; ?>
-    <?php if ($flashError): ?>
-        <div class="alert alert-error"><?= htmlspecialchars($flashError) ?></div>
-    <?php endif; ?>
-
-    <!-- Statistiques -->
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="flex justify-between items-center">
-                <div><span class="text-gray-500">Total</span><span class="text-2xl font-bold text-gray-800 ml-2"><?= $totalUsers ?></span></div>
-                <div class="text-blue-400"><i class="fas fa-users text-2xl"></i></div>
-            </div>
+    <!-- Barre de recherche -->
+    <div class="flex flex-wrap items-center gap-4">
+        <div class="search-box">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="searchInput" placeholder="Rechercher un utilisateur..." 
+                   value="<?= htmlspecialchars($search_query) ?>"
+                   onkeyup="if(event.key === 'Enter') applySearch()">
+            <?php if (!empty($search_query)): ?>
+                <button class="clear-search" onclick="clearSearch()" title="Effacer la recherche">
+                    <i class="fas fa-times"></i>
+                </button>
+            <?php endif; ?>
         </div>
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="flex justify-between items-center">
-                <div><span class="text-gray-500">Actifs</span><span class="text-2xl font-bold text-green-600 ml-2"><?= $actifs ?></span></div>
-                <div class="text-green-400"><i class="fas fa-check-circle text-2xl"></i></div>
-            </div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="flex justify-between items-center">
-                <div><span class="text-gray-500">Suspendus</span><span class="text-2xl font-bold text-red-600 ml-2"><?= $inactifs ?></span></div>
-                <div class="text-red-400"><i class="fas fa-times-circle text-2xl"></i></div>
-            </div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="flex justify-between items-center">
-                <div><span class="text-gray-500">Crédits total</span><span class="text-2xl font-bold text-yellow-600 ml-2"><?= number_format($totalCredits, 2) ?> €</span></div>
-                <div class="text-yellow-400"><i class="fas fa-coins text-2xl"></i></div>
-            </div>
-        </div>
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="flex justify-between items-center">
-                <div><span class="text-gray-500">Admins</span><span class="text-2xl font-bold text-amber-600 ml-2"><?= $roleCounts['admin'] ?></span></div>
-                <div class="text-amber-400"><i class="fas fa-crown text-2xl"></i></div>
-            </div>
+        
+        <div class="flex items-center gap-2">
+            <button onclick="resetSearch()" class="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 transition rounded-lg border border-gray-300 hover:bg-gray-50">
+                <i class="fas fa-undo mr-1"></i> Réinitialiser
+            </button>
         </div>
     </div>
+
+    <!-- Résultats de recherche -->
+    <?php if (!empty($search_query)): ?>
+        <div class="text-sm text-gray-500">
+            <i class="fas fa-search mr-1"></i>
+            Résultats pour "<strong><?= htmlspecialchars($search_query) ?></strong>" : 
+            <?= $totalUsers ?> utilisateur<?= $totalUsers > 1 ? 's' : '' ?> trouvé<?= $totalUsers > 1 ? 's' : '' ?>
+        </div>
+    <?php endif; ?>
 
     <!-- Tableau des comptes -->
     <div class="bg-white rounded-lg shadow overflow-hidden">
@@ -876,13 +899,28 @@ foreach ($users as $u) {
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <?php if (empty($users)): ?>
+                <tbody id="usersTableBody">
+                    <?php if (empty($users) || !is_array($users)): ?>
                         <tr>
-                            <td colspan="8" class="text-center py-8 text-gray-500">
-                                <i class="fas fa-users text-4xl mb-2 block"></i>
-                                Aucun compte enregistré.
-                                <button onclick="openAddUserModal()" class="text-purple-600 block mt-2">Créer le premier compte →</button>
+                            <td colspan="8">
+                                <div class="no-results">
+                                    <i class="fas fa-users"></i>
+                                    <h3>Aucun utilisateur trouvé</h3>
+                                    <p>
+                                        <?php if (!empty($search_query)): ?>
+                                            Aucun résultat ne correspond à votre recherche.
+                                            <br>
+                                            <button onclick="resetSearch()" class="text-purple-600 hover:text-purple-800 mt-2">
+                                                <i class="fas fa-undo mr-1"></i> Réinitialiser la recherche
+                                            </button>
+                                        <?php else: ?>
+                                            Aucun compte enregistré.
+                                            <button onclick="openAddUserModal()" class="text-purple-600 block mt-2">
+                                                Créer le premier compte →
+                                            </button>
+                                        <?php endif; ?>
+                                    </p>
+                                </div>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -943,22 +981,21 @@ foreach ($users as $u) {
                                             </button>
                                         <?php endif; ?>
                                         
-                                        <?php if ($isCurrentUser): ?>
-                                            <button class="btn-action btn-role disabled" title="Vous ne pouvez pas modifier votre propre rôle" disabled>
-                                                <i class="fas fa-user-tag"></i>
-                                                <span class="text-muted">(Vous)</span>
-                                            </button>
-                                        <?php else: ?>
-                                            <button onclick="openRoleModal('<?= $user['id_compte'] ?>', '<?= $role ?>')" 
-                                                    class="btn-action btn-role" title="Changer le rôle">
-                                                Rôle<i class="fas fa-user-tag"></i>
-                                            </button>
-                                        <?php endif; ?>
-                                        
                                         <button onclick="openEditUserModal('<?= $user['id_compte'] ?>')" 
                                                 class="btn-action btn-edit" title="Modifier le compte">
                                             Modifier<i class="fas fa-edit"></i>
                                         </button>
+                                        
+                                        <?php if (!$isCurrentUser): ?>
+                                            <button onclick="openConfirmModal('supprimer', '<?= $user['id_compte'] ?>', '<?= htmlspecialchars($user['prenom'] ?? $user['user'] ?? 'Utilisateur') ?>')" 
+                                                    class="btn-action btn-delete" title="Supprimer le compte">
+                                                Supprimer<i class="fas fa-trash"></i>
+                                            </button>
+                                        <?php else: ?>
+                                            <button class="btn-action btn-delete" style="opacity: 0.5; cursor: not-allowed;" disabled title="Vous ne pouvez pas supprimer votre propre compte">
+                                                Supprimer<i class="fas fa-trash"></i>
+                                            </button>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
@@ -967,10 +1004,107 @@ foreach ($users as $u) {
                 </tbody>
             </table>
         </div>
+        
+        <!-- Résultats -->
+        <?php if (!empty($users) && is_array($users)): ?>
+            <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500 flex justify-between items-center">
+                <span>
+                    <i class="fas fa-list-ul mr-1"></i>
+                    <?= count($users) ?> utilisateur<?= count($users) > 1 ? 's' : '' ?>
+                </span>
+                <?php if (!empty($search_query)): ?>
+                    <button onclick="resetSearch()" class="text-purple-600 hover:text-purple-800 text-sm">
+                        <i class="fas fa-undo mr-1"></i> Voir tous
+                    </button>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
 
 <script>
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
+function showToast(message, type = 'success') {
+    // Supprimer les toasts existants
+    const existingToasts = document.querySelectorAll('.toast-notification');
+    existingToasts.forEach(toast => toast.remove());
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    
+    const icons = {
+        success: 'fa-check-circle',
+        error: 'fa-exclamation-circle',
+        info: 'fa-info-circle'
+    };
+    
+    toast.innerHTML = `
+        <div class="toast-content">
+            <i class="fas ${icons[type] || icons.success} toast-icon"></i>
+            <span>${message}</span>
+            <button class="toast-close" onclick="this.closest('.toast-notification').remove()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Auto-suppression après 4 secondes
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.style.animation = 'fadeOut 0.5s ease-out';
+            setTimeout(() => {
+                if (toast.parentNode) toast.remove();
+            }, 500);
+        }
+    }, 4000);
+}
+
+// ============================================
+// MESSAGES FLASH
+// ============================================
+<?php if ($flashMessage): ?>
+    showToast('<?= addslashes($flashMessage) ?>', '<?= $flashType ?>');
+<?php endif; ?>
+
+// ============================================
+// RECHERCHE
+// ============================================
+function applySearch() {
+    const search = document.getElementById('searchInput').value.trim();
+    if (search) {
+        window.location.href = '?page=admin/users&search=' + encodeURIComponent(search);
+    } else {
+        resetSearch();
+    }
+}
+
+function resetSearch() {
+    window.location.href = '?page=admin/users';
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    resetSearch();
+}
+
+// Recherche en temps réel avec délai
+let searchTimeout;
+document.getElementById('searchInput').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        const search = this.value.trim();
+        if (search) {
+            window.location.href = '?page=admin/users&search=' + encodeURIComponent(search);
+        } else {
+            resetSearch();
+        }
+    }, 400);
+});
+
 // ============================================
 // AFFICHER/MASQUER LE MOT DE PASSE
 // ============================================
@@ -995,7 +1129,6 @@ function openAddUserModal() {
     const modalContent = modal.querySelector('.modal-add-user');
     document.getElementById('addUserForm').reset();
     document.getElementById('add_credits_total').value = '0';
-    // Remettre le mot de passe en mode caché
     const pwdInput = document.getElementById('add_password');
     pwdInput.type = 'password';
     const toggleBtn = pwdInput.parentElement.querySelector('.password-toggle');
@@ -1018,11 +1151,9 @@ function openEditUserModal(userId) {
     const modal = document.getElementById('editUserModal');
     const modalContent = modal.querySelector('.modal-edit-user');
     
-    // Réinitialiser le formulaire
     document.getElementById('editUserForm').reset();
     document.getElementById('edit_password').value = '';
     
-    // Charger les données du compte
     fetch(`?page=admin/users&action=get_user&id=${userId}`)
         .then(response => response.json())
         .then(data => {
@@ -1036,7 +1167,6 @@ function openEditUserModal(userId) {
                 document.getElementById('edit_role').value = user.role || 'user';
                 document.getElementById('edit_credits_total').value = user.credits_total || 0;
                 
-                // Remettre le mot de passe en mode caché
                 const pwdInput = document.getElementById('edit_password');
                 pwdInput.type = 'password';
                 const toggleBtn = pwdInput.parentElement.querySelector('.password-toggle');
@@ -1059,30 +1189,6 @@ function closeEditUserModal() {
     const modalContent = modal.querySelector('.modal-edit-user');
     modalContent.classList.remove('modal-show');
     setTimeout(() => modal.style.display = 'none', 200);
-}
-
-// ============================================
-// MODALE DE CHANGEMENT DE RÔLE
-// ============================================
-let currentRoleUserId = null;
-
-function openRoleModal(userId, currentRole) {
-    currentRoleUserId = userId;
-    document.getElementById('roleUserId').value = userId;
-    document.getElementById('roleSelect').value = currentRole;
-    
-    const modal = document.getElementById('roleModal');
-    const modalContent = modal.querySelector('.modal-role');
-    modal.style.display = 'flex';
-    setTimeout(() => modalContent.classList.add('modal-show'), 10);
-}
-
-function closeRoleModal() {
-    const modal = document.getElementById('roleModal');
-    const modalContent = modal.querySelector('.modal-role');
-    modalContent.classList.remove('modal-show');
-    setTimeout(() => modal.style.display = 'none', 200);
-    currentRoleUserId = null;
 }
 
 // ============================================
@@ -1230,78 +1336,6 @@ document.getElementById('editUserForm').addEventListener('submit', async functio
 });
 
 // ============================================
-// SOUMISSION DU FORMULAIRE DE CHANGEMENT DE RÔLE (AJAX)
-// ============================================
-document.getElementById('roleForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    formData.append('action_change_role', '1');
-    
-    const submitBtn = document.getElementById('changeRoleBtn');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Modification...';
-    submitBtn.disabled = true;
-    
-    try {
-        const response = await fetch(window.location.href, {
-            method: 'POST',
-            headers: { 
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
-            },
-            body: formData
-        });
-        
-        if (!response.ok) {
-            const text = await response.text();
-            console.error('HTTP Error:', response.status, text);
-            showToast('Erreur serveur: ' + response.status, 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-            return;
-        }
-        
-        const textResponse = await response.text();
-        console.log('Réponse brute role:', textResponse);
-        
-        if (!textResponse.startsWith('{')) {
-            console.error('La réponse n\'est pas du JSON:', textResponse);
-            showToast('Erreur: réponse invalide du serveur', 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-            return;
-        }
-        
-        let result;
-        try {
-            result = JSON.parse(textResponse);
-        } catch (parseError) {
-            console.error('Erreur de parsing:', parseError);
-            showToast('Erreur de parsing: ' + textResponse.substring(0, 200), 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-            return;
-        }
-        
-        if (result.success) {
-            showToast(result.message, 'success');
-            closeRoleModal();
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showToast(result.error || 'Erreur inconnue', 'error');
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-        }
-    } catch (error) {
-        console.error('Erreur réseau:', error);
-        showToast('Erreur réseau: ' + error.message, 'error');
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    }
-});
-
-// ============================================
 // MODALE DE CONFIRMATION
 // ============================================
 let confirmAction = null;
@@ -1323,6 +1357,15 @@ function openConfirmModal(action, id, name) {
         message.innerHTML = `Êtes-vous sûr de vouloir <strong>activer</strong> le compte de <strong>${name}</strong> ?`;
         btn.textContent = 'Activer';
         btn.className = 'btn-confirm-action activate';
+    } else if (action === 'supprimer') {
+        title.innerHTML = 'Supprimer le compte';
+        message.innerHTML = `
+            Êtes-vous sûr de vouloir <strong style="color: #dc2626;">supprimer définitivement</strong> le compte de <strong>${name}</strong> ?
+            <br><br>
+            <span class="warning-text">⚠️ Cette action est irréversible et supprimera toutes les données associées.</span>
+        `;
+        btn.textContent = 'Supprimer';
+        btn.className = 'btn-confirm-action delete';
     } else {
         title.innerHTML = 'Suspendre le compte';
         message.innerHTML = `Êtes-vous sûr de vouloir <strong>suspendre</strong> le compte de <strong>${name}</strong> ?<br><br><span style="color: #dc2626; font-size: 13px;">Le compte ne pourra plus se connecter jusqu'à une nouvelle activation.</span>`;
@@ -1354,7 +1397,6 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeConfirmModal();
         closeAddUserModal();
-        closeRoleModal();
         closeEditUserModal();
     }
 });
@@ -1366,33 +1408,6 @@ document.getElementById('addUserModal').addEventListener('click', function(e) {
 document.getElementById('editUserModal').addEventListener('click', function(e) {
     if (e.target === this) closeEditUserModal();
 });
-
-document.getElementById('roleModal').addEventListener('click', function(e) {
-    if (e.target === this) closeRoleModal();
-});
-
-// ============================================
-// TOAST NOTIFICATION
-// ============================================
-function showToast(message, type = 'success') {
-    const existingToasts = document.querySelectorAll('.toast-notification');
-    existingToasts.forEach(toast => toast.remove());
-    
-    const toast = document.createElement('div');
-    toast.className = `toast-notification ${type}`;
-    const colors = { success: '#10b981', error: '#ef4444', info: '#3b82f6' };
-    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
-
-// Messages flash
-<?php if ($flashMessage): ?>
-    showToast('<?= addslashes($flashMessage) ?>', 'success');
-<?php endif; ?>
-<?php if ($flashError): ?>
-    showToast('<?= addslashes($flashError) ?>', 'error');
-<?php endif; ?>
 </script>
 
 </body>
