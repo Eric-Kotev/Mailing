@@ -5362,7 +5362,7 @@ async function loadWhatsAppSessions() {
                         <div class="session-list-item ${itemClass}" data-session="${escapeHtml(session.nom_session)}">
                             <div class="flex items-center gap-3 flex-1">
                                 <div class="session-icon ${isActive ? '' : 'inactive'}">
-                                    <i class="fab fa-mobile-alt"></i>
+                                    <i class="fas fa-mobile-alt"></i>
                                 </div>
                                 <div>
                                     <p class="font-medium text-gray-800 session-name">${escapeHtml(session.nom_session)}</p>

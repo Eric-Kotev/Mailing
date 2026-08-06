@@ -1697,7 +1697,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                             // Type
                             if ($envoi['type_campagne'] == 'whatsapp') {
                                 $typeClass = 'bg-green-100 text-green-700';
-                                $typeIcon = 'fab fa-mobile-alt';
+                                $typeIcon = 'fas fa-mobile-alt';
                                 $typeLabel = 'WhatsApp';
                             } elseif ($envoi['type_campagne'] == 'email') {
                                 $typeClass = 'bg-yellow-100 text-yellow-700';
@@ -2078,7 +2078,7 @@ function showDetails(envoi) {
     
     let typeBadge;
     if (envoi.type_campagne === 'whatsapp') {
-        typeBadge = '<span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fab fa-mobile-alt mr-1"></i>WhatsApp</span>';
+        typeBadge = '<span class="bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-mobile-alt mr-1"></i>WhatsApp</span>';
     } else if (envoi.type_campagne === 'email') {
         typeBadge = '<span class="bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-envelope mr-1"></i>Email</span>';
     } else {
