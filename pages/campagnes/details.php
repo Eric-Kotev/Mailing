@@ -527,8 +527,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                 exit;
         }
         
+        // Gestion du résultat avec messages détaillés
         if ($resultat['success']) {
             $_SESSION['flash_message'] = "✅ " . $resultat['message'];
+            
+            // Si c'est WhatsApp, ajouter des détails supplémentaires
+            if ($typeMessage === 'whatsapp' && isset($resultat['details'])) {
+                $successCount = 0;
+                $errorCount = 0;
+                foreach ($resultat['details'] as $detail) {
+                    if (isset($detail['success']) && $detail['success'] === true) {
+                        $successCount++;
+                    } else {
+                        $errorCount++;
+                    }
+                }
+                if ($errorCount > 0) {
+                    $_SESSION['flash_message'] .= " (Détails: " . $successCount . " succès, " . $errorCount . " échecs)";
+                }
+            }
         } else {
             $_SESSION['flash_error'] = "❌ Erreur lors de l'envoi : " . $resultat['error'];
         }
@@ -652,10 +669,14 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
     }
 }
 
+/**
+ * Fonction d'envoi WhatsApp avec debug
+ */
 function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires, $pieceJointe = null, $min_delay = 60, $max_delay = 180) {
     global $db;
     
     try {
+        // Récupérer la session WhatsApp active
         $session = $db->select('whatsapp_sessions', [
             'id_compte' => $idCompte,
             'est_active' => true
@@ -675,28 +696,67 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         
         $whatsappSession = $session[0]['nom_session'];
         
-        $apiUrl = 'http://164.68.103.147:8081/api/controller.php';
+        // URL de l'API - utilisez la même que dans Postman
+        $apiUrl = 'http://164.68.103.147:8081/api/controller.php/messages/send-bulk';
         $apiKey = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
         
+        // === PRÉPARER LES CONTACTS ===
         $contacts = [];
+        $contactsDetails = [];
+        $rawNumbers = [];
+        
         foreach ($destinataires as $dest) {
-            if (preg_match('/\(([^)]+)\)/', $dest, $matches)) {
+            $telephone = null;
+            
+            // Extraction du numéro depuis différents formats
+            if (is_array($dest) && isset($dest['phone_number'])) {
+                $telephone = $dest['phone_number'];
+            } elseif (is_string($dest) && preg_match('/\(([^)]+)\)/', $dest, $matches)) {
                 $telephone = $matches[1];
-                $telephone = preg_replace('/[^0-9]/', '', $telephone);
-                if (strlen($telephone) == 10 && substr($telephone, 0, 1) == '0') {
+            } elseif (is_string($dest) && preg_match('/[0-9+\s]+/', $dest, $matches)) {
+                $telephone = trim($matches[0]);
+            }
+            
+            if (empty($telephone)) {
+                continue;
+            }
+            
+            // Nettoyer le numéro (garder uniquement les chiffres)
+            $telephone = preg_replace('/[^0-9]/', '', $telephone);
+            $rawNumbers[] = $telephone;
+            
+            // Format Madagascar (261)
+            if (strlen($telephone) >= 9 && strlen($telephone) <= 10) {
+                if (substr($telephone, 0, 1) == '0') {
+                    // 034... -> 26134...
                     $telephone = '261' . substr($telephone, 1);
-                }
-                if (substr($telephone, 0, 3) != '261') {
+                } elseif (strlen($telephone) == 9) {
+                    // Numéro à 9 chiffres sans le 0
+                    $telephone = '261' . $telephone;
+                } elseif (strlen($telephone) == 10 && substr($telephone, 0, 3) != '261') {
+                    // Autre numéro à 10 chiffres
                     $telephone = '261' . $telephone;
                 }
-                $contacts[] = $telephone;
+            } else {
+                // Si le numéro commence déjà par 261, on le garde
+                if (substr($telephone, 0, 3) != '261' && strlen($telephone) > 0) {
+                    $telephone = '261' . $telephone;
+                }
             }
+            
+            $contacts[] = $telephone;
+            $contactsDetails[] = [
+                'original' => $dest,
+                'raw' => $rawNumbers[count($rawNumbers)-1],
+                'formatted' => $telephone
+            ];
         }
         
         if (empty($contacts)) {
-            return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé'];
+            return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé. Données reçues: ' . json_encode($destinataires)];
         }
         
+        // === PRÉPARER LE FICHIER JOINT SI PRÉSENT ===
         $fichierData = null;
         if ($pieceJointe && isset($pieceJointe['url']) && !empty($pieceJointe['url'])) {
             $fileUrl = $pieceJointe['url'];
@@ -735,71 +795,196 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             }
         }
         
+        // === CONSTRUCTION DE LA REQUÊTE ===
+        // Utiliser la même structure que votre test Postman
+        if ($fichierData && $fichierData['fichier_pret']) {
+            $data = [
+                'session' => $whatsappSession,
+                'type' => $fichierData['type'],
+                'contacts' => $contacts,
+                'payload' => $fichierData['payload'],
+                'min_delay' => (int)$min_delay,
+                'max_delay' => (int)$max_delay
+            ];
+            
+            if ($fichierData['type'] !== 'text' && !empty($message) && $fichierData['type'] !== 'voice') {
+                $data['payload']['caption'] = $message;
+            }
+        } else {
+            $data = [
+                'session' => $whatsappSession,
+                'type' => 'text',
+                'contacts' => $contacts,
+                'payload' => ['text' => $message],
+                'min_delay' => (int)$min_delay,
+                'max_delay' => (int)$max_delay
+            ];
+        }
+        
+        // === LOG POUR DEBUG ===
+        $debugData = [
+            'url' => $apiUrl,
+            'session' => $whatsappSession,
+            'contacts' => $contacts,
+            'contacts_count' => count($contacts),
+            'message' => $message,
+            'min_delay' => $min_delay,
+            'max_delay' => $max_delay,
+            'full_payload' => $data
+        ];
+        
+        // Sauvegarder le debug dans la base de données
+        $db->update('campagne', [
+            'erreur' => 'DEBUG: ' . json_encode($debugData),
+            'updated_at' => date('Y-m-d H:i:s')
+        ], ['id_campagne' => $campagneData['id_campagne']]);
+        
+        // === ENVOI DE LA REQUÊTE ===
+        $jsonData = json_encode($data);
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $apiUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'X-Controller-Key: ' . $apiKey
+        ]);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonData);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        $curlInfo = curl_getinfo($ch);
+        curl_close($ch);
+        
+        // === ANALYSE DE LA RÉPONSE ===
+        $responseData = json_decode($response, true);
+        
+        // Journaliser la réponse pour debug
+        $logData = [
+            'http_code' => $httpCode,
+            'curl_error' => $curlError,
+            'response' => $response,
+            'response_data' => $responseData,
+            'curl_info' => $curlInfo,
+            'sent_data' => $data,
+            'json_sent' => $jsonData
+        ];
+        
+        // Si la réponse est vide ou invalide
+        if (empty($response) || $response === null) {
+            $db->update('campagne', [
+                'statut' => 'echoue',
+                'nb_envoyes' => 0,
+                'nb_succes' => 0,
+                'nb_erreurs' => count($contacts),
+                'appareil_utilise' => $whatsappSession,
+                'reponse_api' => $response,
+                'erreur' => 'Réponse vide ou invalide. HTTP Code: ' . $httpCode . ', cURL Error: ' . $curlError . ', Debug: ' . json_encode($logData),
+                'updated_at' => date('Y-m-d H:i:s')
+            ], ['id_campagne' => $campagneData['id_campagne']]);
+            
+            return ['success' => false, 'error' => 'Réponse vide ou invalide. Vérifiez les logs pour plus de détails.'];
+        }
+        
+        // === ANALYSE DE LA RÉPONSE ===
         $succes = 0;
         $echecs = 0;
         $erreurs = [];
+        $details = [];
+        $statut = 'echoue';
+        $messageReponse = '';
         
-        foreach ($contacts as $index => $contact) {
-            if ($index > 0) {
-                $delay = rand($min_delay, $max_delay);
-                sleep($delay);
-            }
+        // Vérifier si la réponse a le format attendu
+        if ($httpCode === 200 && isset($responseData['ok']) && $responseData['ok'] === true) {
+            // Succès de l'API
+            $total = $responseData['total'] ?? count($contacts);
+            $validCount = $responseData['valid_count'] ?? 0;
+            $invalidCount = $responseData['invalid_count'] ?? 0;
+            $invalidContacts = $responseData['invalid_contacts'] ?? [];
             
-            if ($fichierData && $fichierData['fichier_pret']) {
-                $data = [
-                    'session' => $whatsappSession,
-                    'type' => $fichierData['type'],
-                    'contacts' => [$contact],
-                    'payload' => $fichierData['payload'],
-                    'min_delay' => 0,
-                    'max_delay' => 0
-                ];
-                
-                if ($fichierData['type'] !== 'text' && !empty($message) && $fichierData['type'] !== 'voice') {
-                    $data['payload']['caption'] = $message;
+            // Parcourir les résultats
+            if (isset($responseData['results']) && is_array($responseData['results'])) {
+                foreach ($responseData['results'] as $result) {
+                    if (isset($result['success']) && $result['success'] === true) {
+                        $succes++;
+                        $details[] = [
+                            'contact' => $result['chatId'] ?? 'Inconnu',
+                            'statut' => $result['status'] ?? 'sent',
+                            'success' => true,
+                            'firstName' => $result['firstName'] ?? null
+                        ];
+                    } else {
+                        $echecs++;
+                        $errorMsg = $result['error'] ?? 'Erreur inconnue';
+                        $contactId = $result['chatId'] ?? 'Inconnu';
+                        $erreurs[] = $contactId . ': ' . $errorMsg;
+                        $details[] = [
+                            'contact' => $contactId,
+                            'statut' => $result['status'] ?? 'failed',
+                            'success' => false,
+                            'error' => $errorMsg
+                        ];
+                    }
                 }
-            } else {
-                $data = [
-                    'session' => $whatsappSession,
-                    'type' => 'text',
-                    'contacts' => [$contact],
-                    'payload' => ['text' => $message],
-                    'min_delay' => 0,
-                    'max_delay' => 0
-                ];
             }
             
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $apiUrl . '/messages/send-bulk');
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-                'X-Controller-Key: ' . $apiKey
-            ]);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+            // Gérer les contacts invalides
+            if (!empty($invalidContacts)) {
+                foreach ($invalidContacts as $invalidContact) {
+                    $echecs++;
+                    $erreurs[] = $invalidContact . ': Numéro invalide';
+                    $details[] = [
+                        'contact' => $invalidContact,
+                        'statut' => 'invalid',
+                        'success' => false,
+                        'error' => 'Numéro invalide'
+                    ];
+                }
+            }
             
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $messageReponse = $responseData['message'] ?? 'Envoi terminé';
             
-            if ($httpCode === 200 || $httpCode === 201) {
-                $succes++;
+            // Déterminer le statut global
+            if ($echecs == 0 && $succes > 0) {
+                $statut = 'envoye';
+                $messageReponse = "✅ " . $succes . " messages WhatsApp envoyés avec succès (Session: " . $whatsappSession . ")";
+            } elseif ($succes > 0 && $echecs > 0) {
+                $statut = 'partiel';
+                $messageReponse = "⚠️ " . $succes . " messages envoyés, " . $echecs . " échecs (Session: " . $whatsappSession . ")";
             } else {
-                $echecs++;
-                $erreurs[] = $contact . ': ' . substr($response, 0, 100);
+                $statut = 'echoue';
+                $messageReponse = "❌ Tous les messages ont échoué (Session: " . $whatsappSession . ")";
+            }
+            
+        } else {
+            // Erreur HTTP ou API
+            $echecs = count($contacts);
+            $errorMsg = isset($responseData['message']) ? $responseData['message'] : $response;
+            
+            if (is_string($errorMsg) && strlen($errorMsg) > 200) {
+                $errorMsg = substr($errorMsg, 0, 200) . '...';
+            }
+            
+            $erreurs[] = 'Erreur API (HTTP ' . $httpCode . '): ' . $errorMsg;
+            $statut = 'echoue';
+            $messageReponse = "❌ Erreur API: " . $errorMsg;
+            
+            if (isset($responseData['errors'])) {
+                $erreurs[] = 'Détails: ' . json_encode($responseData['errors']);
+            }
+            
+            // Ajouter des infos de debug si la réponse n'est pas du JSON
+            if ($responseData === null && !empty($response)) {
+                $erreurs[] = 'Réponse non-JSON: ' . substr($response, 0, 200);
             }
         }
         
-        if ($echecs > 0 && $succes > 0) {
-            $statut = 'partiel';
-        } elseif ($echecs > 0 && $succes == 0) {
-            $statut = 'echoue';
-        } else {
-            $statut = 'envoye';
-        }
+        // === MISE À JOUR DE LA BASE DE DONNÉES ===
+        $erreurFinale = !empty($erreurs) ? json_encode(array_merge($erreurs, ['debug' => $logData])) : null;
         
         $db->update('campagne', [
             'statut' => $statut,
@@ -807,22 +992,62 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             'nb_succes' => $succes,
             'nb_erreurs' => $echecs,
             'appareil_utilise' => $whatsappSession,
-            'erreur' => !empty($erreurs) ? json_encode($erreurs) : null
+            'reponse_api' => $response,
+            'erreur' => $erreurFinale,
+            'updated_at' => date('Y-m-d H:i:s')
         ], ['id_campagne' => $campagneData['id_campagne']]);
         
-        if ($echecs == 0) {
-            return ['success' => true, 'message' => $succes . ' messages WhatsApp envoyés avec succès'];
-        } elseif ($succes > 0) {
-            return ['success' => true, 'message' => $succes . ' messages envoyés, ' . $echecs . ' échecs'];
+        // === RETOUR DU RÉSULTAT ===
+        if ($statut === 'envoye') {
+            return [
+                'success' => true, 
+                'message' => $messageReponse,
+                'details' => $details,
+                'statut' => $statut,
+                'session' => $whatsappSession,
+                'total' => count($contacts),
+                'debug' => $logData
+            ];
+        } elseif ($statut === 'partiel') {
+            return [
+                'success' => true, 
+                'message' => $messageReponse,
+                'details' => $details,
+                'erreurs' => $erreurs,
+                'statut' => $statut,
+                'session' => $whatsappSession,
+                'total' => count($contacts),
+                'debug' => $logData
+            ];
         } else {
-            return ['success' => false, 'error' => 'Tous les messages ont échoué'];
+            return [
+                'success' => false, 
+                'error' => $messageReponse,
+                'details' => $details,
+                'erreurs' => $erreurs,
+                'statut' => $statut,
+                'session' => $whatsappSession,
+                'total' => count($contacts),
+                'debug' => $logData
+            ];
         }
         
     } catch (Exception $e) {
-        return ['success' => false, 'error' => $e->getMessage()];
+        // En cas d'exception, on met à jour la base de données
+        try {
+            $db->update('campagne', [
+                'statut' => 'echoue',
+                'nb_erreurs' => isset($contacts) ? count($contacts) : 0,
+                'erreur' => 'Exception: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'updated_at' => date('Y-m-d H:i:s')
+            ], ['id_campagne' => $campagneData['id_campagne']]);
+        } catch (Exception $dbError) {
+            // Ignorer les erreurs de DB
+        }
+        
+        return ['success' => false, 'error' => 'Exception: ' . $e->getMessage()];
     }
 }
-
 function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires) {
     global $db;
     
@@ -1415,6 +1640,35 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .numero-item .badge-invalid {
             color: #ef4444;
             font-size: 12px;
+        }
+        
+        /* WhatsApp results styling */
+        .whatsapp-result {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 8px;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 12px;
+        }
+        .whatsapp-result:last-child {
+            border-bottom: none;
+        }
+        .whatsapp-result .contact {
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .whatsapp-result .status-sent {
+            color: #10b981;
+            font-weight: 600;
+        }
+        .whatsapp-result .status-failed {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        .whatsapp-result .status-invalid {
+            color: #f59e0b;
+            font-weight: 600;
         }
         
         .flex { display: flex; }
@@ -2118,25 +2372,90 @@ function showDetails(envoi) {
         `;
     }
     
+    // === AFFICHAGE DE LA RÉPONSE API OCTOPUSH ===
     let apiResponseHtml = '';
     if (envoi.reponse_api) {
         try {
             const apiData = JSON.parse(envoi.reponse_api);
-            apiResponseHtml = `
-                <div>
-                    <div class="text-xs text-gray-500 font-semibold mb-1">Réponse API Octopush</div>
-                    <div class="bg-gray-50 rounded-lg p-3">
-                        <div class="grid grid-cols-2 gap-2 text-sm">
-                            <div><span class="text-gray-500">Ticket:</span> ${escapeHtml(apiData.sms_ticket || '-')}</div>
-                            <div><span class="text-gray-500">Contacts:</span> ${apiData.number_of_contacts || 0}</div>
-                            <div><span class="text-gray-500">Coût total:</span> ${apiData.total_cost ? apiData.total_cost + ' €' : '-'}</div>
-                            <div><span class="text-gray-500">SMS nécessaires:</span> ${apiData.number_of_sms_needed || 0}</div>
-                            <div><span class="text-gray-500">Crédit restant:</span> ${apiData.residual_credit ? apiData.residual_credit + ' €' : '-'}</div>
+            // Vérifier si c'est une réponse Octopush ou WhatsApp
+            if (apiData.sms_ticket !== undefined) {
+                // Réponse Octopush
+                apiResponseHtml = `
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold mb-1">Réponse API Octopush</div>
+                        <div class="bg-gray-50 rounded-lg p-3">
+                            <div class="grid grid-cols-2 gap-2 text-sm">
+                                <div><span class="text-gray-500">Ticket:</span> ${escapeHtml(apiData.sms_ticket || '-')}</div>
+                                <div><span class="text-gray-500">Contacts:</span> ${apiData.number_of_contacts || 0}</div>
+                                <div><span class="text-gray-500">Coût total:</span> ${apiData.total_cost ? apiData.total_cost + ' €' : '-'}</div>
+                                <div><span class="text-gray-500">SMS nécessaires:</span> ${apiData.number_of_sms_needed || 0}</div>
+                                <div><span class="text-gray-500">Crédit restant:</span> ${apiData.residual_credit ? apiData.residual_credit + ' €' : '-'}</div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
         } catch(e) {}
+    }
+    
+    // === AFFICHAGE DES DÉTAILS WHATSAPP (NOUVELLE STRUCTURE) ===
+    let whatsappDetailsHtml = '';
+    if (envoi.type_campagne === 'whatsapp' && envoi.reponse_api) {
+        try {
+            const apiData = JSON.parse(envoi.reponse_api);
+            if (apiData.ok === true && apiData.results) {
+                const successCount = apiData.results.filter(r => r.success === true).length;
+                const failCount = apiData.results.filter(r => r.success !== true).length;
+                
+                whatsappDetailsHtml = `
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold mb-1">Détails de l'envoi WhatsApp</div>
+                        <div class="bg-gray-50 rounded-lg p-3">
+                            <div class="grid grid-cols-2 gap-2 text-sm mb-2">
+                                <div><span class="text-gray-500">Session:</span> <span class="font-medium">${escapeHtml(apiData.session || '-')}</span></div>
+                                <div><span class="text-gray-500">Type:</span> <span class="font-medium">${escapeHtml(apiData.type || '-')}</span></div>
+                                <div><span class="text-gray-500">Total contacts:</span> <span class="font-medium">${apiData.total || 0}</span></div>
+                                <div><span class="text-gray-500">Valides:</span> <span class="font-medium text-green-600">${apiData.valid_count || 0}</span></div>
+                                <div><span class="text-gray-500">Invalides:</span> <span class="font-medium text-red-600">${apiData.invalid_count || 0}</span></div>
+                                <div><span class="text-gray-500">Succès:</span> <span class="font-medium text-green-600">${successCount}</span></div>
+                                <div><span class="text-gray-500">Échecs:</span> <span class="font-medium text-red-600">${failCount}</span></div>
+                            </div>
+                            ${apiData.results && apiData.results.length > 0 ? `
+                            <div class="border-t border-gray-200 pt-2 mt-2">
+                                <div class="text-xs text-gray-500 font-semibold mb-1">Résultats par contact (${apiData.results.length})</div>
+                                <div class="max-h-40 overflow-y-auto">
+                                    ${apiData.results.map(r => `
+                                        <div class="whatsapp-result">
+                                            <span class="contact">${escapeHtml(r.chatId || '-')}</span>
+                                            <span class="${r.success ? 'status-sent' : 'status-failed'}">
+                                                ${r.success ? '✅ ' + (r.status || 'envoyé') : '❌ ' + (r.error || 'échec')}
+                                            </span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${apiData.invalid_contacts && apiData.invalid_contacts.length > 0 ? `
+                            <div class="border-t border-gray-200 pt-2 mt-2">
+                                <div class="text-xs text-red-500 font-semibold mb-1">Contacts invalides</div>
+                                <div class="text-sm text-red-600">
+                                    ${apiData.invalid_contacts.map(c => escapeHtml(c)).join(', ')}
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${apiData.message ? `
+                            <div class="border-t border-gray-200 pt-2 mt-2">
+                                <div class="text-xs text-gray-500 font-semibold mb-1">Message API</div>
+                                <div class="text-sm text-gray-700">${escapeHtml(apiData.message)}</div>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+        } catch(e) {
+            console.log('Erreur parsing WhatsApp response:', e);
+        }
     }
     
     // Afficher la session Octopush si disponible
@@ -2200,6 +2519,7 @@ function showDetails(envoi) {
             </div>
             
             ${apiResponseHtml}
+            ${whatsappDetailsHtml}
             
             <div>
                 <div class="text-xs text-gray-500 font-semibold mb-1">Destinataires (${envoi.nb_destinataires || 0})</div>

@@ -1008,7 +1008,7 @@ $typeMessages = $db->select('type_message', [], '*', 'libelle_type ASC');
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
+            <div class="stat-icon green"><i class="fas fa-file-invoice-dollar"></i></div>
             <div>
                 <div class="stat-number"><?= count(array_filter($providers, function($p) { return $p['tarif'] > 0; })) ?></div>
                 <div class="stat-label">Opérateurs avec tarif</div>

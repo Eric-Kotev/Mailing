@@ -3461,7 +3461,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">Date d'inscription</div>
+            <div class="stat-label">Client depuis</div>
             <div class="stat-value"><?= formatDate($client['date_creation']) ?></div>
         </div>
         <div class="stat-card">
@@ -5821,7 +5821,7 @@ function openCreateOctopushConfigModal(configData = null) {
     const title = document.getElementById('octopushConfigModalTitle');
     
     if (configData) {
-        title.textContent = '✏️ Modifier la configuration Octopush';
+        title.textContent = ' Modifier la configuration Octopush';
         document.getElementById('octopush_config_id').value = configData.id_config || '';
         document.getElementById('octopush_nom_config').value = configData.nom_config || '';
         document.getElementById('octopush_api_login').value = configData.api_login || '';

@@ -7,44 +7,51 @@ $currentPage = $_GET['page'] ?? 'dashboard';
     id="sidebar"
     class="w-64 bg-gray-800 text-white flex flex-col sidebar-transition transition-all duration-300"
 >
+    <div class="flex justify-center mt-3">
+            <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <i class="fas fa-paper-plane text-xl"></i>
+            </div>
+    </div>
+
     <div class="p-4 border-b border-gray-700 flex-shrink-0">
         <h1 id="logoText" class="text-xl font-bold text-center transition-opacity duration-200"><?= APP_NAME ?></h1>
-        <p id="sousTitre" class="text-xs text-gray-400 text-center mt-1 transition-opacity duration-200">Menu administrateur</p>
+        <p id="sousTitre" class="text-xs text-gray-400 text-center mt-1 transition-opacity duration-200">Administrateur</p>
     </div>
     
     <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
         <!-- Dashboard Admin -->
         <a href="?page=admin/dashboard" 
            class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= $currentPage === 'admin/dashboard' ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
-            <i class="fas fa-chart-pie w-5"></i>
+            <i class="fas fa-tachometer-alt w-5 mr-3 text-blue-400"></i>
             <span class="menu-text">Dashboard Admin</span>
-        </a>
-        <!-- Parametrage du compte-->
-        <a href="index.php?page=parametres/compte"
-           class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= strpos($currentPage, 'parametres/compte') === 0 ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
-            <i class="fas fa-cog w-5"></i>
-            <span class="menu-text">Paramétrage</span>
         </a>
 
         <!-- Gestion des comptes -->
         <a href="?page=admin/users" 
            class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= strpos($currentPage, 'admin/users') === 0 ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
-            <i class="fas fa-users w-5"></i>
+            <i class="fas fa-id-badge w-5 mr-3 text-purple-400"></i>
             <span class="menu-text">Comptes</span>
         </a>
 
         <!-- Gestion des clients -->
         <a href="?page=admin/clients" 
            class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= strpos($currentPage, 'admin/clients') === 0 ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
-            <i class="fas fa-user-friends w-5"></i>
+            <i class="fas fa-users w-5 mr-3 text-green-400"></i>
             <span class="menu-text">Clients</span>
         </a>
 
         <!-- Gestion des opérateurs -->
         <a href="?page=admin/operators" 
            class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= $currentPage === 'admin/operators' ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
-            <i class="fas fa-server w-5"></i>
+            <i class="fas fa-network-wired w-5 mr-3 text-orange-400"></i>
             <span class="menu-text">Opérateurs</span>
+        </a>
+
+        <!-- Parametrage du compte-->
+        <a href="index.php?page=parametres/compte"
+           class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= strpos($currentPage, 'parametres/compte') === 0 ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
+            <i class="fas fa-cog w-5"></i>
+            <span class="menu-text">Paramétrage</span>
         </a>
 
         <hr class="border-gray-700 my-3">
