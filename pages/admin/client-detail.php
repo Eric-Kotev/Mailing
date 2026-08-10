@@ -4201,6 +4201,17 @@ function openProviderModal(providerId, providerName, providerType) {
 // ============================================
 
 async function openSessionModal(providerId, providerName, providerType) {
+    const container = document.getElementById('sessionContent');
+    const footer = document.getElementById('sessionFooter');
+    
+    // 🔥 Effacer le contenu avant d'ouvrir
+    container.innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
+            <p class="text-gray-500 mt-2">Chargement...</p>
+        </div>
+    `;
+    
     document.getElementById('sessionModalTitle').textContent = `Gestion des sessions - ${providerName}`;
     document.getElementById('sessionModalSubtitle').textContent = `Client: <?= htmlspecialchars($client['entreprise']) ?>`;
     document.getElementById('sessionProviderId').value = providerId;
@@ -4208,19 +4219,21 @@ async function openSessionModal(providerId, providerName, providerType) {
     
     document.getElementById('sessionModal').style.display = 'flex';
     
-    if (providerType.toLowerCase() === 'whatsapp') {
+    const typeLower = providerType.toLowerCase().trim();
+    
+    if (typeLower === 'whatsapp') {
         await loadWhatsAppSessions();
-    } else if (providerType.toLowerCase() === 'sms') {
+    } else if (typeLower === 'sms') {
         await loadSmsAppareils();
     } else {
-        document.getElementById('sessionContent').innerHTML = `
+        container.innerHTML = `
             <div class="text-center py-8">
                 <i class="fas fa-info-circle text-3xl text-amber-500"></i>
                 <p class="text-gray-600 mt-2">Type d'opérateur non supporté pour la création de session</p>
                 <p class="text-sm text-gray-500 mt-1">Type actuel: ${escapeHtml(providerType)}</p>
             </div>
         `;
-        document.getElementById('sessionFooter').innerHTML = `
+        footer.innerHTML = `
             <button onclick="closeSessionModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
                 Fermer
             </button>
@@ -4251,6 +4264,14 @@ async function loadSmsAppareils() {
     const container = document.getElementById('sessionContent');
     const footer = document.getElementById('sessionFooter');
     
+    // 🔥 SUPPRIME LE CONTENU PRÉCÉDENT - C'EST LE POINT CRUCIAL !
+    container.innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
+            <p class="text-gray-500 mt-2">Chargement des appareils SMS...</p>
+        </div>
+    `;
+    
     try {
         const formData = new FormData();
         formData.append('action_get_sms_appareils', '1');
@@ -4270,16 +4291,19 @@ async function loadSmsAppareils() {
         if (result.success) {
             let html = `
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Appareils SMS disponibles</label>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium text-gray-700">📱 Appareils SMS disponibles</label>
+                        <span class="text-xs text-gray-400">${result.appareils.length} appareil(s)</span>
+                    </div>
                     <div class="space-y-2 max-h-60 overflow-y-auto">
             `;
             
             if (result.appareils.length === 0) {
                 html += `
-                    <div class="text-center text-gray-500 py-4">
-                        <i class="fas fa-info-circle mb-2"></i>
-                        <p>Aucun appareil configuré</p>
-                        <p class="text-sm mt-1">Ajoutez un nouvel appareil ci-dessous</p>
+                    <div class="text-center text-gray-500 py-6 bg-gray-50 rounded-lg">
+                        <i class="fas fa-mobile-alt text-4xl mb-3 text-gray-300"></i>
+                        <p>Aucun appareil SMS configuré</p>
+                        <p class="text-sm mt-1">Connectez-vous à l'API SMS pour ajouter un appareil</p>
                     </div>
                 `;
             } else {
@@ -4291,11 +4315,11 @@ async function loadSmsAppareils() {
                     html += `
                         <div class="device-item ${isActive ? 'active' : ''}" 
                              onclick="activateSmsAppareil('${appareil.id_appareil}')">
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-3 flex-1">
                                 <div class="device-icon ${isActive ? '' : 'inactive'}">
                                     <i class="fas fa-mobile-alt"></i>
                                 </div>
-                                <div>
+                                <div class="flex-1">
                                     <p class="font-medium text-gray-800">${escapedName}</p>
                                     <p class="text-xs text-gray-500">ID: ${escapeHtml(appareil.device_id)}</p>
                                     <p class="text-xs text-gray-400">Créé le ${appareil.created_at}</p>
@@ -4307,7 +4331,8 @@ async function loadSmsAppareils() {
                                 </span>
                                 <button data-appareil-id="${appareil.id_appareil}" 
                                         data-appareil-name="${escapedName}"
-                                        class="btn-sm btn-sm-danger delete-device-btn">
+                                        class="btn-sm btn-sm-danger delete-device-btn"
+                                        onclick="event.stopPropagation(); deleteSmsAppareil('${appareil.id_appareil}', '${escapedName}')">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -4337,20 +4362,14 @@ async function loadSmsAppareils() {
                 </button>
             `;
             
-            document.querySelectorAll('.delete-device-btn').forEach(btn => {
-                btn.addEventListener('click', function(event) {
-                    event.stopPropagation();
-                    const appareilId = this.getAttribute('data-appareil-id');
-                    const appareilName = this.getAttribute('data-appareil-name') || 'cet appareil';
-                    deleteSmsAppareil(appareilId, appareilName);
-                });
-            });
-            
         } else {
             container.innerHTML = `
                 <div class="text-center py-8">
                     <i class="fas fa-exclamation-circle text-3xl text-red-500"></i>
                     <p class="text-gray-600 mt-2">Erreur: ${escapeHtml(result.error || 'Impossible de charger les appareils')}</p>
+                    <button onclick="loadSmsAppareils()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">
+                        <i class="fas fa-redo"></i> Réessayer
+                    </button>
                 </div>
             `;
         }
@@ -4360,6 +4379,9 @@ async function loadSmsAppareils() {
             <div class="text-center py-8">
                 <i class="fas fa-exclamation-circle text-3xl text-red-500"></i>
                 <p class="text-gray-600 mt-2">Erreur réseau: ${escapeHtml(error.message)}</p>
+                <button onclick="loadSmsAppareils()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">
+                    <i class="fas fa-redo"></i> Réessayer
+                </button>
             </div>
         `;
     }

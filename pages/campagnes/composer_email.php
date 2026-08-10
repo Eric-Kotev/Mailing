@@ -318,8 +318,8 @@ if ($isAjaxUpload) {
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
     curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-    curl_setopt($ch, CURLOPT_VERBOSE, false); // le mode verbose écrit sur stderr, inutile en prod
-
+    curl_setopt($ch, CURLOPT_VERBOSE, false); 
+    
     // Créer le fichier CURLFile pour l'upload multipart
     $fileInfo = new CURLFile($filePath, mime_content_type($filePath), $file['name']);
     $postFields = ['file' => $fileInfo];
