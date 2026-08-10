@@ -5405,7 +5405,7 @@ async function loadWhatsAppSessions() {
                         </button>
                     </div>
                     <p class="text-xs text-gray-500 mt-2">
-                        <i class="fas fa-info-circle"></i> La session sera automatiquement créée sur le serveur Waha.
+                        <i class="fas fa-info-circle"></i> N'utilisez pas d'accent pour le nom de la session.
                     </p>
                 </div>
             `;
