@@ -4203,8 +4203,25 @@ function openProviderModal(providerId, providerName, providerType) {
 async function openSessionModal(providerId, providerName, providerType) {
     const container = document.getElementById('sessionContent');
     const footer = document.getElementById('sessionFooter');
+    const modal = document.getElementById('sessionModal');
+    const title = document.getElementById('sessionModalTitle');
+    const subtitle = document.getElementById('sessionModalSubtitle');
     
-    // 🔥 Effacer le contenu avant d'ouvrir
+    // Vérifier que tous les éléments existent
+    if (!container || !footer || !modal || !title || !subtitle) {
+        console.error('Éléments de la modale manquants');
+        showToast('Erreur: éléments de la modale manquants', 'error');
+        return;
+    }
+    
+    // VIDER COMPLÈTEMENT AVANT TOUT
+    container.replaceChildren();
+    container.innerHTML = '';
+    
+    // Forcer le reflow du DOM
+    void container.offsetHeight;
+    
+    // Maintenant afficher le chargement
     container.innerHTML = `
         <div class="text-center py-8">
             <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
@@ -4212,12 +4229,12 @@ async function openSessionModal(providerId, providerName, providerType) {
         </div>
     `;
     
-    document.getElementById('sessionModalTitle').textContent = `Gestion des sessions - ${providerName}`;
-    document.getElementById('sessionModalSubtitle').textContent = `Client: <?= htmlspecialchars($client['entreprise']) ?>`;
+    title.textContent = `Gestion des sessions - ${providerName}`;
+    subtitle.textContent = `Client: <?= htmlspecialchars($client['entreprise']) ?>`;
     document.getElementById('sessionProviderId').value = providerId;
     document.getElementById('sessionProviderType').value = providerType;
     
-    document.getElementById('sessionModal').style.display = 'flex';
+    modal.style.display = 'flex';
     
     const typeLower = providerType.toLowerCase().trim();
     
@@ -4242,18 +4259,37 @@ async function openSessionModal(providerId, providerName, providerType) {
 }
 
 function closeSessionModal() {
-    document.getElementById('sessionModal').style.display = 'none';
-    document.getElementById('sessionContent').innerHTML = `
-        <div class="text-center py-8">
-            <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
-            <p class="text-gray-500 mt-2">Chargement...</p>
-        </div>
-    `;
-    document.getElementById('sessionFooter').innerHTML = `
-        <button onclick="closeSessionModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-            Fermer
-        </button>
-    `;
+    const modal = document.getElementById('sessionModal');
+    const container = document.getElementById('sessionContent');
+    const footer = document.getElementById('sessionFooter');
+    
+    // Cacher la modale
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Réinitialiser le contenu avec vérification
+    if (container) {
+        container.replaceChildren(); // Supprime TOUT
+        container.innerHTML = `
+            <div class="text-center py-8">
+                <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
+                <p class="text-gray-500 mt-2">Chargement...</p>
+            </div>
+        `;
+    }
+    
+    // Réinitialiser le footer avec vérification
+    if (footer) {
+        footer.innerHTML = `
+            <button onclick="closeSessionModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                Fermer
+            </button>
+        `;
+    }
+    
+    // Arrêter le polling si actif
+    stopStatusPolling();
 }
 
 // ============================================
@@ -4264,7 +4300,20 @@ async function loadSmsAppareils() {
     const container = document.getElementById('sessionContent');
     const footer = document.getElementById('sessionFooter');
     
-    // 🔥 SUPPRIME LE CONTENU PRÉCÉDENT - C'EST LE POINT CRUCIAL !
+    // Vérifier que les éléments existent
+    if (!container || !footer) {
+        console.error('Éléments de la modale manquants pour loadSmsAppareils');
+        return;
+    }
+    
+    // VIDAGE COMPLET
+    container.replaceChildren();
+    container.innerHTML = '';
+    
+    // Forcer le reflow
+    void container.offsetHeight;
+    
+    // Afficher le chargement
     container.innerHTML = `
         <div class="text-center py-8">
             <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
@@ -5182,7 +5231,10 @@ function stopWaitingTimer() {
         clearInterval(waitingInterval);
         waitingInterval = null;
     }
-    document.getElementById('waitingProgress').style.display = 'none';
+    const waitingProgress = document.getElementById('waitingProgress');
+    if (waitingProgress) {
+        waitingProgress.style.display = 'none';
+    }
 }
 
 async function checkSessionStatusAfterWait(sessionName) {
@@ -5340,6 +5392,27 @@ function playNotificationSound() {
 async function loadWhatsAppSessions() {
     const container = document.getElementById('sessionContent');
     const footer = document.getElementById('sessionFooter');
+    
+    // Vérifier que les éléments existent
+    if (!container || !footer) {
+        console.error('Éléments de la modale manquants pour loadWhatsAppSessions');
+        return;
+    }
+    
+    // VIDAGE COMPLET
+    container.replaceChildren();
+    container.innerHTML = '';
+    
+    // Forcer le reflow
+    void container.offsetHeight;
+    
+    // Afficher le chargement
+    container.innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-green-600"></i>
+            <p class="text-gray-500 mt-2">Chargement des sessions WhatsApp...</p>
+        </div>
+    `;
     
     try {
         const formData = new FormData();
