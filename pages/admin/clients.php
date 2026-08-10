@@ -543,7 +543,7 @@ function formatDate($date) {
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone</label>
-                        <input type="text" name="telephone" id="add_telephone" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500" placeholder="Utiliser ce genre de format 261340000000">
+                        <input type="text" name="telephone" id="add_telephone" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500" placeholder="Utilisez ce genre de format 261340000000">
                     </div>
                     
                     <div class="col-span-2">
