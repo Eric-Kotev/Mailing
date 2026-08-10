@@ -287,7 +287,7 @@ if ($isAjaxUpload) {
     }
 
     // Créer le dossier d'upload si nécessaire
-    $uploadDir = 'uploads/pieces_jointes/';
+    $uploadDir =  __DIR__ . '/uploads/pieces_jointes/';
     if (!is_dir($uploadDir)) {
         if (!@mkdir($uploadDir, 0777, true) && !is_dir($uploadDir)) {
             error_log("=== ERREUR: impossible de créer le dossier $uploadDir (droits d'écriture ?) ===");
