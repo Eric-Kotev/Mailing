@@ -40,6 +40,7 @@ $adminPages = [
     'admin/custom_fields',
     'admin/dashboard',
     'admin/operators',
+    'admin/operator_details',
     'admin/clients',
     'admin/client-detail',
     'admin/comptes',

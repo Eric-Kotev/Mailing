@@ -1944,6 +1944,31 @@ foreach ($allProviders as $provider) {
 }
 
 // ============================================
+// STATISTIQUES
+// ============================================
+
+// Compter le nombre d'opérateurs associés
+$nombreOperateurs = count($associations);
+
+// Compter le nombre d'opérateurs actifs
+$nombreOperateursActifs = 0;
+foreach ($associations as $assoc) {
+    if ($assoc['est_actif']) {
+        $nombreOperateursActifs++;
+    }
+}
+
+// Compter les opérateurs par canal
+$operateursParCanal = [];
+foreach ($associations as $assoc) {
+    $canal = $assoc['canal'];
+    if (!isset($operateursParCanal[$canal])) {
+        $operateursParCanal[$canal] = 0;
+    }
+    $operateursParCanal[$canal]++;
+}
+
+// ============================================
 // TRAITEMENT DES AUTRES ACTIONS
 // ============================================
 
@@ -2241,6 +2266,12 @@ $initials = getInitials($client['prenom'], $client['nom']);
             font-weight: 700;
             margin-top: 4px;
             color: #1f2937;
+        }
+        
+        .stat-card .stat-value .sub-value {
+            font-size: 14px;
+            font-weight: 400;
+            color: #6b7280;
         }
         
         .edit-icon {
@@ -2837,6 +2868,133 @@ $initials = getInitials($client['prenom'], $client['nom']);
         .device-item.email-active {
             border-color: #8b5cf6;
             background: #faf5ff;
+        }
+
+        /* Stats grid styles */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            padding: 16px 20px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 12px;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #f1f5f9;
+        }
+        
+        .stat-item .stat-number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        
+        .stat-item .stat-label {
+            font-size: 16px;
+            font-weight: 600;
+            color: #6b7280;
+            letter-spacing: 0.03em;
+            margin-top: 4px;
+        }
+        
+        .stat-item .stat-detail {
+            font-size: 13px;
+            color: #4b5563;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #f1f5f9;
+        }
+        
+        .stat-item .stat-detail .canal-item {
+            display: inline-block;
+            margin: 2px 4px;
+            padding: 2px 8px;
+            background: #f1f5f9;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+        
+        .stat-item .stat-detail .canal-item.whatsapp {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .stat-item .stat-detail .canal-item.sms {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .stat-item .stat-detail .canal-item.email {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        /* Styles pour le tableau des opérateurs */
+        .info-card table {
+            border-collapse: collapse;
+        }
+
+        .info-card table thead th {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .info-card table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .info-card table .provider-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .info-card table .provider-icon.whatsapp {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .info-card table .provider-icon.sms {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .info-card table .provider-icon.email {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .info-card table .provider-icon.default {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+
+        /* Responsive pour le tableau sur mobile */
+        @media (max-width: 768px) {
+            .info-card table {
+                font-size: 13px;
+            }
+            .info-card table th,
+            .info-card table td {
+                padding: 10px 8px;
+            }
+            .info-card table .btn-sm {
+                padding: 4px 8px;
+                font-size: 11px;
+            }
         }
     </style>
 </head>
@@ -3437,6 +3595,9 @@ $initials = getInitials($client['prenom'], $client['nom']);
                 <p class="text-gray-500 text-sm">
                     <?= htmlspecialchars($client['entreprise']) ?>
                 </p>
+                <p class="text-gray-500 text-sm">
+                    <?= htmlspecialchars($client['user']) ?>
+                </p>
             </div>
         </div>
         
@@ -3453,20 +3614,30 @@ $initials = getInitials($client['prenom'], $client['nom']);
         </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div class="stat-card">
-            <div class="stat-label">Crédit disponible</div>
-            <div class="stat-value">
-                <span id="creditDisplay"><?= number_format($client['credits_total'] ?? 0, 2) ?></span> €
-            </div>
+    <!-- ============================================ -->
+    <!-- STATISTIQUES DU CLIENT -->
+    <!-- ============================================ -->
+    <div class="stats-grid">
+        <div class="stat-item" id="creditStatItem">
+            <div class="stat-label">Solde crédit</div>
+            <div class="stat-number" id="creditStatDisplay"><?= number_format($client['credits_total'] ?? 0, 2) ?> €</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-item">
+            <div class="stat-label">Opérateurs associés</div>
+            <div class="stat-number"><?= $nombreOperateurs ?></div>
+            <?php if ($nombreOperateurs > 0): ?>
+                <div class="stat-detail">
+                    <span class="text-green-600"><?= $nombreOperateursActifs ?> actif<?= $nombreOperateursActifs > 1 ? 's' : '' ?></span>
+                    <?php if ($nombreOperateursActifs < $nombreOperateurs): ?>
+                        <span class="text-red-500">| <?= $nombreOperateurs - $nombreOperateursActifs ?> inactif<?= $nombreOperateurs - $nombreOperateursActifs > 1 ? 's' : '' ?></span>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        
+        <div class="stat-item">
             <div class="stat-label">Client depuis</div>
-            <div class="stat-value"><?= formatDate($client['date_creation']) ?></div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">Email</div>
-            <div class="stat-value text-base truncate"><?= htmlspecialchars($client['user']) ?></div>
+            <div class="stat-number"><?= formatDate($client['date_creation']) ?></div>
         </div>
     </div>
 
@@ -3582,63 +3753,87 @@ $initials = getInitials($client['prenom'], $client['nom']);
                     <p class="text-sm mt-1">Cliquez sur "Associer un opérateur" pour en ajouter un</p>
                 </div>
             <?php else: ?>
-                <div class="space-y-2" id="providersList">
-                    <?php foreach ($associations as $assoc): ?>
-                        <?php
-                        $iconClass = 'default';
-                        $canalLower = strtolower($assoc['canal']);
-                        if (in_array($canalLower, ['whatsapp', 'sms', 'email'])) {
-                            $iconClass = $canalLower;
-                        }
-                        ?>
-                        <div class="provider-item" id="provider_<?= $assoc['id_client_provider'] ?>">
-                            <div class="flex items-center gap-3 flex-1">
-                                <div class="provider-icon <?= $iconClass ?>">
-                                    <i class="fas <?= $iconClass === 'whatsapp' ? 'fa-mobile-alt' : ($iconClass === 'sms' ? 'fa-sms' : ($iconClass === 'email' ? 'fa-envelope' : 'fa-plug')) ?>"></i>
-                                </div>
-                                <div class="flex-1">
-                                    <div class="flex items-center gap-2">
-                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($assoc['nom_providers']) ?></span>
-                                        <span class="text-xs text-gray-400">|</span>
-                                        <span class="text-xs text-gray-500"><?= htmlspecialchars($assoc['description']) ?></span>
-                                    </div>
-                                    <div class="flex items-center gap-3 mt-1">
-                                        <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-gray-50 border-b border-gray-200">
+                                <th class="text-left py-3 px-4 font-semibold text-gray-600">Opérateur</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-600">Canal</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-600">Tarif</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-600">Statut</th>
+                                <th class="text-center py-3 px-4 font-semibold text-gray-600">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="providersList">
+                            <?php foreach ($associations as $assoc): ?>
+                                <?php
+                                $iconClass = 'default';
+                                $canalLower = strtolower($assoc['canal']);
+                                if (in_array($canalLower, ['whatsapp', 'sms', 'email'])) {
+                                    $iconClass = $canalLower;
+                                }
+                                ?>
+                                <tr class="border-b border-gray-100 hover:bg-gray-50 transition" id="provider_<?= $assoc['id_client_provider'] ?>">
+                                    <td class="py-3 px-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="provider-icon <?= $iconClass ?>">
+                                                <i class="fas <?= $iconClass === 'whatsapp' ? 'fa-mobile-alt' : ($iconClass === 'sms' ? 'fa-sms' : ($iconClass === 'email' ? 'fa-envelope' : 'fa-plug')) ?>"></i>
+                                            </div>
+                                            <div>
+                                                <div class="font-medium text-gray-800"><?= htmlspecialchars($assoc['nom_providers']) ?></div>
+                                                <div class="text-xs text-gray-500"><?= htmlspecialchars($assoc['description']) ?></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 px-4">
+                                        <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
                                             <?= htmlspecialchars($assoc['canal']) ?>
                                         </span>
-                                        <span class="text-xs text-gray-400">
-                                            Tarif: <?= number_format($assoc['tarif'], 2) ?> €
+                                    </td>
+                                    <td class="py-3 px-4 font-medium text-gray-700">
+                                        <?= number_format($assoc['tarif'], 2) ?> €
+                                    </td>
+                                    <td class="py-3 px-4">
+                                        <span class="text-xs font-medium px-2 py-1 rounded-full <?= $assoc['est_actif'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' ?>">
+                                            <i class="fas <?= $assoc['est_actif'] ? 'fa-check-circle' : 'fa-circle' ?>"></i>
+                                            <?= $assoc['est_actif'] ? 'Actif' : 'Inactif' ?>
                                         </span>
-                                        <span class="text-xs text-gray-400">
-                                            Associé le: <?= date('d/m/Y', strtotime($assoc['date_association'])) ?>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs font-medium px-2 py-1 rounded-full <?= $assoc['est_actif'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' ?>">
-                                    <i class="fas <?= $assoc['est_actif'] ? 'fa-check-circle' : 'fa-circle' ?>"></i>
-                                    <?= $assoc['est_actif'] ? 'Actif' : 'Inactif' ?>
-                                </span>
-                                <button onclick="openProviderModal(<?= $assoc['id_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>', '<?= htmlspecialchars($assoc['canal']) ?>')" 
-                                        class="btn-sm btn-sm-info">
-                                    <i class="fas fa-cog"></i>
-                                    Gérer
-                                </button>
-                                <button onclick="toggleProviderStatus(<?= $assoc['id_client_provider'] ?>, <?= $assoc['est_actif'] ? 'false' : 'true' ?>)" 
-                                        class="btn-sm <?= $assoc['est_actif'] ? 'btn-sm-warning' : 'btn-sm-success' ?>">
-                                    <i class="fas <?= $assoc['est_actif'] ? 'fa-pause' : 'fa-play' ?>"></i>
-                                    <?= $assoc['est_actif'] ? 'Désactiver' : 'Activer' ?>
-                                </button>
-                                <button onclick="openDetachConfirm(<?= $assoc['id_client_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>')" 
-                                        class="btn-sm btn-sm-danger">
-                                    <i class="fas fa-unlink"></i>
-                                </button>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+                                    </td>
+                                    <td class="py-3 px-4">
+                                        <div class="flex items-center justify-center gap-2">
+                                            <button onclick="openProviderModal(<?= $assoc['id_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>', '<?= htmlspecialchars($assoc['canal']) ?>')" 
+                                                    class="btn-sm btn-sm-info" title="Gérer">
+                                                <i class="fas fa-cog"></i>
+                                            </button>
+                                            <button onclick="toggleProviderStatus(<?= $assoc['id_client_provider'] ?>, <?= $assoc['est_actif'] ? 'false' : 'true' ?>)" 
+                                                    class="btn-sm <?= $assoc['est_actif'] ? 'btn-sm-warning' : 'btn-sm-success' ?>" title="<?= $assoc['est_actif'] ? 'Désactiver' : 'Activer' ?>">
+                                                <i class="fas <?= $assoc['est_actif'] ? 'fa-pause' : 'fa-play' ?>"></i>
+                                            </button>
+                                            <button onclick="openDetachConfirm(<?= $assoc['id_client_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>')" 
+                                                    class="btn-sm btn-sm-danger" title="Dissocier">
+                                                <i class="fas fa-unlink"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
             <?php endif; ?>
+        </div>
+    </div>
+
+    <div>
+        <div class="info-card">
+            <div class="info-card-header">
+                <span class="title"><i class="fas fa-link mr-2 text-gray-400"></i>Historique des transactions</span>
+            </div>
+
+            <div class="p-4">
+                (Fonctionnalité à implanter)
+            </div>
+
         </div>
     </div>
 
@@ -3788,9 +3983,24 @@ async function confirmRecharge() {
         
         if (result.success) {
             showToast('Crédit rechargé avec succès', 'success');
+            
+            // Mettre à jour le crédit dans les statistiques
+            const creditStatDisplay = document.getElementById('creditStatDisplay');
+            if (creditStatDisplay) {
+                creditStatDisplay.textContent = result.credit + ' €';
+            }
+            
+            // Mettre à jour le crédit dans la modale (solde actuel)
+            const modalCreditDisplay = document.querySelector('#rechargeModal strong');
+            if (modalCreditDisplay) {
+                modalCreditDisplay.textContent = result.credit + ' €';
+            }
+            
+            // Mettre à jour le crédit dans l'ancien affichage (si présent)
             document.querySelectorAll('#creditDisplay').forEach(el => {
                 el.textContent = result.credit;
             });
+            
             closeRechargeModal();
         } else {
             showToast(result.error || 'Erreur lors du rechargement', 'error');
@@ -3878,7 +4088,7 @@ async function saveInfo() {
 }
 
 // ============================================
-// GESTION DES OPÉRATEURS ASSOCIÉS
+// GESTION DES OPÉRATEURS ASSOCIÉS (PARTIE CRITIQUE CORRIGÉE)
 // ============================================
 
 function openAssociateModal() {
@@ -3921,12 +4131,13 @@ async function confirmAssociate() {
         });
         
         const text = await response.text();
+        console.log('Réponse brute du serveur:', text);
         
         let result;
         try {
             result = JSON.parse(text);
         } catch (e) {
-            console.error('Réponse brute:', text);
+            console.error('Erreur de parsing JSON:', e);
             throw new Error('La réponse du serveur n\'est pas du JSON valide');
         }
         
@@ -3935,11 +4146,54 @@ async function confirmAssociate() {
             closeAssociateModal();
             
             const assoc = result.association;
-            const providersList = document.getElementById('providersList');
             
-            const emptyDiv = providersList.querySelector('.empty-providers');
+            // 🔥 CORRECTION : S'assurer que l'ID est un nombre
+            let clientProviderId = assoc.id_client_provider;
+            
+            // Si c'est un tableau, prendre le premier élément
+            if (Array.isArray(clientProviderId)) {
+                clientProviderId = clientProviderId[0];
+            }
+            // Si c'est un objet, essayer d'extraire l'ID
+            if (typeof clientProviderId === 'object' && clientProviderId !== null) {
+                clientProviderId = clientProviderId.id_client_provider || clientProviderId.id || Object.values(clientProviderId)[0];
+            }
+            // Convertir en nombre
+            clientProviderId = parseInt(clientProviderId);
+            
+            if (!clientProviderId || isNaN(clientProviderId)) {
+                console.error('ID client_provider invalide:', assoc.id_client_provider);
+                showToast('Erreur: ID d\'association invalide reçu du serveur', 'error');
+                return;
+            }
+            
+            console.log('✅ ID client_provider extrait:', clientProviderId);
+            
+            let providersList = document.getElementById('providersList');
+            
+            // Vérifier si on est en mode tableau ou en mode liste
+            const emptyDiv = document.querySelector('.empty-providers');
             if (emptyDiv) {
-                emptyDiv.remove();
+                const infoCard = emptyDiv.closest('.info-card');
+                const pDiv = infoCard.querySelector('.p-4');
+                pDiv.innerHTML = `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-200">
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-600">Opérateur</th>
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-600">Canal</th>
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-600">Tarif</th>
+                                    <th class="text-left py-3 px-4 font-semibold text-gray-600">Statut</th>
+                                    <th class="text-center py-3 px-4 font-semibold text-gray-600">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="providersList">
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                providersList = document.getElementById('providersList');
             }
             
             const canalLower = (assoc.canal || '').toLowerCase();
@@ -3961,60 +4215,71 @@ async function confirmAssociate() {
             const statusIcon = isActive ? 'fa-check-circle' : 'fa-circle';
             const statusLabel = isActive ? 'Actif' : 'Inactif';
             const toggleAction = isActive ? 'false' : 'true';
-            const toggleLabel = isActive ? 'Désactiver' : 'Activer';
             const toggleClass = isActive ? 'btn-sm-warning' : 'btn-sm-success';
             const toggleIcon = isActive ? 'fa-pause' : 'fa-play';
+            const toggleLabel = isActive ? 'Désactiver' : 'Activer';
             
+            // 🔥 CORRECTION : Utiliser clientProviderId qui est maintenant un nombre valide
             const html = `
-                <div class="provider-item" id="provider_${assoc.id_client_provider}">
-                    <div class="flex items-center gap-3 flex-1">
-                        <div class="provider-icon ${iconClass}">
-                            <i class="fas ${icon}"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2">
-                                <span class="font-medium text-gray-800">${escapeHtml(assoc.nom_providers || '')}</span>
-                                <span class="text-xs text-gray-400">|</span>
-                                <span class="text-xs text-gray-500">${escapeHtml(assoc.description || '')}</span>
+                <tr class="border-b border-gray-100 hover:bg-gray-50 transition" id="provider_${clientProviderId}">
+                    <td class="py-3 px-4">
+                        <div class="flex items-center gap-3">
+                            <div class="provider-icon ${iconClass}">
+                                <i class="fas ${icon}"></i>
                             </div>
-                            <div class="flex items-center gap-3 mt-1">
-                                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                    ${escapeHtml(assoc.canal || 'Inconnu')}
-                                </span>
-                                <span class="text-xs text-gray-400">
-                                    Tarif: ${(parseFloat(assoc.tarif) || 0).toFixed(2)} €
-                                </span>
-                                <span class="text-xs text-gray-400">
-                                    Associé le: ${assoc.date_association || ''}
-                                </span>
+                            <div>
+                                <div class="font-medium text-gray-800">${escapeHtml(assoc.nom_providers || '')}</div>
+                                <div class="text-xs text-gray-500">${escapeHtml(assoc.description || '')}</div>
                             </div>
                         </div>
-                    </div>
-                    <div class="flex items-center gap-2">
+                    </td>
+                    <td class="py-3 px-4">
+                        <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                            ${escapeHtml(assoc.canal || 'Inconnu')}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 font-medium text-gray-700">
+                        ${(parseFloat(assoc.tarif) || 0).toFixed(2)} €
+                    </td>
+                    <td class="py-3 px-4">
                         <span class="text-xs font-medium px-2 py-1 rounded-full ${statusClass}">
                             <i class="fas ${statusIcon}"></i>
                             ${statusLabel}
                         </span>
-                        <button onclick="openProviderModal(${assoc.id_provider}, '${escapeHtml(assoc.nom_providers || '')}', '${escapeHtml(assoc.canal || '')}')" 
-                                class="btn-sm btn-sm-info">
-                            <i class="fas fa-cog"></i>
-                            Gérer
-                        </button>
-                        <button onclick="toggleProviderStatus(${assoc.id_client_provider}, ${toggleAction})" 
-                                class="btn-sm ${toggleClass}">
-                            <i class="fas ${toggleIcon}"></i>
-                            ${toggleLabel}
-                        </button>
-                        <button onclick="openDetachConfirm(${assoc.id_client_provider}, '${escapeHtml(assoc.nom_providers || '')}')" 
-                                class="btn-sm btn-sm-danger">
-                            <i class="fas fa-unlink"></i>
-                        </button>
-                    </div>
-                </div>
+                    </td>
+                    <td class="py-3 px-4">
+                        <div class="flex items-center justify-center gap-2">
+                            <button onclick="openProviderModal(${assoc.id_provider}, '${escapeHtml(assoc.nom_providers || '')}', '${escapeHtml(assoc.canal || '')}')" 
+                                    class="btn-sm btn-sm-info" title="Gérer">
+                                <i class="fas fa-cog"></i>
+                            </button>
+                            <button onclick="toggleProviderStatus(${clientProviderId}, ${toggleAction})" 
+                                    class="btn-sm ${toggleClass}" title="${toggleLabel}">
+                                <i class="fas ${toggleIcon}"></i>
+                            </button>
+                            <button onclick="openDetachConfirm(${clientProviderId}, '${escapeHtml(assoc.nom_providers || '')}')" 
+                                    class="btn-sm btn-sm-danger" title="Dissocier">
+                                <i class="fas fa-unlink"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
             `;
             
-            providersList.insertAdjacentHTML('beforeend', html);
+            if (providersList) {
+                providersList.insertAdjacentHTML('beforeend', html);
+                console.log('✅ Ligne ajoutée avec ID:', clientProviderId);
+                
+                // 🔥 VÉRIFICATION : Tester si l'élément existe bien
+                const newRow = document.getElementById(`provider_${clientProviderId}`);
+                if (newRow) {
+                    console.log('✅ Élément trouvé dans le DOM');
+                } else {
+                    console.error('❌ Élément non trouvé dans le DOM');
+                }
+            }
             
+            // Mettre à jour le select des opérateurs disponibles
             const select = document.getElementById('providerSelect');
             if (select) {
                 const option = select.querySelector(`option[value="${providerId}"]`);
@@ -4026,6 +4291,10 @@ async function confirmAssociate() {
                     document.getElementById('associateBtn').disabled = true;
                 }
             }
+            
+            // Mettre à jour les statistiques
+            updateProviderStats();
+            
         } else {
             showToast(result.error || 'Erreur lors de l\'association', 'error');
         }
@@ -4035,6 +4304,50 @@ async function confirmAssociate() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalText;
+    }
+}
+
+function updateProviderStats() {
+    // Récupérer le nombre d'opérateurs dans le tableau
+    const providersList = document.getElementById('providersList');
+    if (!providersList) {
+        const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
+        if (statOperateurs) {
+            statOperateurs.textContent = '0';
+        }
+        const statDetail = document.querySelector('.stat-item:nth-child(2) .stat-detail');
+        if (statDetail) {
+            statDetail.innerHTML = '';
+        }
+        return;
+    }
+    
+    const rows = providersList.querySelectorAll('tr');
+    const total = rows.length;
+    
+    // Compter les opérateurs actifs
+    let active = 0;
+    rows.forEach(row => {
+        const statusSpan = row.querySelector('td:nth-child(4) .text-xs');
+        if (statusSpan && statusSpan.textContent.trim() === 'Actif') {
+            active++;
+        }
+    });
+    
+    // Mettre à jour l'affichage des statistiques
+    const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
+    if (statOperateurs) {
+        statOperateurs.textContent = total;
+    }
+    
+    const statDetail = document.querySelector('.stat-item:nth-child(2) .stat-detail');
+    if (statDetail) {
+        const inactive = total - active;
+        let html = `<span class="text-green-600">${active} actif${active > 1 ? 's' : ''}</span>`;
+        if (inactive > 0) {
+            html += ` <span class="text-red-500">| ${inactive} inactif${inactive > 1 ? 's' : ''}</span>`;
+        }
+        statDetail.innerHTML = html;
     }
 }
 
@@ -4085,24 +4398,85 @@ async function confirmDetach() {
             showToast(result.message, 'success');
             closeDetachConfirmModal();
             
-            const element = document.getElementById(`provider_${idClientProvider}`);
-            if (element) {
-                element.remove();
+            // Récupérer les informations de l'opérateur avant de supprimer la ligne
+            const row = document.getElementById(`provider_${idClientProvider}`);
+            let providerId = null;
+            let providerName = '';
+            let providerCanal = '';
+            let providerDescription = '';
+            
+            if (row) {
+                // Extraire les informations de la ligne
+                const nameCell = row.querySelector('td:nth-child(1) .font-medium');
+                if (nameCell) {
+                    providerName = nameCell.textContent.trim();
+                }
+                const descCell = row.querySelector('td:nth-child(1) .text-xs.text-gray-500');
+                if (descCell) {
+                    providerDescription = descCell.textContent.trim();
+                }
+                const canalCell = row.querySelector('td:nth-child(2) .text-xs');
+                if (canalCell) {
+                    providerCanal = canalCell.textContent.trim();
+                }
+                
+                // Récupérer l'ID du provider depuis l'attribut onclick du bouton "Gérer"
+                const manageBtn = row.querySelector('.btn-sm-info');
+                if (manageBtn) {
+                    const onclickAttr = manageBtn.getAttribute('onclick');
+                    if (onclickAttr) {
+                        const match = onclickAttr.match(/openProviderModal\((\d+),/);
+                        if (match) {
+                            providerId = match[1];
+                        }
+                    }
+                }
+                
+                // Supprimer la ligne
+                row.remove();
             }
             
+            // Ajouter l'opérateur dans le select des disponibles
+            if (providerId && providerName) {
+                const select = document.getElementById('providerSelect');
+                if (select) {
+                    // Vérifier si l'opérateur n'est pas déjà dans la liste
+                    const existingOption = select.querySelector(`option[value="${providerId}"]`);
+                    if (!existingOption) {
+                        const option = document.createElement('option');
+                        option.value = providerId;
+                        const canalDisplay = providerCanal || 'Inconnu';
+                        const descDisplay = providerDescription ? ` (${providerDescription})` : '';
+                        option.textContent = `${canalDisplay} - ${providerName}${descDisplay}`;
+                        select.appendChild(option);
+                    }
+                    // Réactiver le bouton d'association
+                    document.getElementById('associateBtn').disabled = false;
+                }
+            }
+            
+            // Vérifier s'il reste des lignes dans le tableau
             const providersList = document.getElementById('providersList');
-            const remainingItems = providersList.querySelectorAll('.provider-item');
-            if (remainingItems.length === 0) {
-                providersList.innerHTML = `
-                    <div class="empty-providers">
-                        <i class="fas fa-users-slash"></i>
-                        <p>Aucun opérateur associé à ce client</p>
-                        <p class="text-sm mt-1">Cliquez sur "Associer un opérateur" pour en ajouter un</p>
-                    </div>
-                `;
+            if (providersList) {
+                const remainingRows = providersList.querySelectorAll('tr');
+                
+                if (remainingRows.length === 0) {
+                    // Si plus d'opérateurs, afficher le message vide
+                    const infoCard = providersList.closest('.info-card');
+                    const pDiv = infoCard.querySelector('.p-4');
+                    pDiv.innerHTML = `
+                        <div class="empty-providers">
+                            <i class="fas fa-users-slash"></i>
+                            <p>Aucun opérateur associé à ce client</p>
+                            <p class="text-sm mt-1">Cliquez sur "Associer un opérateur" pour en ajouter un</p>
+                        </div>
+                    `;
+                }
             }
             
-            document.getElementById('associateBtn').disabled = false;
+            // Mettre à jour les statistiques
+            updateProviderStats();
+            
         } else {
             showToast(result.error || 'Erreur lors de la dissociation', 'error');
         }
@@ -4139,22 +4513,35 @@ async function toggleProviderStatus(idClientProvider, newStatus) {
             
             const item = document.getElementById(`provider_${idClientProvider}`);
             if (item) {
-                const statusSpan = item.querySelector('.text-xs.font-medium.px-2.py-1.rounded-full');
-                const toggleBtn = item.querySelector('.btn-sm:not(.btn-sm-danger):not(.btn-sm-info)');
+                const statusSpan = item.querySelector('td:nth-child(4) .text-xs.font-medium');
+                const toggleBtn = item.querySelector('td:nth-child(5) .btn-sm:not(.btn-sm-info):not(.btn-sm-danger)');
                 
                 if (newStatus) {
-                    statusSpan.className = 'text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-700';
-                    statusSpan.innerHTML = '<i class="fas fa-check-circle"></i> Actif';
-                    toggleBtn.className = 'btn-sm btn-sm-warning';
-                    toggleBtn.innerHTML = '<i class="fas fa-pause"></i> Désactiver';
-                    toggleBtn.setAttribute('onclick', `toggleProviderStatus(${idClientProvider}, false)`);
+                    if (statusSpan) {
+                        statusSpan.className = 'text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-700';
+                        statusSpan.innerHTML = '<i class="fas fa-check-circle"></i> Actif';
+                    }
+                    if (toggleBtn) {
+                        toggleBtn.className = 'btn-sm btn-sm-warning';
+                        toggleBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                        toggleBtn.setAttribute('title', 'Désactiver');
+                        toggleBtn.setAttribute('onclick', `toggleProviderStatus(${idClientProvider}, false)`);
+                    }
                 } else {
-                    statusSpan.className = 'text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-500';
-                    statusSpan.innerHTML = '<i class="fas fa-circle"></i> Inactif';
-                    toggleBtn.className = 'btn-sm btn-sm-success';
-                    toggleBtn.innerHTML = '<i class="fas fa-play"></i> Activer';
-                    toggleBtn.setAttribute('onclick', `toggleProviderStatus(${idClientProvider}, true)`);
+                    if (statusSpan) {
+                        statusSpan.className = 'text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-500';
+                        statusSpan.innerHTML = '<i class="fas fa-circle"></i> Inactif';
+                    }
+                    if (toggleBtn) {
+                        toggleBtn.className = 'btn-sm btn-sm-success';
+                        toggleBtn.innerHTML = '<i class="fas fa-play"></i>';
+                        toggleBtn.setAttribute('title', 'Activer');
+                        toggleBtn.setAttribute('onclick', `toggleProviderStatus(${idClientProvider}, true)`);
+                    }
                 }
+                
+                // Mettre à jour les statistiques
+                updateProviderStats();
             }
         } else {
             showToast(result.error || 'Erreur lors du changement de statut', 'error');
@@ -4207,21 +4594,16 @@ async function openSessionModal(providerId, providerName, providerType) {
     const title = document.getElementById('sessionModalTitle');
     const subtitle = document.getElementById('sessionModalSubtitle');
     
-    // Vérifier que tous les éléments existent
     if (!container || !footer || !modal || !title || !subtitle) {
         console.error('Éléments de la modale manquants');
         showToast('Erreur: éléments de la modale manquants', 'error');
         return;
     }
     
-    // VIDER COMPLÈTEMENT AVANT TOUT
     container.replaceChildren();
     container.innerHTML = '';
-    
-    // Forcer le reflow du DOM
     void container.offsetHeight;
     
-    // Maintenant afficher le chargement
     container.innerHTML = `
         <div class="text-center py-8">
             <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
@@ -4263,14 +4645,12 @@ function closeSessionModal() {
     const container = document.getElementById('sessionContent');
     const footer = document.getElementById('sessionFooter');
     
-    // Cacher la modale
     if (modal) {
         modal.style.display = 'none';
     }
     
-    // Réinitialiser le contenu avec vérification
     if (container) {
-        container.replaceChildren(); // Supprime TOUT
+        container.replaceChildren();
         container.innerHTML = `
             <div class="text-center py-8">
                 <i class="fas fa-spinner fa-spin text-3xl text-purple-600"></i>
@@ -4279,7 +4659,6 @@ function closeSessionModal() {
         `;
     }
     
-    // Réinitialiser le footer avec vérification
     if (footer) {
         footer.innerHTML = `
             <button onclick="closeSessionModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
@@ -4288,7 +4667,6 @@ function closeSessionModal() {
         `;
     }
     
-    // Arrêter le polling si actif
     stopStatusPolling();
 }
 
@@ -4300,20 +4678,15 @@ async function loadSmsAppareils() {
     const container = document.getElementById('sessionContent');
     const footer = document.getElementById('sessionFooter');
     
-    // Vérifier que les éléments existent
     if (!container || !footer) {
         console.error('Éléments de la modale manquants pour loadSmsAppareils');
         return;
     }
     
-    // VIDAGE COMPLET
     container.replaceChildren();
     container.innerHTML = '';
-    
-    // Forcer le reflow
     void container.offsetHeight;
     
-    // Afficher le chargement
     container.innerHTML = `
         <div class="text-center py-8">
             <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
@@ -5035,7 +5408,7 @@ function closeCreateEmailAccountModal() {
     document.getElementById('createEmailAccountModal').style.display = 'none';
 }
 
-// --- Gestionnaire de formulaire de création de compte email (avec option de remplacement) ---
+// --- Gestionnaire de formulaire de création de compte email ---
 document.getElementById('createEmailForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
@@ -5332,6 +5705,54 @@ function updateSessionStatusUI(sessionName, status, isConnected, data) {
     updateSessionStatusOnly(sessionName, isConnected);
 }
 
+function updateProviderStats() {
+    const providersList = document.getElementById('providersList');
+    if (!providersList) {
+        const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
+        if (statOperateurs) {
+            statOperateurs.textContent = '0';
+        }
+        const statDetail = document.querySelector('.stat-item:nth-child(2) .stat-detail');
+        if (statDetail) {
+            statDetail.innerHTML = '';
+        }
+        return;
+    }
+    
+    const rows = providersList.querySelectorAll('tr');
+    const total = rows.length;
+    
+    let active = 0;
+    rows.forEach(row => {
+        const statusCell = row.querySelector('td:nth-child(4)');
+        if (statusCell) {
+            const statusSpan = statusCell.querySelector('.text-xs.font-medium');
+            if (statusSpan && statusSpan.textContent.trim() === 'Actif') {
+                active++;
+            }
+        }
+    });
+    
+    const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
+    if (statOperateurs) {
+        statOperateurs.textContent = total;
+    }
+    
+    const statDetail = document.querySelector('.stat-item:nth-child(2) .stat-detail');
+    if (statDetail) {
+        const inactive = total - active;
+        if (total > 0) {
+            let html = `<span class="text-green-600">${active} actif${active > 1 ? 's' : ''}</span>`;
+            if (inactive > 0) {
+                html += ` <span class="text-red-500">| ${inactive} inactif${inactive > 1 ? 's' : ''}</span>`;
+            }
+            statDetail.innerHTML = html;
+        } else {
+            statDetail.innerHTML = '';
+        }
+    }
+}
+
 async function updateSessionInDatabase(sessionName, isConnected) {
     try {
         const formData = new FormData();
@@ -5393,20 +5814,15 @@ async function loadWhatsAppSessions() {
     const container = document.getElementById('sessionContent');
     const footer = document.getElementById('sessionFooter');
     
-    // Vérifier que les éléments existent
     if (!container || !footer) {
         console.error('Éléments de la modale manquants pour loadWhatsAppSessions');
         return;
     }
     
-    // VIDAGE COMPLET
     container.replaceChildren();
     container.innerHTML = '';
-    
-    // Forcer le reflow
     void container.offsetHeight;
     
-    // Afficher le chargement
     container.innerHTML = `
         <div class="text-center py-8">
             <i class="fas fa-spinner fa-spin text-3xl text-green-600"></i>
@@ -5781,7 +6197,7 @@ document.getElementById('rechargeAmount').addEventListener('keydown', function(e
 // ============================================
 
 async function loadOctopushConfigs() {
-     console.log('🔍 clientId:', clientId);
+    console.log('🔍 clientId:', clientId);
     console.log('🔍 Type de clientId:', typeof clientId);
     const container = document.getElementById('octopushContent');
     const footer = document.getElementById('octopushFooter');
@@ -5944,7 +6360,6 @@ function closeCreateOctopushConfigModal() {
 
 async function editOctopushConfig(configId) {
     try {
-        // Récupérer les détails de la configuration
         const formData = new FormData();
         formData.append('action_get_octopush_configs', '1');
         formData.append('id_compte', clientId);
@@ -6058,7 +6473,6 @@ async function activateOctopushConfig(configId) {
     try {
         showToast('Activation de la configuration...', 'info');
         
-        // Récupérer la config pour savoir son nom
         const formData = new FormData();
         formData.append('action_get_octopush_configs', '1');
         formData.append('id_compte', clientId);
@@ -6081,7 +6495,6 @@ async function activateOctopushConfig(configId) {
                 return;
             }
             
-            // Sauvegarder avec est_active = true
             const saveFormData = new FormData();
             saveFormData.append('action_save_octopush_config', '1');
             saveFormData.append('id_compte', clientId);
