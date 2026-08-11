@@ -1,6 +1,40 @@
 <?php
 // Menu pour les administrateurs
 $currentPage = $_GET['page'] ?? 'dashboard';
+
+// Récupérer les informations de l'utilisateur connecté
+$userName = $_SESSION['user_name'] ?? 'Administrateur';
+$userEmail = $_SESSION['user_email'] ?? '';
+$userRole = $_SESSION['user_role'] ?? 'admin';
+
+// Récupérer le logo de l'utilisateur depuis la base de données
+$userLogo = '';
+if (isset($_SESSION['user_id']) && !empty($_SESSION['user_id'])) {
+    global $db;
+    $userId = $_SESSION['user_id'];
+    $userInfo = $db->select('compte', ['id_compte' => $userId], 'logo_url, prenom, nom');
+    if (!empty($userInfo) && !empty($userInfo[0]['logo_url'])) {
+        $userLogo = $userInfo[0]['logo_url'];
+    }
+    // Mettre à jour le nom si disponible
+    if (!empty($userInfo)) {
+        if (!empty($userInfo[0]['prenom']) && !empty($userInfo[0]['nom'])) {
+            $userName = $userInfo[0]['prenom'] . ' ' . $userInfo[0]['nom'];
+        }
+    }
+}
+
+// Récupérer les initiales pour l'avatar par défaut
+$initials = '';
+if (!empty($userName) && $userName !== 'Administrateur') {
+    $nameParts = explode(' ', $userName);
+    foreach ($nameParts as $part) {
+        $initials .= strtoupper(substr($part, 0, 1));
+    }
+    $initials = substr($initials, 0, 2);
+} else {
+    $initials = 'AD';
+}
 ?>
 
 <aside
@@ -8,9 +42,9 @@ $currentPage = $_GET['page'] ?? 'dashboard';
     class="w-64 bg-gray-800 text-white flex flex-col sidebar-transition transition-all duration-300"
 >
     <div class="flex justify-center mt-3">
-            <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-                <i class="fas fa-paper-plane text-xl"></i>
-            </div>
+        <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+            <i class="fas fa-paper-plane text-xl"></i>
+        </div>
     </div>
 
     <div class="p-4 border-b border-gray-700 flex-shrink-0">
@@ -63,9 +97,48 @@ $currentPage = $_GET['page'] ?? 'dashboard';
         </a>
     </nav>
     
-    <div class="p-4 border-t border-gray-700 text-xs text-gray-400 flex-shrink-0">
-        <span class="text-white font-medium">Administrateur</span>
-        <div class="mt-1"><?= htmlspecialchars($_SESSION['user_name'] ?? '') ?></div>
+    <!-- ============================================ -->
+    <!-- FOOTER AVEC AVATAR DE L'UTILISATEUR CONNECTÉ -->
+    <!-- ============================================ -->
+    <div id="userFooter" class="p-4 border-t border-gray-700 flex-shrink-0">
+        <div class="flex items-center gap-3">
+            <!-- Avatar avec logo ou initiales -->
+            <div class="relative flex-shrink-0">
+                <?php if (!empty($userLogo)): ?>
+                    <img src="<?= htmlspecialchars($userLogo) . '?t=' . time() ?>" 
+                         alt="Avatar <?= htmlspecialchars($userName) ?>"
+                         class="w-10 h-10 rounded-full object-cover border-2 border-gray-600"
+                         onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm border-2 border-gray-600" style="display: none;">
+                        <?= $initials ?>
+                    </div>
+                <?php else: ?>
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm border-2 border-gray-600">
+                        <?= $initials ?>
+                    </div>
+                <?php endif; ?>
+                
+                <!-- Petit indicateur de statut en ligne -->
+                <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-800 rounded-full"></span>
+            </div>
+            
+            <!-- Informations utilisateur -->
+            <div class="flex-1 min-w-0">
+                <span class="text-m text-gray-400 truncate">Connecté en tant que</span>
+                <div class="text-sm font-medium text-white truncate" id="userFooterName">
+                    <?= htmlspecialchars($userName) ?>
+                </div>
+                <div class="text-xs text-gray-400 truncate" id="userFooterEmail">
+                    <?= htmlspecialchars($userEmail) ?>
+                </div>
+                <div class="text-xs text-gray-500 mt-0.5">
+                    <span class="bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded-full text-[10px]">
+                        <?= htmlspecialchars($userRole) ?>
+                    </span>
+                </div>
+            </div>
+            
+        </div>
     </div>
 </aside>
 
@@ -80,10 +153,12 @@ document.addEventListener('DOMContentLoaded', function () {
     if (isCollapsed) {
         sidebar.classList.add('w-20');
         sidebar.classList.remove('w-64');
-        toggleBtn.querySelector('i').className = 'fas fa-chevron-right text-sm';
+        if (toggleBtn) {
+            toggleBtn.querySelector('i').className = 'fas fa-chevron-right text-sm';
+        }
         
         // Cacher les textes
-        const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
+        const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail');
         allTexts.forEach(text => text.classList.add('hidden'));
         
         // Réduire les paddings
@@ -92,10 +167,20 @@ document.addEventListener('DOMContentLoaded', function () {
             header.classList.add('p-2');
             header.classList.remove('p-4');
         }
-        const footer = sidebar.querySelector('.p-4.border-t');
+        const footer = sidebar.querySelector('#userFooter');
         if (footer) {
             footer.classList.add('p-2');
             footer.classList.remove('p-4');
+        }
+        // Cacher le texte du rôle
+        const roleBadge = document.querySelector('#userFooter .bg-blue-900\\/50');
+        if (roleBadge) {
+            roleBadge.style.display = 'none';
+        }
+        // Cacher le bouton paramètres
+        const settingsBtn = document.querySelector('#userFooter .fa-cog');
+        if (settingsBtn) {
+            settingsBtn.closest('a').style.display = 'none';
         }
     }
 
@@ -110,7 +195,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 this.querySelector('i').className = 'fas fa-chevron-left text-sm';
                 
                 // Afficher les textes
-                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
+                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail');
                 allTexts.forEach(text => text.classList.remove('hidden'));
                 
                 // Restaurer les paddings
@@ -119,10 +204,20 @@ document.addEventListener('DOMContentLoaded', function () {
                     header.classList.add('p-4');
                     header.classList.remove('p-2');
                 }
-                const footer = sidebar.querySelector('.p-2.border-t');
+                const footer = sidebar.querySelector('#userFooter.p-2');
                 if (footer) {
                     footer.classList.add('p-4');
                     footer.classList.remove('p-2');
+                }
+                // Afficher le badge de rôle
+                const roleBadge = document.querySelector('#userFooter .bg-blue-900\\/50');
+                if (roleBadge) {
+                    roleBadge.style.display = 'inline';
+                }
+                // Afficher le bouton paramètres
+                const settingsBtn = document.querySelector('#userFooter .fa-cog');
+                if (settingsBtn) {
+                    settingsBtn.closest('a').style.display = 'inline';
                 }
                 
                 localStorage.setItem('admin_sidebar_collapsed', 'false');
@@ -133,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 this.querySelector('i').className = 'fas fa-chevron-right text-sm';
                 
                 // Cacher les textes
-                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
+                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail');
                 allTexts.forEach(text => text.classList.add('hidden'));
                 
                 // Réduire les paddings
@@ -142,10 +237,20 @@ document.addEventListener('DOMContentLoaded', function () {
                     header.classList.add('p-2');
                     header.classList.remove('p-4');
                 }
-                const footer = sidebar.querySelector('.p-4.border-t');
+                const footer = sidebar.querySelector('#userFooter.p-4');
                 if (footer) {
                     footer.classList.add('p-2');
                     footer.classList.remove('p-4');
+                }
+                // Cacher le badge de rôle
+                const roleBadge = document.querySelector('#userFooter .bg-blue-900\\/50');
+                if (roleBadge) {
+                    roleBadge.style.display = 'none';
+                }
+                // Cacher le bouton paramètres
+                const settingsBtn = document.querySelector('#userFooter .fa-cog');
+                if (settingsBtn) {
+                    settingsBtn.closest('a').style.display = 'none';
                 }
                 
                 localStorage.setItem('admin_sidebar_collapsed', 'true');
@@ -157,7 +262,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <style>
 /* Transition fluide pour le texte */
-.menu-text, #logoText, #sousTitre {
+.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail {
     transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
@@ -207,6 +312,20 @@ document.addEventListener('DOMContentLoaded', function () {
     font-size: 1.1rem;
 }
 
+/* Avatar dans le footer */
+#userFooter .w-10.h-10 {
+    transition: all 0.3s ease;
+}
+
+#sidebar.w-20 #userFooter .w-10.h-10 {
+    width: 2rem;
+    height: 2rem;
+}
+
+#sidebar.w-20 #userFooter {
+    padding: 0.5rem !important;
+}
+
 /* Bouton de bascule */
 #sidebarToggle {
     transition: all 0.3s ease;
@@ -218,5 +337,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
 #sidebarToggle i {
     transition: transform 0.3s ease;
+}
+
+/* Badge de rôle */
+.bg-blue-900\/50 {
+    background-color: rgba(30, 58, 138, 0.5);
 }
 </style>
