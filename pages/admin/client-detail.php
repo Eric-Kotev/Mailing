@@ -2453,7 +2453,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
             border-radius: 10px;
             font-size: 13px;
             font-weight: 700;
-            background: #8b5cf6;
+            background: #5d3aad;
             color: white;
             border: none;
             cursor: pointer;
@@ -3099,7 +3099,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
         
         <div class="mb-4">
             <p class="text-gray-600">
-                Êtes-vous sûr de vouloir dissocier l'opérateur 
+                Êtes-vous sûr de vouloir retirer l'opérateur 
                 <strong id="detachProviderName"></strong> du client 
                 <strong><?= htmlspecialchars($client['entreprise']) ?></strong> ?
             </p>
@@ -3115,7 +3115,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
                 Annuler
             </button>
             <button id="confirmDetachBtn" onclick="confirmDetach()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition flex items-center gap-2">
-                <i class="fas fa-unlink"></i> Dissocier
+                <i class="fas fa-unlink"></i> Retirer
             </button>
         </div>
     </div>
@@ -3608,7 +3608,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
                 <?= $client['actif'] ? 'Désactiver' : 'Activer' ?>
             </button>
             
-            <button onclick="openRechargeModal()" class="btn-action-blue">
+            <button onclick="openRechargeModal()" class="btn-action-purple">
                 <i class="fas fa-plus"></i> Recharger le crédit
             </button>
         </div>

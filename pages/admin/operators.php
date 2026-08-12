@@ -346,22 +346,38 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             --default-fg: oklch(0.45 0.01 275);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
 
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-thumb { background: oklch(0.85 0.01 275); border-radius: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar { 
+            width: 8px; 
+            height: 8px; 
+        }
+        ::-webkit-scrollbar-thumb { 
+            background: oklch(0.85 0.01 275); 
+            border-radius: 8px; 
+        }
+        ::-webkit-scrollbar-track { 
+            background: transparent; 
+        }
 
         body {
             font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
             background: var(--bg);
             color: var(--text);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
         }
 
         .container {
-            max-width: 1480px;
-            padding: 32px 48px;
+            max-width: 100%;
+            padding: 24px 32px;
             margin: 0 auto;
+            width: 100%;
         }
 
         /* ===== TOAST ===== */
@@ -401,9 +417,10 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 32px;
+            margin-bottom: 28px;
             flex-wrap: wrap;
             gap: 16px;
+            width: 100%;
         }
 
         .page-header .title {
@@ -421,6 +438,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         .header-actions {
             display: flex;
             gap: 14px;
+            flex-wrap: wrap;
         }
 
         .search-input {
@@ -432,10 +450,12 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-family: inherit;
             outline: none;
             background: white;
+            transition: border-color 0.2s ease;
         }
 
         .search-input:focus {
             border-color: var(--accent);
+            box-shadow: 0 0 0 3px oklch(0.55 0.18 275 / 0.12);
         }
 
         .btn-primary {
@@ -460,16 +480,18 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 32px;
+            gap: 16px;
+            margin-bottom: 28px;
+            width: 100%;
         }
 
         .stat-card {
             background: white;
             border-radius: 16px;
-            padding: 22px 26px;
+            padding: 20px 24px;
             box-shadow: 0 1px 3px rgba(20,20,50,0.06);
             border: 1px solid var(--border);
+            min-width: 0;
         }
 
         .stat-card .stat-label {
@@ -479,9 +501,9 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         }
 
         .stat-card .stat-number {
-            font-size: 34px;
+            font-size: 30px;
             font-weight: 800;
-            margin-top: 8px;
+            margin-top: 6px;
         }
 
         .stat-card .stat-hint {
@@ -496,18 +518,25 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             border-radius: 16px;
             border: 1px solid var(--border);
             overflow: hidden;
+            width: 100%;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            width: 100%;
         }
 
         .grid-row {
             display: grid;
-            grid-template-columns: 2fr 1.2fr 1.6fr 1.2fr 1fr 1fr 0.7fr 0.6fr;
+            grid-template-columns: 1.8fr 1fr 1.4fr 1fr 0.8fr 0.8fr 0.6fr 0.6fr;
             gap: 12px;
             align-items: center;
+            min-width: 0;
         }
 
         .grid-head {
             padding: 14px 24px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
             color: var(--muted);
             text-transform: uppercase;
@@ -517,7 +546,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         }
 
         .grid-body-row {
-            padding: 18px 24px;
+            padding: 16px 24px;
             border-bottom: 1px solid var(--border-light);
             font-size: 14px;
             transition: background 0.15s ease;
@@ -530,10 +559,16 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-weight: 700;
             color: var(--text);
             font-size: 15px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .op-fournisseur {
             color: var(--muted-2);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .badge-canal {
@@ -544,6 +579,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.03em;
+            white-space: nowrap;
         }
 
         .badge-canal.sms { background: var(--sms-bg); color: var(--sms-fg); }
@@ -554,11 +590,13 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         .tarif-value {
             font-weight: 700;
             font-size: 15px;
+            white-space: nowrap;
         }
 
         .client-count {
             font-weight: 600;
             font-size: 15px;
+            text-align: center;
         }
 
         .badge-statut {
@@ -567,6 +605,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             border-radius: 100px;
             font-size: 12px;
             font-weight: 700;
+            white-space: nowrap;
         }
 
         .badge-statut.actif { background: var(--success-soft-bg); color: var(--success-soft-fg); }
@@ -580,6 +619,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-size: 13px;
             text-decoration: none;
             white-space: nowrap;
+            transition: color 0.2s ease;
         }
 
         .btn-voir:hover { color: var(--accent-dark); }
@@ -594,9 +634,33 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             border: none;
             padding: 0;
             transition: color 0.2s ease;
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
         }
 
-        .btn-remove:hover { color: oklch(0.45 0.19 30); }
+        .btn-remove:hover { 
+            color: oklch(0.45 0.19 30);
+            background: var(--danger-soft-bg);
+        }
+
+        .btn-remove.edit-btn {
+            color: var(--accent);
+        }
+
+        .btn-remove.edit-btn:hover {
+            background: var(--accent-soft-bg);
+            color: var(--accent-dark);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
 
         .empty-state {
             text-align: center;
@@ -681,7 +745,10 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-size: 28px;
             color: var(--muted);
             cursor: pointer;
+            transition: color 0.2s ease;
         }
+
+        .modal-close:hover { color: var(--text); }
 
         .modal-body { padding: 28px 32px; }
         .modal-footer {
@@ -737,10 +804,13 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-size: 14px;
             color: var(--muted-2);
             cursor: pointer;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
         }
 
-        .btn-secondary:hover { background: oklch(0.98 0.003 275); }
+        .btn-secondary:hover { 
+            background: oklch(0.98 0.003 275);
+            border-color: var(--muted-2);
+        }
 
         .btn-success {
             background: linear-gradient(135deg, oklch(0.62 0.15 155), oklch(0.52 0.13 155));
@@ -778,29 +848,146 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-danger:hover:not(:disabled) { opacity: 0.9; }
 
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1400px) {
+            .container { 
+                padding: 20px 24px; 
+            }
+            .grid-row { 
+                grid-template-columns: 1.6fr 0.9fr 1.2fr 0.9fr 0.7fr 0.7fr 0.5fr 0.5fr; 
+                gap: 10px;
+            }
+        }
+
         @media (max-width: 1200px) {
-            .container { padding: 24px 28px; }
-            .grid-row { grid-template-columns: 1.8fr 1.1fr 1.4fr 1.1fr 0.9fr 0.9fr 0.6fr 0.5fr; }
+            .container { 
+                padding: 20px; 
+            }
+            .grid-row { 
+                grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 0.6fr 0.6fr 0.4fr 0.4fr; 
+                gap: 8px;
+            }
+            .grid-head { 
+                padding: 12px 16px; 
+                font-size: 10px;
+            }
+            .grid-body-row { 
+                padding: 14px 16px; 
+                font-size: 13px;
+            }
+            .op-name { 
+                font-size: 14px; 
+            }
+            .search-input { 
+                width: 260px; 
+            }
         }
 
         @media (max-width: 900px) {
-            .container { padding: 20px; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-            .grid-row { grid-template-columns: 1.6fr 1fr 1.2fr 1fr 0.8fr 0.8fr 0.5fr 0.4fr; font-size: 13px; }
-            .grid-head { font-size: 11px; }
-            .search-input { width: 220px; }
+            .container { 
+                padding: 16px; 
+            }
+            .stats-grid { 
+                grid-template-columns: 1fr 1fr; 
+            }
+            .grid-row { 
+                grid-template-columns: 1.2fr 0.7fr 0.9fr 0.7fr 0.5fr 0.5fr 0.3fr 0.3fr; 
+                gap: 6px;
+                font-size: 12px;
+            }
+            .grid-head { 
+                padding: 10px 12px; 
+                font-size: 9px;
+            }
+            .grid-body-row { 
+                padding: 12px 12px; 
+                font-size: 12px;
+            }
+            .op-name { 
+                font-size: 13px; 
+            }
+            .search-input { 
+                width: 200px; 
+            }
+            .header-actions { 
+                width: 100%; 
+            }
+            .btn-primary { 
+                flex: 1; 
+                justify-content: center;
+            }
+            .badge-canal { 
+                font-size: 10px; 
+                padding: 3px 10px;
+            }
+            .badge-statut { 
+                font-size: 10px; 
+                padding: 3px 10px;
+            }
+            .btn-remove { 
+                font-size: 16px; 
+                width: 28px;
+                height: 28px;
+            }
         }
 
         @media (max-width: 640px) {
-            .container { padding: 16px; }
-            .page-header { flex-direction: column; align-items: flex-start; }
-            .header-actions { width: 100%; flex-wrap: wrap; }
-            .search-input { flex: 1; width: auto; min-width: 150px; }
-            .stats-grid { grid-template-columns: 1fr; }
-            .table-wrapper { overflow-x: auto; }
-            .grid-row { grid-template-columns: repeat(8, minmax(110px, 1fr)); width: max-content; min-width: 100%; }
-            .grid-body-row { padding: 14px 16px; font-size: 13px; }
-            .modal { max-width: 100%; margin: 10px; }
+            .container { 
+                padding: 12px; 
+            }
+            .page-header { 
+                flex-direction: column; 
+                align-items: flex-start; 
+            }
+            .header-actions { 
+                flex-direction: column; 
+                width: 100%;
+            }
+            .search-input { 
+                width: 100%; 
+                min-width: 0;
+            }
+            .btn-primary { 
+                width: 100%; 
+                justify-content: center;
+            }
+            .stats-grid { 
+                grid-template-columns: 1fr; 
+            }
+            .stat-card .stat-number { 
+                font-size: 26px; 
+            }
+            .grid-row { 
+                grid-template-columns: repeat(8, minmax(90px, 1fr)); 
+                width: max-content; 
+                min-width: 100%;
+                gap: 8px;
+                font-size: 12px;
+            }
+            .grid-head { 
+                padding: 10px 12px; 
+                font-size: 9px;
+            }
+            .grid-body-row { 
+                padding: 10px 12px; 
+                font-size: 11px;
+            }
+            .op-name { 
+                font-size: 12px; 
+            }
+            .btn-voir { 
+                font-size: 11px; 
+            }
+            .modal { 
+                max-width: 100%; 
+                margin: 10px; 
+            }
+            .modal-header, .modal-body, .modal-footer { 
+                padding: 16px 20px; 
+            }
+            .modal-header h3 { 
+                font-size: 17px; 
+            }
         }
     </style>
 </head>
@@ -821,7 +1008,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         </div>
     </div>
 
-
     <!-- ===== TABLE ===== -->
     <div class="table-container">
         <?php if (empty($providers)): ?>
@@ -837,7 +1023,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                     <div>Canal</div>
                     <div>Fournisseur</div>
                     <div>Tarif défaut</div>
-                    <div>Clients</div>
+                    <div style="text-align:center;">Clients</div>
                     <div>Statut</div>
                     <div></div>
                     <div></div>
@@ -856,9 +1042,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
 
                     $nbClients = (int)$provider['nb_clients'];
                     
-                    // ============================================
-                    // CORRECTION : Utilisation de la colonne statut
-                    // ============================================
                     // Récupérer le statut depuis la base, avec fallback 'actif'
                     $statut = isset($provider['statut']) ? $provider['statut'] : 'actif';
                     $isActif = ($statut === 'actif');
@@ -866,11 +1049,15 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                     $searchBlob = mb_strtolower($provider['nom_providers'] . ' ' . $provider['description'] . ' ' . $canalName);
                     ?>
                     <div class="grid-row grid-body-row" data-search="<?= htmlspecialchars($searchBlob) ?>">
-                        <div class="op-name"><?= htmlspecialchars($provider['nom_providers']) ?></div>
+                        <div class="op-name" title="<?= htmlspecialchars($provider['nom_providers']) ?>">
+                            <?= htmlspecialchars($provider['nom_providers']) ?>
+                        </div>
                         <div>
                             <span class="badge-canal <?= $canalClass ?>"><?= htmlspecialchars($canalName) ?></span>
                         </div>
-                        <div class="op-fournisseur"><?= htmlspecialchars($provider['description']) ?></div>
+                        <div class="op-fournisseur" title="<?= htmlspecialchars($provider['description']) ?>">
+                            <?= htmlspecialchars($provider['description']) ?>
+                        </div>
                         <div class="tarif-value"><?= number_format($provider['tarif'], 2, ',', ' ') ?> €</div>
                         <div class="client-count"><?= $nbClients ?></div>
                         <div>
@@ -881,8 +1068,8 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                         <div>
                             <a class="btn-voir" href="index.php?page=admin/operator_details&id=<?= (int)$provider['id_provider'] ?>">Voir →</a>
                         </div>
-                        <div style="display:flex; justify-content:flex-end; gap:12px;">
-                            <button class="btn-remove" style="color: var(--accent);" onclick='editProvider(<?= json_encode($provider) ?>)' title="Modifier">
+                        <div class="btn-group">
+                            <button class="btn-remove edit-btn" onclick='editProvider(<?= json_encode($provider) ?>)' title="Modifier">
                                 <i class="fas fa-pen"></i>
                             </button>
                             <button class="btn-remove" onclick="openDeleteModal(<?= (int)$provider['id_provider'] ?>, '<?= htmlspecialchars($provider['nom_providers'], ENT_QUOTES) ?>')" title="Supprimer">

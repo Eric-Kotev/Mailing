@@ -123,8 +123,8 @@ if (!empty($userName) && $userName !== 'Administrateur') {
             </div>
             
             <!-- Informations utilisateur -->
-            <div class="flex-1 min-w-0">
-                <span class="text-m text-gray-400 truncate">Connecté en tant que</span>
+            <div class="flex-1 min-w-0 user-info-container">
+                <span class="text-m text-gray-400 truncate block">Connecté en tant que</span>
                 <div class="text-sm font-medium text-white truncate" id="userFooterName">
                     <?= htmlspecialchars($userName) ?>
                 </div>
@@ -132,7 +132,7 @@ if (!empty($userName) && $userName !== 'Administrateur') {
                     <?= htmlspecialchars($userEmail) ?>
                 </div>
                 <div class="text-xs text-gray-500 mt-0.5">
-                    <span class="bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded-full text-[10px]">
+                    <span class="bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded-full text-[10px]" id="userRoleBadge">
                         <?= htmlspecialchars($userRole) ?>
                     </span>
                 </div>
@@ -157,9 +157,15 @@ document.addEventListener('DOMContentLoaded', function () {
             toggleBtn.querySelector('i').className = 'fas fa-chevron-right text-sm';
         }
         
-        // Cacher les textes
-        const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail');
+        // Cacher les textes du menu
+        const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
         allTexts.forEach(text => text.classList.add('hidden'));
+        
+        // Cacher les informations utilisateur (sauf l'avatar)
+        const userInfoContainer = sidebar.querySelector('.user-info-container');
+        if (userInfoContainer) {
+            userInfoContainer.style.display = 'none';
+        }
         
         // Réduire les paddings
         const header = sidebar.querySelector('.p-4');
@@ -172,15 +178,19 @@ document.addEventListener('DOMContentLoaded', function () {
             footer.classList.add('p-2');
             footer.classList.remove('p-4');
         }
-        // Cacher le texte du rôle
-        const roleBadge = document.querySelector('#userFooter .bg-blue-900\\/50');
-        if (roleBadge) {
-            roleBadge.style.display = 'none';
+        
+        // Centrer l'avatar dans le footer
+        const footerContent = sidebar.querySelector('#userFooter .flex');
+        if (footerContent) {
+            footerContent.classList.add('justify-center');
+            footerContent.classList.remove('gap-3');
         }
-        // Cacher le bouton paramètres
-        const settingsBtn = document.querySelector('#userFooter .fa-cog');
-        if (settingsBtn) {
-            settingsBtn.closest('a').style.display = 'none';
+        
+        // Réduire la taille de l'avatar
+        const avatar = sidebar.querySelector('#userFooter .w-10.h-10');
+        if (avatar) {
+            avatar.classList.remove('w-10', 'h-10');
+            avatar.classList.add('w-8', 'h-8');
         }
     }
 
@@ -194,9 +204,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 sidebar.classList.add('w-64');
                 this.querySelector('i').className = 'fas fa-chevron-left text-sm';
                 
-                // Afficher les textes
-                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail');
+                // Afficher les textes du menu
+                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
                 allTexts.forEach(text => text.classList.remove('hidden'));
+                
+                // Afficher les informations utilisateur
+                const userInfoContainer = sidebar.querySelector('.user-info-container');
+                if (userInfoContainer) {
+                    userInfoContainer.style.display = 'block';
+                }
                 
                 // Restaurer les paddings
                 const header = sidebar.querySelector('.p-2');
@@ -209,15 +225,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     footer.classList.add('p-4');
                     footer.classList.remove('p-2');
                 }
-                // Afficher le badge de rôle
-                const roleBadge = document.querySelector('#userFooter .bg-blue-900\\/50');
-                if (roleBadge) {
-                    roleBadge.style.display = 'inline';
+                
+                // Remettre l'avatar à gauche
+                const footerContent = sidebar.querySelector('#userFooter .flex');
+                if (footerContent) {
+                    footerContent.classList.remove('justify-center');
+                    footerContent.classList.add('gap-3');
                 }
-                // Afficher le bouton paramètres
-                const settingsBtn = document.querySelector('#userFooter .fa-cog');
-                if (settingsBtn) {
-                    settingsBtn.closest('a').style.display = 'inline';
+                
+                // Restaurer la taille de l'avatar
+                const avatar = sidebar.querySelector('#userFooter .w-8.h-8');
+                if (avatar) {
+                    avatar.classList.remove('w-8', 'h-8');
+                    avatar.classList.add('w-10', 'h-10');
                 }
                 
                 localStorage.setItem('admin_sidebar_collapsed', 'false');
@@ -227,9 +247,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 sidebar.classList.remove('w-64');
                 this.querySelector('i').className = 'fas fa-chevron-right text-sm';
                 
-                // Cacher les textes
-                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail');
+                // Cacher les textes du menu
+                const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
                 allTexts.forEach(text => text.classList.add('hidden'));
+                
+                // Cacher les informations utilisateur (sauf l'avatar)
+                const userInfoContainer = sidebar.querySelector('.user-info-container');
+                if (userInfoContainer) {
+                    userInfoContainer.style.display = 'none';
+                }
                 
                 // Réduire les paddings
                 const header = sidebar.querySelector('.p-4');
@@ -242,15 +268,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     footer.classList.add('p-2');
                     footer.classList.remove('p-4');
                 }
-                // Cacher le badge de rôle
-                const roleBadge = document.querySelector('#userFooter .bg-blue-900\\/50');
-                if (roleBadge) {
-                    roleBadge.style.display = 'none';
+                
+                // Centrer l'avatar dans le footer
+                const footerContent = sidebar.querySelector('#userFooter .flex');
+                if (footerContent) {
+                    footerContent.classList.add('justify-center');
+                    footerContent.classList.remove('gap-3');
                 }
-                // Cacher le bouton paramètres
-                const settingsBtn = document.querySelector('#userFooter .fa-cog');
-                if (settingsBtn) {
-                    settingsBtn.closest('a').style.display = 'none';
+                
+                // Réduire la taille de l'avatar
+                const avatar = sidebar.querySelector('#userFooter .w-10.h-10');
+                if (avatar) {
+                    avatar.classList.remove('w-10', 'h-10');
+                    avatar.classList.add('w-8', 'h-8');
                 }
                 
                 localStorage.setItem('admin_sidebar_collapsed', 'true');
@@ -262,7 +292,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <style>
 /* Transition fluide pour le texte */
-.menu-text, #logoText, #sousTitre, #userFooterName, #userFooterEmail {
+.menu-text, #logoText, #sousTitre, .user-info-container {
     transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
@@ -317,13 +347,17 @@ document.addEventListener('DOMContentLoaded', function () {
     transition: all 0.3s ease;
 }
 
-#sidebar.w-20 #userFooter .w-10.h-10 {
-    width: 2rem;
-    height: 2rem;
-}
-
 #sidebar.w-20 #userFooter {
     padding: 0.5rem !important;
+}
+
+#sidebar.w-20 #userFooter .flex {
+    justify-content: center !important;
+}
+
+/* Cacher le texte "Connecté en tant que" en mode réduit */
+#sidebar.w-20 .user-info-container {
+    display: none !important;
 }
 
 /* Bouton de bascule */
@@ -342,5 +376,11 @@ document.addEventListener('DOMContentLoaded', function () {
 /* Badge de rôle */
 .bg-blue-900\/50 {
     background-color: rgba(30, 58, 138, 0.5);
+}
+
+/* Animation de l'avatar */
+#userFooter .w-10.h-10,
+#userFooter .w-8.h-8 {
+    transition: all 0.3s ease;
 }
 </style>

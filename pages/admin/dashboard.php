@@ -10,8 +10,8 @@ global $db;
 // STATISTIQUES
 // ============================================
 
-// 1. Total des comptes
-$totalUsers = count($db->select('compte'));
+// 1. Total des comptes clients
+$totalUsers = count($db->select('compte', ['role'=>'client']));
 
 // 2. Comptes actifs
 $activeUsers = count($db->select('compte', ['actif' => 1, 'role' =>'client']));
@@ -123,22 +123,38 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             --default-fg: oklch(0.45 0.01 275);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
 
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-thumb { background: oklch(0.85 0.01 275); border-radius: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar { 
+            width: 8px; 
+            height: 8px; 
+        }
+        ::-webkit-scrollbar-thumb { 
+            background: oklch(0.85 0.01 275); 
+            border-radius: 8px; 
+        }
+        ::-webkit-scrollbar-track { 
+            background: transparent; 
+        }
 
         body {
             font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
             background: var(--bg);
             color: var(--text);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
         }
 
         .container {
-            max-width: 1480px;
-            padding: 32px 48px;
+            max-width: 100%;
+            padding: 24px 32px;
             margin: 0 auto;
+            width: 100%;
         }
 
         /* ===== HEADER ===== */
@@ -146,9 +162,10 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 32px;
+            margin-bottom: 28px;
             flex-wrap: wrap;
             gap: 16px;
+            width: 100%;
         }
 
         .page-header .title {
@@ -166,10 +183,11 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         .page-header .date {
             font-size: 14px;
             color: var(--muted-2);
-            padding: 10px 18px;
+            padding: 10px 20px;
             background: white;
             border-radius: 12px;
             border: 1px solid var(--border);
+            white-space: nowrap;
         }
 
         .page-header .date i {
@@ -180,17 +198,19 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-bottom: 32px;
+            gap: 16px;
+            margin-bottom: 28px;
+            width: 100%;
         }
 
         .stat-card {
             background: white;
             border-radius: 16px;
-            padding: 22px 26px;
+            padding: 20px 24px;
             box-shadow: 0 1px 3px rgba(20,20,50,0.06);
             border: 1px solid var(--border);
             transition: transform 0.2s ease, box-shadow 0.2s ease;
+            min-width: 0;
         }
 
         .stat-card:hover {
@@ -202,6 +222,7 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            margin-bottom: 8px;
         }
 
         .stat-card .stat-label {
@@ -228,9 +249,9 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         .stat-card .stat-icon.orange { background: oklch(0.95 0.06 50); color: oklch(0.55 0.15 50); }
 
         .stat-card .stat-number {
-            font-size: 32px;
+            font-size: 30px;
             font-weight: 800;
-            margin-top: 10px;
+            line-height: 1.2;
         }
 
         .stat-card .stat-number.blue { color: var(--info); }
@@ -252,10 +273,11 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             border-radius: 16px;
             border: 1px solid var(--border);
             overflow: hidden;
+            width: 100%;
         }
 
         .table-header {
-            padding: 18px 24px;
+            padding: 16px 24px;
             border-bottom: 1px solid var(--border-light);
             display: flex;
             align-items: center;
@@ -267,6 +289,13 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         .table-header h3 {
             font-size: 16px;
             font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .table-header h3 i {
+            color: var(--muted);
         }
 
         .table-header a {
@@ -277,15 +306,19 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             transition: color 0.2s ease;
         }
 
-        .table-header a:hover { color: var(--accent-dark); }
+        .table-header a:hover { 
+            color: var(--accent-dark); 
+        }
 
         .table-wrapper {
             overflow-x: auto;
+            width: 100%;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
 
         thead {
@@ -307,10 +340,23 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             padding: 14px 20px;
             font-size: 14px;
             border-bottom: 1px solid var(--border-light);
+            word-wrap: break-word;
         }
 
-        tr:last-child td { border-bottom: none; }
-        tr:hover td { background: oklch(0.98 0.003 275); }
+        /* Colonne widths */
+        th:nth-child(1), td:nth-child(1) { width: 25%; }
+        th:nth-child(2), td:nth-child(2) { width: 20%; }
+        th:nth-child(3), td:nth-child(3) { width: 15%; }
+        th:nth-child(4), td:nth-child(4) { width: 12%; }
+        th:nth-child(5), td:nth-child(5) { width: 13%; }
+        th:nth-child(6), td:nth-child(6) { width: 15%; }
+
+        tr:last-child td { 
+            border-bottom: none; 
+        }
+        tr:hover td { 
+            background: oklch(0.98 0.003 275); 
+        }
 
         .badge-role {
             display: inline-block;
@@ -320,8 +366,14 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             font-weight: 700;
         }
 
-        .badge-role.admin { background: var(--purple-soft-bg); color: var(--purple-soft-fg); }
-        .badge-role.user { background: var(--default-bg); color: var(--default-fg); }
+        .badge-role.admin { 
+            background: var(--purple-soft-bg); 
+            color: var(--purple-soft-fg); 
+        }
+        .badge-role.user { 
+            background: var(--default-bg); 
+            color: var(--default-fg); 
+        }
 
         .badge-statut {
             display: inline-block;
@@ -331,8 +383,14 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             font-weight: 700;
         }
 
-        .badge-statut.actif { background: var(--success-soft-bg); color: var(--success-soft-fg); }
-        .badge-statut.inactif { background: var(--danger-soft-bg); color: var(--danger-soft-fg); }
+        .badge-statut.actif { 
+            background: var(--success-soft-bg); 
+            color: var(--success-soft-fg); 
+        }
+        .badge-statut.inactif { 
+            background: var(--danger-soft-bg); 
+            color: var(--danger-soft-fg); 
+        }
 
         .empty-state {
             text-align: center;
@@ -347,17 +405,88 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         }
 
         /* ===== RESPONSIVE ===== */
+        @media (max-width: 1400px) {
+            .container { 
+                padding: 24px; 
+            }
+            .stats-grid { 
+                gap: 14px; 
+            }
+            .stat-card .stat-number { 
+                font-size: 26px; 
+            }
+        }
+
         @media (max-width: 1200px) {
-            .container { padding: 24px 28px; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .container { 
+                padding: 20px; 
+            }
+            .stats-grid { 
+                grid-template-columns: repeat(2, 1fr); 
+                gap: 14px;
+            }
+            .stat-card { 
+                padding: 18px 20px; 
+            }
+            .stat-card .stat-number { 
+                font-size: 24px; 
+            }
         }
 
         @media (max-width: 768px) {
-            .container { padding: 18px; }
-            .page-header { flex-direction: column; align-items: flex-start; }
-            .page-header .date { width: 100%; text-align: center; }
-            .stats-grid { grid-template-columns: 1fr; }
-            .table-header { flex-direction: column; align-items: flex-start; }
+            .container { 
+                padding: 16px; 
+            }
+            .page-header { 
+                flex-direction: column; 
+                align-items: flex-start; 
+            }
+            .page-header .date { 
+                width: 100%; 
+                text-align: center; 
+                white-space: normal;
+            }
+            .stats-grid { 
+                grid-template-columns: 1fr; 
+            }
+            .table-header { 
+                flex-direction: column; 
+                align-items: flex-start; 
+            }
+            .table-header h3 { 
+                font-size: 14px; 
+            }
+            
+            th, td { 
+                padding: 10px 14px; 
+                font-size: 13px; 
+            }
+            
+            /* Reset column widths for mobile */
+            th:nth-child(1), td:nth-child(1),
+            th:nth-child(2), td:nth-child(2),
+            th:nth-child(3), td:nth-child(3),
+            th:nth-child(4), td:nth-child(4),
+            th:nth-child(5), td:nth-child(5),
+            th:nth-child(6), td:nth-child(6) {
+                width: auto;
+                min-width: 80px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container { 
+                padding: 12px; 
+            }
+            .stat-card { 
+                padding: 16px; 
+            }
+            .stat-card .stat-number { 
+                font-size: 22px; 
+            }
+            .page-header .title { 
+                font-size: 22px; 
+            }
         }
     </style>
 </head>
@@ -382,10 +511,10 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         <!-- Comptes actifs -->
         <div class="stat-card">
             <div class="stat-top">
-                <span class="stat-label">Comptes actifs</span>
+                <span class="stat-label">Clients actifs</span>
             </div>
             <div class="stat-number green"><?= $activeUsers ?></div>
-            <div class="stat-hint"><?= round(($activeUsers / max($totalUsers, 1)) * 100) ?>% des comptes</div>
+            <div class="stat-hint"><?= round(($activeUsers / max($totalUsers, 1)) * 100) ?>% des clients</div>
         </div>
 
         <!-- Crédits total -->
@@ -409,17 +538,17 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         <!-- Messages envoyés ce mois -->
         <div class="stat-card">
             <div class="stat-top">
-                <span class="stat-label">Messages envoyés</span>
+                <span class="stat-label">Envois ce mois</span>
             </div>
             <div class="stat-number orange"><?= number_format($totalMessagesSent, 0, ',', ' ') ?></div>
-            <div class="stat-hint">Campagnes envoyées ce mois-ci (<?= date('F Y') ?>)</div>
+            <div class="stat-hint">SMS + EMAIL + WHATSAPP</div>
         </div>
     </div>
 
     <!-- ===== DERNIERS COMPTES ===== -->
     <div class="table-container">
         <div class="table-header">
-            <h3><i class="fas fa-user-plus" style="color: var(--muted); margin-right: 8px;"></i>Derniers comptes créés</h3>
+            <h3><i class="fas fa-user-plus"></i>Derniers comptes créés</h3>
             <a href="?page=admin/users">Voir tous →</a>
         </div>
 

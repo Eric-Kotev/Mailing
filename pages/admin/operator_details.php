@@ -194,21 +194,38 @@ if ($table) {
             --blue-fg: oklch(0.45 0.15 250);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-thumb { background: oklch(0.85 0.01 275); border-radius: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+        
+        ::-webkit-scrollbar { 
+            width: 8px; 
+            height: 8px; 
+        }
+        ::-webkit-scrollbar-thumb { 
+            background: oklch(0.85 0.01 275); 
+            border-radius: 8px; 
+        }
+        ::-webkit-scrollbar-track { 
+            background: transparent; 
+        }
 
         body {
             font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
             background: var(--bg);
             color: var(--text);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
         }
 
         .container {
-            max-width: 1400px;
-            padding: 32px 44px;
+            max-width: 100%;
+            padding: 24px 32px;
             margin: 0 auto;
+            width: 100%;
         }
 
         .back-link {
@@ -219,7 +236,7 @@ if ($table) {
             font-weight: 600;
             color: var(--muted);
             text-decoration: none;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
             padding: 8px 16px;
             border-radius: 10px;
             transition: all 0.2s ease;
@@ -235,15 +252,17 @@ if ($table) {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 28px;
+            margin-bottom: 24px;
             flex-wrap: wrap;
             gap: 16px;
+            width: 100%;
         }
 
         .header-left {
             display: flex;
             align-items: center;
             gap: 18px;
+            flex-wrap: wrap;
         }
 
         .header-icon {
@@ -254,6 +273,7 @@ if ($table) {
             align-items: center;
             justify-content: center;
             font-size: 28px;
+            flex-shrink: 0;
         }
 
         .header-icon.sms { background: var(--sms-bg); color: var(--sms-fg); }
@@ -265,6 +285,7 @@ if ($table) {
             display: flex;
             flex-direction: column;
             gap: 4px;
+            min-width: 0;
         }
 
         .header-name-row {
@@ -279,6 +300,7 @@ if ($table) {
             font-weight: 800;
             color: var(--text);
             margin: 0;
+            word-break: break-word;
         }
 
         .statut-badge {
@@ -289,6 +311,7 @@ if ($table) {
             border-radius: 100px;
             font-size: 13px;
             font-weight: 700;
+            white-space: nowrap;
         }
 
         .statut-badge.actif {
@@ -305,6 +328,7 @@ if ($table) {
             color: var(--muted-2);
             font-size: 15px;
             margin: 0;
+            word-break: break-word;
         }
 
         .header-subtitle i {
@@ -316,6 +340,7 @@ if ($table) {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            flex-shrink: 0;
         }
 
         .btn-action {
@@ -329,6 +354,7 @@ if ($table) {
             border: none;
             cursor: pointer;
             transition: all 0.2s ease;
+            white-space: nowrap;
         }
 
         .btn-action:disabled {
@@ -368,7 +394,8 @@ if ($table) {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 16px;
-            margin-bottom: 28px;
+            margin-bottom: 24px;
+            width: 100%;
         }
 
         .info-card {
@@ -377,6 +404,7 @@ if ($table) {
             padding: 20px 24px;
             box-shadow: 0 1px 2px rgba(20,20,50,0.05);
             border: 1px solid var(--border);
+            min-width: 0;
         }
 
         .info-card .label {
@@ -389,6 +417,7 @@ if ($table) {
             font-size: 22px;
             font-weight: 800;
             margin-top: 8px;
+            word-break: break-word;
         }
 
         /* ===== TABLE ===== */
@@ -397,10 +426,11 @@ if ($table) {
             border-radius: 14px;
             border: 1px solid var(--border);
             overflow: hidden;
+            width: 100%;
         }
 
         .table-header {
-            padding: 18px 24px;
+            padding: 16px 24px;
             border-bottom: 1px solid var(--border-light);
             font-weight: 700;
             font-size: 15px;
@@ -409,16 +439,22 @@ if ($table) {
             gap: 10px;
         }
 
+        .table-wrapper {
+            overflow-x: auto;
+            width: 100%;
+        }
+
         .grid-row {
             display: grid;
-            grid-template-columns: 2fr 1.6fr 1fr 0.9fr 0.6fr;
-            gap: 10px;
+            grid-template-columns: 2.2fr 1.4fr 1.2fr 0.8fr;
+            gap: 12px;
             align-items: center;
+            min-width: 0;
         }
 
         .grid-head {
             padding: 12px 24px;
-            font-size: 11.5px;
+            font-size: 11px;
             font-weight: 700;
             color: var(--muted);
             text-transform: uppercase;
@@ -427,17 +463,32 @@ if ($table) {
         }
 
         .grid-body-row {
-            padding: 16px 24px;
+            padding: 14px 24px;
             border-bottom: 1px solid var(--border-light);
             font-size: 14px;
+            transition: background 0.15s ease;
         }
 
         .grid-body-row:last-child { border-bottom: none; }
         .grid-body-row:hover { background: oklch(0.98 0.003 275); }
 
-        .client-name { font-weight: 700; }
-        .client-id { color: var(--muted-2); font-size: 12px; font-family: monospace; }
-        .client-tarif { font-weight: 700; }
+        .client-name { 
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .client-id { 
+            color: var(--muted-2); 
+            font-size: 12px; 
+            font-family: monospace; 
+        }
+        
+        .client-tarif { 
+            font-weight: 700;
+            white-space: nowrap;
+        }
 
         .badge-statut {
             display: inline-block;
@@ -445,6 +496,7 @@ if ($table) {
             border-radius: 100px;
             font-size: 12px;
             font-weight: 700;
+            white-space: nowrap;
         }
 
         .badge-statut.actif { background: var(--success-soft-bg); color: var(--success-soft-fg); }
@@ -455,9 +507,10 @@ if ($table) {
             text-align: right;
             color: var(--accent);
             font-weight: 700;
-            font-size: 12.5px;
+            font-size: 13px;
             text-decoration: none;
             white-space: nowrap;
+            transition: color 0.2s ease;
         }
 
         .btn-voir:hover { color: var(--accent-dark); }
@@ -516,24 +569,158 @@ if ($table) {
         @keyframes slideInRight { from { transform: translateX(110%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes slideOutRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(110%); opacity: 0; } }
 
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1200px) {
+            .container { 
+                padding: 20px 24px; 
+            }
+            .grid-row { 
+                grid-template-columns: 2fr 1.2fr 1fr 0.7fr; 
+                gap: 10px;
+            }
+            .info-card .value { 
+                font-size: 20px; 
+            }
+        }
+
         @media (max-width: 1024px) {
-            .container { padding: 24px; }
-            .info-grid { grid-template-columns: 1fr 1fr; }
+            .container { 
+                padding: 20px; 
+            }
+            .info-grid { 
+                grid-template-columns: 1fr 1fr; 
+            }
+            .grid-row { 
+                grid-template-columns: 1.8fr 1.1fr 0.9fr 0.6fr; 
+                gap: 8px;
+            }
+            .grid-head { 
+                padding: 10px 16px; 
+                font-size: 10px;
+            }
+            .grid-body-row { 
+                padding: 12px 16px; 
+                font-size: 13px;
+            }
+            .header-name { 
+                font-size: 22px; 
+            }
         }
 
         @media (max-width: 768px) {
-            .page-header { flex-direction: column; align-items: flex-start; }
-            .header-actions { width: 100%; }
-            .header-actions .btn-action { flex: 1; justify-content: center; }
+            .container { 
+                padding: 16px; 
+            }
+            .page-header { 
+                flex-direction: column; 
+                align-items: flex-start; 
+            }
+            .header-actions { 
+                width: 100%; 
+            }
+            .header-actions .btn-action { 
+                flex: 1; 
+                justify-content: center; 
+            }
+            .info-grid { 
+                grid-template-columns: 1fr 1fr; 
+            }
+            .info-card .value { 
+                font-size: 18px; 
+            }
+            .grid-row { 
+                grid-template-columns: 1.6fr 1fr 0.8fr 0.5fr; 
+                gap: 6px;
+                font-size: 12px;
+            }
+            .grid-head { 
+                padding: 8px 12px; 
+                font-size: 9px;
+            }
+            .grid-body-row { 
+                padding: 10px 12px; 
+                font-size: 12px;
+            }
+            .client-name { 
+                font-size: 12px; 
+            }
+            .badge-statut { 
+                font-size: 10px; 
+                padding: 3px 10px;
+            }
+            .btn-voir { 
+                font-size: 11px; 
+            }
         }
 
         @media (max-width: 640px) {
-            .container { padding: 18px; }
-            .info-grid { grid-template-columns: 1fr; }
-            .header-name { font-size: 22px; }
-            .header-left { flex-wrap: wrap; }
-            .table-wrapper { overflow-x: auto; }
-            .grid-row { grid-template-columns: repeat(5, minmax(110px, 1fr)); width: max-content; min-width: 100%; }
+            .container { 
+                padding: 12px; 
+            }
+            .back-link { 
+                margin-bottom: 16px; 
+            }
+            .header-left { 
+                flex-direction: column; 
+                align-items: flex-start; 
+                width: 100%;
+            }
+            .header-icon { 
+                width: 50px; 
+                height: 50px; 
+                font-size: 22px;
+            }
+            .header-name { 
+                font-size: 20px; 
+            }
+            .header-name-row { 
+                flex-direction: column; 
+                align-items: flex-start; 
+                gap: 8px;
+            }
+            .info-grid { 
+                grid-template-columns: 1fr; 
+                gap: 12px;
+            }
+            .info-card { 
+                padding: 16px 20px; 
+            }
+            .info-card .value { 
+                font-size: 18px; 
+            }
+            .grid-row { 
+                grid-template-columns: repeat(4, minmax(100px, 1fr)); 
+                width: max-content; 
+                min-width: 100%;
+                gap: 8px;
+                font-size: 11px;
+            }
+            .grid-head { 
+                padding: 8px 12px; 
+                font-size: 9px;
+            }
+            .grid-body-row { 
+                padding: 8px 12px; 
+                font-size: 11px;
+            }
+            .client-name { 
+                font-size: 11px; 
+            }
+            .btn-voir { 
+                font-size: 10px; 
+            }
+            .table-header { 
+                padding: 12px 16px; 
+                font-size: 13px;
+            }
+            .statut-badge { 
+                font-size: 11px; 
+                padding: 4px 12px;
+            }
+            .btn-action { 
+                padding: 8px 16px; 
+                font-size: 12px;
+            }
         }
     </style>
 </head>
@@ -564,15 +751,15 @@ if ($table) {
                 <div class="header-name-row">
                     <h1 class="header-name"><?= htmlspecialchars($provider['nom_providers']) ?></h1>
                     <span class="statut-badge <?= $isActif ? 'actif' : 'inactif' ?>" id="statusBadge">
-                        <i class="fas <?= $isActif ? 'fa-circle' : 'fa-circle' ?>" style="font-size: 10px;"></i>
+                        <i class="fas fa-circle" style="font-size: 10px;"></i>
                         <?= $isActif ? 'Actif' : 'Inactif' ?>
                     </span>
                 </div>
                 <p class="header-subtitle">
-                    <i class="fas fa-building"></i>
+                    <i class="fas fa-tag"></i>
                     <?= htmlspecialchars($provider['description']) ?>
                     <span style="margin: 0 8px; color: var(--border);">|</span>
-                    <i class="fas fa-tag"></i>
+                    <i class="fas fa-channel"></i>
                     <?= htmlspecialchars($canalName) ?>
                 </p>
             </div>
@@ -580,7 +767,7 @@ if ($table) {
         
         <div class="header-actions">
             <button onclick="toggleStatus()" id="toggleStatusBtn" 
-                    class="btn-action">
+                    class="btn-action <?= $isActif ? 'btn-action-red' : 'btn-action-green' ?>">
                 <i class="fas <?= $isActif ? 'fa-pause' : 'fa-play' ?>"></i>
                 <?= $isActif ? 'Désactiver' : 'Activer' ?>
             </button>
@@ -591,15 +778,21 @@ if ($table) {
     <div class="info-grid">
         <div class="info-card">
             <div class="label">Tarif par défaut</div>
-            <div class="value"><?= number_format($provider['tarif'], 2, ',', ' ') ?> €/envoi</div>
+            <div class="value" style="color: var(--accent);">
+                <?= number_format($provider['tarif'], 2, ',', ' ') ?> €
+                <span style="font-size: 14px; font-weight: 500; color: var(--muted-2);">/envoi</span>
+            </div>
         </div>
         <div class="info-card">
             <div class="label">Clients associés</div>
-            <div class="value"><?= count($clients) ?></div>
+            <div class="value" style="color: var(--success-soft-fg);"><?= count($clients) ?></div>
         </div>
         <div class="info-card">
-            <div class="label">Créé le</div>
-            <div class="value" style="font-size:17px;"><?= date('d/m/Y', strtotime($provider['created_at'])) ?></div>
+            <div class="label">Revenus générés</div>
+            <div class="value" style="font-size: 18px; color: var(--muted-2);">
+                <i class="fas fa-chart-line" style="font-size: 16px;"></i>
+                En développement
+            </div>
         </div>
     </div>
 
@@ -608,6 +801,9 @@ if ($table) {
         <div class="table-header">
             <i class="fas fa-users" style="color: var(--muted);"></i>
             Clients utilisant cet opérateur
+            <span style="margin-left: auto; font-size: 13px; font-weight: 600; color: var(--muted-2);">
+                <?= count($clients) ?> client<?= count($clients) > 1 ? 's' : '' ?>
+            </span>
         </div>
 
         <?php if (empty($clients)): ?>
@@ -626,7 +822,9 @@ if ($table) {
                 </div>
                 <?php foreach ($clients as $client): ?>
                     <div class="grid-row grid-body-row">
-                        <div class="client-name"><?= htmlspecialchars($client['nom']) ?></div>
+                        <div class="client-name" title="<?= htmlspecialchars($client['nom']) ?>">
+                            <?= htmlspecialchars($client['nom']) ?>
+                        </div>
                         <div class="client-tarif"><?= number_format($client['tarif'], 2, ',', ' ') ?> €</div>
                         <div>
                             <span class="badge-statut <?= $client['actif'] ? 'actif' : 'inactif' ?>">
@@ -643,6 +841,7 @@ if ($table) {
             </div>
         <?php endif; ?>
     </div>
+</div>
 
 <!-- ===== TOAST CONTAINER ===== -->
 <div id="toastContainer" class="toast-container"></div>
@@ -678,8 +877,8 @@ async function toggleStatus() {
     const btn = document.getElementById('toggleStatusBtn');
     const badge = document.getElementById('statusBadge');
     
-    // Sauvegarder le texte original avant de le modifier
     const originalText = btn.innerHTML;
+    const isCurrentlyActive = badge.classList.contains('actif');
     
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Chargement...';
@@ -711,26 +910,24 @@ async function toggleStatus() {
             badge.innerHTML = `<i class="fas fa-circle" style="font-size: 10px;"></i> ${isActif ? 'Actif' : 'Inactif'}`;
             
             // Mettre à jour le bouton
+            btn.className = `btn-action ${isActif ? 'btn-action-red' : 'btn-action-green'}`;
             btn.innerHTML = `<i class="fas ${isActif ? 'fa-pause' : 'fa-play'}"></i> ${isActif ? 'Désactiver' : 'Activer'}`;
             
             showToast(result.message, 'success');
         } else {
             showToast(result.message || 'Une erreur est survenue', 'error');
-            // Restaurer le texte original en cas d'erreur
             btn.innerHTML = originalText;
-            btn.className = `btn-action <?= $isActif ? 'btn-action-red' : 'btn-action-green' ?>`;
+            btn.className = `btn-action ${isCurrentlyActive ? 'btn-action-red' : 'btn-action-green'}`;
         }
     } catch (error) {
         console.error('Erreur:', error);
         showToast('Erreur: ' + error.message, 'error');
-        // Restaurer le texte original en cas d'erreur
         btn.innerHTML = originalText;
-        btn.className = `btn-action <?= $isActif ? 'btn-action-red' : 'btn-action-green' ?>`;
+        btn.className = `btn-action ${isCurrentlyActive ? 'btn-action-red' : 'btn-action-green'}`;
     } finally {
         btn.disabled = false;
     }
 }
-
 
 // ============================================
 // FLASH MESSAGES
