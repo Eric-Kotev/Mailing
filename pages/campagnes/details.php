@@ -218,7 +218,6 @@ function formaterNumerosOctopush($destinataires) {
         
         $telephone = trim($telephone);
         
-        // Si le numéro a déjà un +, on le garde tel quel
         if (substr($telephone, 0, 1) == '+') {
             $checkNumber = preg_replace('/[^0-9]/', '', $telephone);
             if (strlen($checkNumber) >= 9 && strlen($checkNumber) <= 15) {
@@ -227,29 +226,20 @@ function formaterNumerosOctopush($destinataires) {
             continue;
         }
         
-        // Nettoyer le numéro (garder uniquement les chiffres)
         $telephone = preg_replace('/[^0-9]/', '', $telephone);
         
-        // Si le numéro commence par 0 (format national français)
         if (substr($telephone, 0, 1) == '0') {
-            // Numéro français (06, 07, 05, 04, 03, 02, 09)
             $telephone = '+33' . substr($telephone, 1);
         } else {
-            // Numéro sans 0 au début
             if (strlen($telephone) == 10) {
-                // Numéro français à 10 chiffres sans le 0 (ex: 612345678)
                 $telephone = '+33' . $telephone;
             } elseif (strlen($telephone) == 11 && substr($telephone, 0, 2) == '33') {
-                // Numéro français avec indicatif 33 (ex: 33612345678)
                 $telephone = '+' . $telephone;
             } elseif (strlen($telephone) == 12 && substr($telephone, 0, 3) == '261') {
-                // Si numéro Madagascar, on le garde tel quel avec +
                 $telephone = '+' . $telephone;
             } elseif (strlen($telephone) > 10 && substr($telephone, 0, 2) == '33') {
-                // Numéro français avec 33 au début
                 $telephone = '+' . $telephone;
             } else {
-                // Par défaut : on ajoute +33 (France)
                 $telephone = '+33' . $telephone;
             }
         }
@@ -264,7 +254,7 @@ function formaterNumerosOctopush($destinataires) {
 }
 
 // ============================================
-// FONCTION POUR ENVOYER AVEC OCTOPUSH (CORRIGÉE AVEC SESSION)
+// FONCTION POUR ENVOYER AVEC OCTOPUSH
 // ============================================
 function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
     $url = 'https://api.octopush.com/v1/public/sms-campaign/send';
@@ -277,7 +267,7 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
     }
     
     if (empty($recipients)) {
-        return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé. Format attendu: +33XXXXXXXXX'];
+        return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé.'];
     }
     
     $data = [
@@ -423,16 +413,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
         
         $campagne = $campagneConfig[0];
         
-        // SI C'EST OCTOPUSH - UTILISER LES IDENTIFIANTS DE LA SESSION
         if ($isOctopush) {
-            // Récupérer les identifiants depuis la session
             $apiLogin = $_SESSION['octopush_api_login'] ?? null;
             $apiKey = $_SESSION['octopush_api_key'] ?? null;
             $sessionName = $_SESSION['octopush_session_name'] ?? 'Octopush API';
             
-            // Si les identifiants ne sont pas en session, les récupérer depuis la base
             if (empty($apiLogin) || empty($apiKey)) {
-                // Récupérer depuis la table campagne
                 $campagneDb = $db->select('campagne', [
                     'id_campagne' => $id_campagne_historique,
                     'id_compte' => $idCompte
@@ -442,7 +428,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                     $apiLogin = $campagneDb[0]['api_login'];
                     $apiKey = $campagneDb[0]['api_key'];
                 } else {
-                    // Essayer de récupérer depuis la configuration de la campagne
                     $octopushConfigId = $campagneData['octopush_config_id'] ?? $campagne['octopush_config_id'] ?? null;
                     
                     if ($octopushConfigId) {
@@ -460,14 +445,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                 }
             }
             
-            // Vérifier que les identifiants sont disponibles
             if (empty($apiLogin) || empty($apiKey)) {
-                $_SESSION['flash_error'] = "❌ Identifiants Octopush manquants. Veuillez sélectionner une session Octopush.";
+                $_SESSION['flash_error'] = "❌ Identifiants Octopush manquants.";
                 header('Location: index.php?page=campagnes/choix_session_octopush&campagne_id=' . $campagneId);
                 exit;
             }
             
-            // Envoyer avec Octopush en utilisant les identifiants de la session
             $resultat = envoyerOctopush($message, $destinataires, $apiLogin, $apiKey);
             
             if ($resultat['success']) {
@@ -499,10 +482,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
             exit;
         }
         
-        // ============================================
-        // POUR LES AUTRES TYPES DE MESSAGE
-        // ============================================
-        
         $min_delay = $_SESSION['min_delay'] ?? $campagne['min_delay'] ?? 60;
         $max_delay = $_SESSION['max_delay'] ?? $campagne['max_delay'] ?? 180;
         
@@ -527,25 +506,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                 exit;
         }
         
-        // Gestion du résultat avec messages détaillés
         if ($resultat['success']) {
             $_SESSION['flash_message'] = "✅ " . $resultat['message'];
-            
-            // Si c'est WhatsApp, ajouter des détails supplémentaires
-            if ($typeMessage === 'whatsapp' && isset($resultat['details'])) {
-                $successCount = 0;
-                $errorCount = 0;
-                foreach ($resultat['details'] as $detail) {
-                    if (isset($detail['success']) && $detail['success'] === true) {
-                        $successCount++;
-                    } else {
-                        $errorCount++;
-                    }
-                }
-                if ($errorCount > 0) {
-                    $_SESSION['flash_message'] .= " (Détails: " . $successCount . " succès, " . $errorCount . " échecs)";
-                }
-            }
         } else {
             $_SESSION['flash_error'] = "❌ Erreur lors de l'envoi : " . $resultat['error'];
         }
@@ -577,11 +539,11 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
         }
         
         if (empty($device_id)) {
-            return ['success' => false, 'error' => 'device_id non configuré. Veuillez recréer le message.'];
+            return ['success' => false, 'error' => 'device_id non configuré.'];
         }
         
         if (empty($appareilId)) {
-            return ['success' => false, 'error' => 'appareil_id non configuré. Veuillez recréer le message.'];
+            return ['success' => false, 'error' => 'appareil_id non configuré.'];
         }
         
         $appareil = $db->select('sms_appareils', [
@@ -598,7 +560,7 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
         $api_password = $appareil[0]['api_password'];
         
         if (empty($api_username) || empty($api_password)) {
-            return ['success' => false, 'error' => 'Identifiants API SMS manquants pour cet appareil.'];
+            return ['success' => false, 'error' => 'Identifiants API SMS manquants.'];
         }
         
         $recipients = [];
@@ -669,14 +631,10 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
     }
 }
 
-/**
- * Fonction d'envoi WhatsApp avec debug
- */
 function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires, $pieceJointe = null, $min_delay = 60, $max_delay = 180) {
     global $db;
     
     try {
-        // Récupérer la session WhatsApp active
         $session = $db->select('whatsapp_sessions', [
             'id_compte' => $idCompte,
             'est_active' => true
@@ -696,19 +654,14 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         
         $whatsappSession = $session[0]['nom_session'];
         
-        // URL de l'API - utilisez la même que dans Postman
         $apiUrl = 'http://164.68.103.147:8081/api/controller.php/messages/send-bulk';
         $apiKey = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
         
-        // === PRÉPARER LES CONTACTS ===
         $contacts = [];
-        $contactsDetails = [];
-        $rawNumbers = [];
         
         foreach ($destinataires as $dest) {
             $telephone = null;
             
-            // Extraction du numéro depuis différents formats
             if (is_array($dest) && isset($dest['phone_number'])) {
                 $telephone = $dest['phone_number'];
             } elseif (is_string($dest) && preg_match('/\(([^)]+)\)/', $dest, $matches)) {
@@ -721,42 +674,29 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
                 continue;
             }
             
-            // Nettoyer le numéro (garder uniquement les chiffres)
             $telephone = preg_replace('/[^0-9]/', '', $telephone);
-            $rawNumbers[] = $telephone;
             
-            // Format Madagascar (261)
             if (strlen($telephone) >= 9 && strlen($telephone) <= 10) {
                 if (substr($telephone, 0, 1) == '0') {
-                    // 034... -> 26134...
                     $telephone = '261' . substr($telephone, 1);
                 } elseif (strlen($telephone) == 9) {
-                    // Numéro à 9 chiffres sans le 0
                     $telephone = '261' . $telephone;
                 } elseif (strlen($telephone) == 10 && substr($telephone, 0, 3) != '261') {
-                    // Autre numéro à 10 chiffres
                     $telephone = '261' . $telephone;
                 }
             } else {
-                // Si le numéro commence déjà par 261, on le garde
                 if (substr($telephone, 0, 3) != '261' && strlen($telephone) > 0) {
                     $telephone = '261' . $telephone;
                 }
             }
             
             $contacts[] = $telephone;
-            $contactsDetails[] = [
-                'original' => $dest,
-                'raw' => $rawNumbers[count($rawNumbers)-1],
-                'formatted' => $telephone
-            ];
         }
         
         if (empty($contacts)) {
-            return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé. Données reçues: ' . json_encode($destinataires)];
+            return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé.'];
         }
         
-        // === PRÉPARER LE FICHIER JOINT SI PRÉSENT ===
         $fichierData = null;
         if ($pieceJointe && isset($pieceJointe['url']) && !empty($pieceJointe['url'])) {
             $fileUrl = $pieceJointe['url'];
@@ -795,8 +735,6 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             }
         }
         
-        // === CONSTRUCTION DE LA REQUÊTE ===
-        // Utiliser la même structure que votre test Postman
         if ($fichierData && $fichierData['fichier_pret']) {
             $data = [
                 'session' => $whatsappSession,
@@ -821,25 +759,6 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             ];
         }
         
-        // === LOG POUR DEBUG ===
-        $debugData = [
-            'url' => $apiUrl,
-            'session' => $whatsappSession,
-            'contacts' => $contacts,
-            'contacts_count' => count($contacts),
-            'message' => $message,
-            'min_delay' => $min_delay,
-            'max_delay' => $max_delay,
-            'full_payload' => $data
-        ];
-        
-        // Sauvegarder le debug dans la base de données
-        $db->update('campagne', [
-            'erreur' => 'DEBUG: ' . json_encode($debugData),
-            'updated_at' => date('Y-m-d H:i:s')
-        ], ['id_campagne' => $campagneData['id_campagne']]);
-        
-        // === ENVOI DE LA REQUÊTE ===
         $jsonData = json_encode($data);
         
         $ch = curl_init();
@@ -857,24 +776,10 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
-        $curlInfo = curl_getinfo($ch);
         curl_close($ch);
         
-        // === ANALYSE DE LA RÉPONSE ===
         $responseData = json_decode($response, true);
         
-        // Journaliser la réponse pour debug
-        $logData = [
-            'http_code' => $httpCode,
-            'curl_error' => $curlError,
-            'response' => $response,
-            'response_data' => $responseData,
-            'curl_info' => $curlInfo,
-            'sent_data' => $data,
-            'json_sent' => $jsonData
-        ];
-        
-        // Si la réponse est vide ou invalide
         if (empty($response) || $response === null) {
             $db->update('campagne', [
                 'statut' => 'echoue',
@@ -883,14 +788,13 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
                 'nb_erreurs' => count($contacts),
                 'appareil_utilise' => $whatsappSession,
                 'reponse_api' => $response,
-                'erreur' => 'Réponse vide ou invalide. HTTP Code: ' . $httpCode . ', cURL Error: ' . $curlError . ', Debug: ' . json_encode($logData),
+                'erreur' => 'Réponse vide ou invalide. HTTP Code: ' . $httpCode . ', cURL Error: ' . $curlError,
                 'updated_at' => date('Y-m-d H:i:s')
             ], ['id_campagne' => $campagneData['id_campagne']]);
             
-            return ['success' => false, 'error' => 'Réponse vide ou invalide. Vérifiez les logs pour plus de détails.'];
+            return ['success' => false, 'error' => 'Réponse vide ou invalide.'];
         }
         
-        // === ANALYSE DE LA RÉPONSE ===
         $succes = 0;
         $echecs = 0;
         $erreurs = [];
@@ -898,15 +802,12 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         $statut = 'echoue';
         $messageReponse = '';
         
-        // Vérifier si la réponse a le format attendu
         if ($httpCode === 200 && isset($responseData['ok']) && $responseData['ok'] === true) {
-            // Succès de l'API
             $total = $responseData['total'] ?? count($contacts);
             $validCount = $responseData['valid_count'] ?? 0;
             $invalidCount = $responseData['invalid_count'] ?? 0;
             $invalidContacts = $responseData['invalid_contacts'] ?? [];
             
-            // Parcourir les résultats
             if (isset($responseData['results']) && is_array($responseData['results'])) {
                 foreach ($responseData['results'] as $result) {
                     if (isset($result['success']) && $result['success'] === true) {
@@ -914,8 +815,7 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
                         $details[] = [
                             'contact' => $result['chatId'] ?? 'Inconnu',
                             'statut' => $result['status'] ?? 'sent',
-                            'success' => true,
-                            'firstName' => $result['firstName'] ?? null
+                            'success' => true
                         ];
                     } else {
                         $echecs++;
@@ -932,7 +832,6 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
                 }
             }
             
-            // Gérer les contacts invalides
             if (!empty($invalidContacts)) {
                 foreach ($invalidContacts as $invalidContact) {
                     $echecs++;
@@ -948,20 +847,18 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             
             $messageReponse = $responseData['message'] ?? 'Envoi terminé';
             
-            // Déterminer le statut global
             if ($echecs == 0 && $succes > 0) {
                 $statut = 'envoye';
-                $messageReponse = "✅ " . $succes . " messages WhatsApp envoyés avec succès (Session: " . $whatsappSession . ")";
+                $messageReponse = "✅ " . $succes . " messages WhatsApp envoyés avec succès";
             } elseif ($succes > 0 && $echecs > 0) {
                 $statut = 'partiel';
-                $messageReponse = "⚠️ " . $succes . " messages envoyés, " . $echecs . " échecs (Session: " . $whatsappSession . ")";
+                $messageReponse = "⚠️ " . $succes . " messages envoyés, " . $echecs . " échecs";
             } else {
                 $statut = 'echoue';
-                $messageReponse = "❌ Tous les messages ont échoué (Session: " . $whatsappSession . ")";
+                $messageReponse = "❌ Tous les messages ont échoué";
             }
             
         } else {
-            // Erreur HTTP ou API
             $echecs = count($contacts);
             $errorMsg = isset($responseData['message']) ? $responseData['message'] : $response;
             
@@ -972,19 +869,9 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             $erreurs[] = 'Erreur API (HTTP ' . $httpCode . '): ' . $errorMsg;
             $statut = 'echoue';
             $messageReponse = "❌ Erreur API: " . $errorMsg;
-            
-            if (isset($responseData['errors'])) {
-                $erreurs[] = 'Détails: ' . json_encode($responseData['errors']);
-            }
-            
-            // Ajouter des infos de debug si la réponse n'est pas du JSON
-            if ($responseData === null && !empty($response)) {
-                $erreurs[] = 'Réponse non-JSON: ' . substr($response, 0, 200);
-            }
         }
         
-        // === MISE À JOUR DE LA BASE DE DONNÉES ===
-        $erreurFinale = !empty($erreurs) ? json_encode(array_merge($erreurs, ['debug' => $logData])) : null;
+        $erreurFinale = !empty($erreurs) ? json_encode($erreurs) : null;
         
         $db->update('campagne', [
             'statut' => $statut,
@@ -997,16 +884,12 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             'updated_at' => date('Y-m-d H:i:s')
         ], ['id_campagne' => $campagneData['id_campagne']]);
         
-        // === RETOUR DU RÉSULTAT ===
         if ($statut === 'envoye') {
             return [
                 'success' => true, 
                 'message' => $messageReponse,
                 'details' => $details,
-                'statut' => $statut,
-                'session' => $whatsappSession,
-                'total' => count($contacts),
-                'debug' => $logData
+                'statut' => $statut
             ];
         } elseif ($statut === 'partiel') {
             return [
@@ -1014,10 +897,7 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
                 'message' => $messageReponse,
                 'details' => $details,
                 'erreurs' => $erreurs,
-                'statut' => $statut,
-                'session' => $whatsappSession,
-                'total' => count($contacts),
-                'debug' => $logData
+                'statut' => $statut
             ];
         } else {
             return [
@@ -1025,29 +905,24 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
                 'error' => $messageReponse,
                 'details' => $details,
                 'erreurs' => $erreurs,
-                'statut' => $statut,
-                'session' => $whatsappSession,
-                'total' => count($contacts),
-                'debug' => $logData
+                'statut' => $statut
             ];
         }
         
     } catch (Exception $e) {
-        // En cas d'exception, on met à jour la base de données
         try {
             $db->update('campagne', [
                 'statut' => 'echoue',
                 'nb_erreurs' => isset($contacts) ? count($contacts) : 0,
-                'erreur' => 'Exception: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                'erreur' => 'Exception: ' . $e->getMessage(),
                 'updated_at' => date('Y-m-d H:i:s')
             ], ['id_campagne' => $campagneData['id_campagne']]);
-        } catch (Exception $dbError) {
-            // Ignorer les erreurs de DB
-        }
+        } catch (Exception $dbError) {}
         
         return ['success' => false, 'error' => 'Exception: ' . $e->getMessage()];
     }
 }
+
 function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires) {
     global $db;
     
@@ -1058,7 +933,7 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
         $listmonkCampaignId = $campagneData['listmonk_campaign_id'] ?? null;
         
         if (!$listmonkCampaignId) {
-            return ['success' => false, 'error' => 'ID de campagne Listmonk manquant. Veuillez recréer le message.'];
+            return ['success' => false, 'error' => 'ID de campagne Listmonk manquant.'];
         }
         
         $result = updateListmonkCampaignStatus($listmonkCampaignId, 'running');
@@ -1112,7 +987,6 @@ if ($isOctopush) {
     }
 }
 
-// Récupérer le nom de la session Octopush pour l'affichage
 $octopushSessionName = $_SESSION['octopush_session_name'] ?? null;
 if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
     $config = $db->select('octopush_config', [
@@ -1133,20 +1007,32 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
     <title><?= htmlspecialchars($campagne['nom_campagne']) ?> - <?= APP_NAME ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* ===== STYLES ===== */
-        * { box-sizing: border-box; }
+        /* ============================================
+           STYLES PRINCIPAUX - FULL WIDTH
+        ============================================ */
+        * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+        }
+        
         body { 
             margin: 0; 
             background: #f3f4f6;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
         }
         
         .container {
-            max-width: 1280px;
+            max-width: 100%;
             margin: 0 auto;
-            padding: 16px 24px;
+            padding: 16px 32px;
+            width: 100%;
         }
         
+        /* ============================================
+           BADGES ET STATUTS
+        ============================================ */
         .status-badge {
             display: inline-flex;
             align-items: center;
@@ -1162,6 +1048,50 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .status-partiel { background: #fef3c7; color: #92400e; }
         .status-echoue { background: #fee2e2; color: #991b1b; }
         
+        .badge-octopush {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 9px;
+            font-weight: 700;
+            background: #f97316;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-left: 4px;
+        }
+        
+        .badge-octopush-session {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            background: #fff7ed;
+            color: #9a3412;
+            border: 1px solid #fed7aa;
+            margin-left: 4px;
+        }
+        .badge-octopush-session i {
+            margin-right: 4px;
+            color: #ea580c;
+        }
+        
+        .stat-type {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .stat-type-whatsapp { background: #d1fae5; color: #065f46; }
+        .stat-type-sms { background: #dbeafe; color: #1e40af; }
+        .stat-type-email { background: #fef3c7; color: #92400e; }
+        
+        /* ============================================
+           TOAST
+        ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -1184,6 +1114,9 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         
+        /* ============================================
+           BOUTONS
+        ============================================ */
         .btn-send-message {
             background: #10b981;
             color: white;
@@ -1198,13 +1131,8 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             align-items: center;
             gap: 4px;
         }
-        .btn-send-message:hover {
-            background: #059669;
-        }
-        .btn-send-message:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .btn-send-message:hover { background: #059669; }
+        .btn-send-message:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .btn-send-email {
             background: #3b82f6;
@@ -1220,13 +1148,8 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             align-items: center;
             gap: 4px;
         }
-        .btn-send-email:hover {
-            background: #2563eb;
-        }
-        .btn-send-email:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .btn-send-email:hover { background: #2563eb; }
+        .btn-send-email:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .btn-send-octopush {
             background: #f97316;
@@ -1242,22 +1165,16 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             align-items: center;
             gap: 4px;
         }
-        .btn-send-octopush:hover {
-            background: #ea580c;
-        }
+        .btn-send-octopush:hover { background: #ea580c; }
         
-        .header-title {
-            font-size: 24px;
-            font-weight: 700;
-        }
-        .header-subtitle {
-            font-size: 15px;
-            color: #6b7280;
-        }
-        
+        /* ============================================
+           STATS CARDS
+        ============================================ */
         .stat-card {
-            padding: 16px;
+            padding: 16px 20px;
             border-radius: 12px;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         .stat-card .stat-number {
             font-size: 28px;
@@ -1269,12 +1186,18 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             margin-top: 2px;
         }
         
+        /* ============================================
+           TABLE
+        ============================================ */
         .table-container {
             overflow-x: auto;
+            width: 100%;
         }
         .table-container table {
             width: 100%;
             font-size: 14px;
+            border-collapse: collapse;
+            min-width: 700px;
         }
         .table-container th {
             padding: 10px 16px;
@@ -1283,16 +1206,30 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             text-transform: uppercase;
             letter-spacing: 0.3px;
             text-align: left;
+            background: #f9fafb;
+            border-bottom: 2px solid #e5e7eb;
         }
         .table-container td {
             padding: 10px 16px;
             font-size: 14px;
+            border-bottom: 1px solid #f3f4f6;
         }
         .table-container th.text-center,
         .table-container td.text-center {
             text-align: center;
         }
         
+        .envoi-row {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .envoi-row:hover {
+            background-color: #f9fafb;
+        }
+        
+        /* ============================================
+           FILTRES
+        ============================================ */
         .filter-container {
             display: flex;
             flex-wrap: wrap;
@@ -1344,6 +1281,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             border-radius: 8px;
             border: 1.5px solid #d1d5db;
             width: 100%;
+            background: white;
         }
         #searchInput:focus {
             outline: none;
@@ -1351,165 +1289,9 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
         }
         
-        .stat-type {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .stat-type-whatsapp { background: #d1fae5; color: #065f46; }
-        .stat-type-sms { background: #dbeafe; color: #1e40af; }
-        .stat-type-email { background: #fef3c7; color: #92400e; }
-        
-        .envoi-row {
-            cursor: pointer;
-            transition: background 0.15s;
-        }
-        .envoi-row:hover {
-            background-color: #f9fafb;
-        }
-        
-        .message-content {
-            max-height: 200px;
-            overflow-y: auto;
-            padding: 12px;
-            background: #f8fafc;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-        }
-        .message-content iframe {
-            width: 100%;
-            height: 400px;
-            border: none;
-            background: white;
-        }
-        .message-content .html-content {
-            padding: 12px;
-            background: white;
-            border-radius: 4px;
-        }
-        
-        #detailsModal .modal-content {
-            max-width: 900px;
-            max-height: 90vh;
-        }
-        #detailsModal .modal-header {
-            padding: 16px 24px;
-        }
-        #detailsModal .modal-header h3 {
-            font-size: 20px;
-        }
-        #detailsModal .modal-body {
-            padding: 24px;
-        }
-        #detailsModal .modal-footer {
-            padding: 12px 24px;
-        }
-        
-        .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-        .grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
-        .gap-4 { gap: 16px; }
-        
-        .html-render {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 16px;
-            background: white;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        .html-render h1, .html-render h2, .html-render h3, 
-        .html-render h4, .html-render h5, .html-render h6 {
-            margin-top: 0.5em;
-            margin-bottom: 0.5em;
-        }
-        .html-render p {
-            margin-bottom: 0.75em;
-        }
-        .html-render ul, .html-render ol {
-            margin-left: 1.5em;
-            margin-bottom: 0.75em;
-        }
-        .html-render a {
-            color: #3b82f6;
-            text-decoration: underline;
-        }
-        .html-render img {
-            max-width: 100%;
-            height: auto;
-        }
-        .html-render table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 0.75em;
-        }
-        .html-render table td, .html-render table th {
-            border: 1px solid #d1d5db;
-            padding: 6px 12px;
-        }
-        .html-render blockquote {
-            border-left: 4px solid #d1d5db;
-            padding-left: 12px;
-            margin-left: 0;
-            color: #4b5563;
-        }
-        
-        .badge-octopush {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 9px;
-            font-weight: 700;
-            background: #f97316;
-            color: white;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            margin-left: 4px;
-        }
-        
-        .badge-octopush-session {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 10px;
-            font-weight: 600;
-            background: #fff7ed;
-            color: #9a3412;
-            border: 1px solid #fed7aa;
-            margin-left: 4px;
-        }
-        .badge-octopush-session i {
-            margin-right: 4px;
-            color: #ea580c;
-        }
-        
-        .flash-message {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .flash-message.success {
-            background: #d1fae5;
-            border-left: 4px solid #10b981;
-            color: #065f46;
-        }
-        .flash-message.error {
-            background: #fee2e2;
-            border-left: 4px solid #ef4444;
-            color: #991b1b;
-        }
-        .flash-message.info {
-            background: #dbeafe;
-            border-left: 4px solid #3b82f6;
-            color: #1e40af;
-        }
-        .flash-message i { font-size: 18px; }
-        
+        /* ============================================
+           MODALES
+        ============================================ */
         .modal-octopush {
             display: none;
             position: fixed;
@@ -1529,7 +1311,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             background: white;
             border-radius: 16px;
             max-width: 600px;
-            width: 90%;
+            width: 92%;
             max-height: 80vh;
             overflow-y: auto;
             padding: 0;
@@ -1621,28 +1403,9 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             background: #d1d5db;
         }
         
-        .numero-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 6px 12px;
-            border-bottom: 1px solid #f3f4f6;
-            font-family: monospace;
-            font-size: 14px;
-        }
-        .numero-item:last-child {
-            border-bottom: none;
-        }
-        .numero-item .badge-valid {
-            color: #10b981;
-            font-size: 12px;
-        }
-        .numero-item .badge-invalid {
-            color: #ef4444;
-            font-size: 12px;
-        }
-        
-        /* WhatsApp results styling */
+        /* ============================================
+           WHATSAPP RESULTS
+        ============================================ */
         .whatsapp-result {
             display: flex;
             align-items: center;
@@ -1671,10 +1434,59 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             font-weight: 600;
         }
         
+        .html-render {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            background: white;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .html-render h1, .html-render h2, .html-render h3, 
+        .html-render h4, .html-render h5, .html-render h6 {
+            margin-top: 0.5em;
+            margin-bottom: 0.5em;
+        }
+        .html-render p {
+            margin-bottom: 0.75em;
+        }
+        .html-render ul, .html-render ol {
+            margin-left: 1.5em;
+            margin-bottom: 0.75em;
+        }
+        .html-render a {
+            color: #3b82f6;
+            text-decoration: underline;
+        }
+        .html-render img {
+            max-width: 100%;
+            height: auto;
+        }
+        .html-render table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 0.75em;
+        }
+        .html-render table td, .html-render table th {
+            border: 1px solid #d1d5db;
+            padding: 6px 12px;
+        }
+        .html-render blockquote {
+            border-left: 4px solid #d1d5db;
+            padding-left: 12px;
+            margin-left: 0;
+            color: #4b5563;
+        }
+        
+        /* ============================================
+           UTILITIES
+        ============================================ */
         .flex { display: flex; }
         .flex-wrap { flex-wrap: wrap; }
         .items-center { align-items: center; }
         .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-3 { gap: 12px; }
         .gap-4 { gap: 16px; }
         .mb-6 { margin-bottom: 24px; }
         .mt-1 { margin-top: 4px; }
@@ -1682,49 +1494,213 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .mr-2 { margin-right: 8px; }
         .mr-4 { margin-right: 16px; }
         .text-center { text-align: center; }
-        
-        .bg-white { background: white; }
-        .bg-gray-50 { background: #f9fafb; }
-        .bg-purple-100 { background: #f3e8ff; }
-        .text-purple-600 { color: #7c3aed; }
-        .text-blue-600 { color: #2563eb; }
-        .text-green-600 { color: #16a34a; }
-        .text-red-600 { color: #dc2626; }
-        .text-gray-800 { color: #1f2937; }
-        .text-gray-500 { color: #6b7280; }
-        
-        .rounded-xl { border-radius: 12px; }
-        .rounded-full { border-radius: 9999px; }
-        .shadow-md { box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .p-5 { padding: 20px; }
-        .p-4 { padding: 16px; }
-        .px-4 { padding-left: 16px; padding-right: 16px; }
-        .py-3 { padding-top: 12px; padding-bottom: 12px; }
-        .py-4 { padding-top: 16px; padding-bottom: 16px; }
-        
-        .font-semibold { font-weight: 600; }
-        .font-bold { font-weight: 700; }
+        .text-right { text-align: right; }
         .text-xs { font-size: 12px; }
         .text-sm { font-size: 14px; }
         .text-lg { font-size: 18px; }
         .text-xl { font-size: 20px; }
         .text-2xl { font-size: 24px; }
-        
+        .font-semibold { font-weight: 600; }
+        .font-bold { font-weight: 700; }
         .uppercase { text-transform: uppercase; }
         .tracking-wider { letter-spacing: 0.5px; }
+        .whitespace-nowrap { white-space: nowrap; }
         .overflow-hidden { overflow: hidden; }
+        .overflow-y-auto { overflow-y: auto; }
+        .max-h-48 { max-height: 192px; }
+        .max-h-60 { max-height: 240px; }
+        
+        .bg-white { background: white; }
+        .bg-gray-50 { background: #f9fafb; }
+        .bg-gray-100 { background: #f3f4f6; }
+        .bg-purple-100 { background: #f3e8ff; }
+        .bg-blue-50 { background: #eff6ff; }
+        .bg-blue-100 { background: #dbeafe; }
+        .bg-green-50 { background: #f0fdf4; }
+        .bg-green-100 { background: #dcfce7; }
+        .bg-red-50 { background: #fef2f2; }
+        .bg-red-100 { background: #fee2e2; }
+        .bg-yellow-50 { background: #fffbeb; }
+        .bg-yellow-100 { background: #fef3c7; }
+        .bg-orange-50 { background: #fff7ed; }
+        
+        .text-blue-600 { color: #2563eb; }
+        .text-blue-700 { color: #1d4ed8; }
+        .text-green-600 { color: #16a34a; }
+        .text-green-700 { color: #15803d; }
+        .text-red-600 { color: #dc2626; }
+        .text-red-700 { color: #b91c1c; }
+        .text-yellow-600 { color: #ca8a04; }
+        .text-yellow-700 { color: #a16207; }
+        .text-gray-400 { color: #9ca3af; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-700 { color: #374151; }
+        .text-gray-800 { color: #1f2937; }
+        .text-purple-600 { color: #7c3aed; }
+        
+        .rounded-xl { border-radius: 12px; }
+        .rounded-lg { border-radius: 8px; }
+        .rounded-full { border-radius: 9999px; }
+        .shadow-md { box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .shadow-lg { box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        .p-3 { padding: 12px; }
+        .p-4 { padding: 16px; }
+        .p-5 { padding: 20px; }
+        .p-6 { padding: 24px; }
+        .px-2 { padding-left: 8px; padding-right: 8px; }
+        .px-4 { padding-left: 16px; padding-right: 16px; }
+        .px-6 { padding-left: 24px; padding-right: 24px; }
+        .py-2 { padding-top: 8px; padding-bottom: 8px; }
+        .py-3 { padding-top: 12px; padding-bottom: 12px; }
+        .py-4 { padding-top: 16px; padding-bottom: 16px; }
+        .py-8 { padding-top: 32px; padding-bottom: 32px; }
+        .py-12 { padding-top: 48px; padding-bottom: 48px; }
+        
+        .grid-cols-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .grid-cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .grid-cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .grid-cols-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+        
+        .border { border: 1px solid #e5e7eb; }
+        .border-b { border-bottom: 1px solid #e5e7eb; }
+        .border-t { border-top: 1px solid #e5e7eb; }
+        .border-gray-200 { border-color: #e5e7eb; }
+        .border-orange-200 { border-color: #fed7aa; }
+        .border-l-4 { border-left-width: 4px; }
+        .border-red-500 { border-color: #ef4444; }
+        
         .divide-y > * + * { border-top: 1px solid #e5e7eb; }
         
-        .max-h-60 { max-height: 240px; }
-        .overflow-y-auto { overflow-y: auto; }
+        .relative { position: relative; }
+        .absolute { position: absolute; }
+        .fixed { position: fixed; }
+        .inset-0 { top: 0; left: 0; right: 0; bottom: 0; }
+        .z-50 { z-index: 50; }
+        .z-9999 { z-index: 9999; }
+        .top-1\/2 { top: 50%; }
+        .left-3 { left: 12px; }
+        .transform { transform: translateY(-50%); }
+        .-translate-y-1\/2 { transform: translateY(-50%); }
+        .scale-95 { transform: scale(0.95); }
+        .opacity-0 { opacity: 0; }
+        .transition-all { transition: all 0.3s ease; }
+        .duration-300 { transition-duration: 300ms; }
+        .w-full { width: 100%; }
+        .min-w-full { min-width: 100%; }
+        .max-w-xs { max-width: 320px; }
+        .max-w-4xl { max-width: 896px; }
+        .max-w-sm { max-width: 384px; }
+        .mx-4 { margin-left: 16px; margin-right: 16px; }
+        .mx-auto { margin-left: auto; margin-right: auto; }
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        .sticky { position: sticky; }
+        .top-0 { top: 0; }
+        .bottom-0 { bottom: 0; }
+        
+        /* ============================================
+           MODAL DÉTAILS
+        ============================================ */
+        #detailsModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        #detailsModal.flex {
+            display: flex;
+        }
+        #detailsModal .modal-container {
+            background: white;
+            border-radius: 16px;
+            width: 92%;
+            max-width: 1024px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+        }
+        #detailsModal .modal-container .modal-header-sticky {
+            position: sticky;
+            top: 0;
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 16px 16px 0 0;
+            z-index: 10;
+        }
+        #detailsModal .modal-container .modal-body-content {
+            padding: 24px;
+        }
+        #detailsModal .modal-container .modal-footer-sticky {
+            position: sticky;
+            bottom: 0;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: flex-end;
+            border-radius: 0 0 16px 16px;
+        }
+        
+        /* ============================================
+           RESPONSIVE
+        ============================================ */
+        @media (max-width: 1200px) {
+            .container { padding: 16px 24px; }
+            .grid-cols-5 { grid-template-columns: repeat(4, 1fr); }
+        }
+        
+        @media (max-width: 992px) {
+            .container { padding: 12px 20px; }
+            .grid-cols-5 { grid-template-columns: repeat(3, 1fr); }
+            .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+            .stat-card .stat-number { font-size: 24px; }
+        }
         
         @media (max-width: 768px) {
-            .container { padding: 12px; }
-            .header-title { font-size: 20px; }
-            .stat-card .stat-number { font-size: 22px; }
+            .container { padding: 12px 16px; }
+            .grid-cols-5 { grid-template-columns: repeat(2, 1fr); }
+            .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+            .grid-cols-3 { grid-template-columns: 1fr 1fr; }
+            .grid-cols-2 { grid-template-columns: 1fr; }
             .filter-container { flex-direction: column; align-items: stretch; }
             .filter-container select { width: 100%; }
-            .grid-cols-5 { grid-template-columns: repeat(2, 1fr); }
+            .stat-card .stat-number { font-size: 22px; }
+            .header-title { font-size: 20px; }
+            .table-container table { min-width: 600px; font-size: 13px; }
+            .table-container th, .table-container td { padding: 8px 12px; }
+            #detailsModal .modal-container { width: 96%; margin: 10px; }
+            #detailsModal .modal-container .modal-header-sticky { padding: 12px 16px; }
+            #detailsModal .modal-container .modal-body-content { padding: 16px; }
+            #detailsModal .modal-container .modal-footer-sticky { padding: 10px 16px; }
+        }
+        
+        @media (max-width: 480px) {
+            .container { padding: 8px 10px; }
+            .grid-cols-5 { grid-template-columns: 1fr 1fr; gap: 8px; }
+            .grid-cols-4 { grid-template-columns: 1fr 1fr; gap: 8px; }
+            .grid-cols-3 { grid-template-columns: 1fr; }
+            .stat-card { padding: 12px 16px; }
+            .stat-card .stat-number { font-size: 20px; }
+            .stat-card .stat-label { font-size: 11px; }
+            .header-title { font-size: 18px; }
+            .table-container table { min-width: 500px; font-size: 12px; }
+            .table-container th, .table-container td { padding: 6px 10px; }
+            .btn-send-message, .btn-send-email, .btn-send-octopush { 
+                font-size: 10px; 
+                padding: 3px 8px; 
+            }
         }
     </style>
 </head>
@@ -1741,8 +1717,8 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                 <i class="fas fa-bullhorn text-purple-600 text-xl"></i>
             </div>
             <div>
-                <h1 class="header-title text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></h1>
-                <p class="header-subtitle">Gérez les messages de cette campagne</p>
+                <h1 class="text-xl font-bold text-gray-800"><?= htmlspecialchars($campagne['nom_campagne']) ?></h1>
+                <p class="text-sm text-gray-500">Gérez les messages de cette campagne</p>
                 <?php if ($isOctopush && $octopushSessionName): ?>
                     <span class="badge-octopush-session">
                         <i class="fas fa-bolt"></i> Session: <?= htmlspecialchars($octopushSessionName) ?>
@@ -1816,26 +1792,26 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
     </div>
 
     <!-- ===== STATISTIQUES ===== -->
-    <div class="grid grid-cols-5 md:grid-cols-5 gap-4 mb-6">
-        <div class="bg-white rounded-xl shadow-md stat-card text-center">
+    <div class="grid grid-cols-5 gap-4 mb-6">
+        <div class="stat-card text-center">
             <div class="stat-number text-blue-600"><?= $totalEnvois ?></div>
             <div class="stat-label">Messages</div>
         </div>
-        <div class="bg-white rounded-xl shadow-md stat-card text-center">
+        <div class="stat-card text-center">
             <div class="stat-number text-green-600"><?= $totalSucces ?></div>
             <div class="stat-label">Destinataires touchés</div>
         </div>
-        <div class="bg-white rounded-xl shadow-md stat-card text-center">
+        <div class="stat-card text-center">
             <div class="stat-number text-red-600"><?= $totalErreurs ?></div>
             <div class="stat-label">Échecs</div>
         </div>
-        <div class="bg-white rounded-xl shadow-md stat-card text-center">
+        <div class="stat-card text-center">
             <div class="stat-number text-green-600"><?= $totalWhatsApp ?></div>
             <div class="stat-label">
                 <span class="stat-type stat-type-whatsapp"><i class="fas fa-mobile-alt mr-1"></i> WhatsApp</span>
             </div>
         </div>
-        <div class="bg-white rounded-xl shadow-md stat-card text-center">
+        <div class="stat-card text-center">
             <div class="stat-number text-blue-600"><?= $totalSms + $totalEmail ?></div>
             <div class="stat-label">
                 <span class="stat-type stat-type-sms"><i class="fas fa-comment-dots mr-1"></i> SMS/Email</span>
@@ -1899,7 +1875,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         <?php else: ?>
             <div class="table-container">
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                    <thead>
                         <tr>
                             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
                             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
@@ -1911,7 +1887,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                     </thead>
                     <tbody id="envoisTableBody">
                         <?php foreach ($envois as $envoi): 
-                            // Statut
                             $statutClass = 'text-gray-600';
                             $statutIcon = 'fa-circle';
                             $statutLabel = 'Inconnu';
@@ -1948,7 +1923,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                     $statutLabel = $envoi['statut'] ?? 'Inconnu';
                             }
                             
-                            // Type
                             if ($envoi['type_campagne'] == 'whatsapp') {
                                 $typeClass = 'bg-green-100 text-green-700';
                                 $typeIcon = 'fas fa-mobile-alt';
@@ -1963,13 +1937,11 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                 $typeLabel = 'SMS';
                             }
                             
-                            // Message display
                             $messageDisplay = strip_tags($envoi['message']);
                             if (strlen($messageDisplay) > 50) {
                                 $messageDisplay = substr($messageDisplay, 0, 50) . '...';
                             }
                             
-                            // Bouton Envoyer
                             $showSendButton = false;
                             $buttonClass = 'btn-send-message';
                             $buttonIcon = 'fa-paper-plane';
@@ -1983,10 +1955,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                     $buttonClass = 'btn-send-octopush';
                                     $buttonIcon = 'fa-bolt';
                                     $buttonText = 'Envoyer';
-                                } else {
-                                    $buttonClass = 'btn-send-message';
-                                    $buttonIcon = 'fa-paper-plane';
-                                    $buttonText = 'Envoyer';
                                 }
                             }
                             if ($envoi['statut'] == 'planifiee' && $envoi['type_campagne'] == 'email') {
@@ -1996,9 +1964,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                 $buttonText = 'Envoyer Email';
                             }
                             
-                            // Échapper les données pour JavaScript en utilisant base64 pour éviter les problèmes de guillemets
-                            $destinatairesBase64 = base64_encode(json_encode($envoi['destinataires']));
-                            $messageBase64 = base64_encode($envoi['message'] ?? '');
                             $envoiJson = htmlspecialchars(json_encode($envoi), ENT_QUOTES, 'UTF-8');
                         ?>
                             <tr class="envoi-row" 
@@ -2037,7 +2002,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                     <div class="flex items-center justify-center gap-2">
                                         <?php if ($showSendButton): ?>
                                             <?php if ($isOctopushMessage): ?>
-                                                <!-- Bouton Envoyer Octopush -->
                                                 <form method="POST" style="display:inline;" onclick="event.stopPropagation();">
                                                     <input type="hidden" name="action_envoyer_message" value="1">
                                                     <input type="hidden" name="id_campagne_historique" value="<?= $envoi['id_campagne'] ?>">
@@ -2047,7 +2011,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                                     </button>
                                                 </form>
                                             <?php else: ?>
-                                                <!-- Bouton Envoyer normal -->
                                                 <form method="POST" style="display:inline;" onclick="event.stopPropagation();">
                                                     <input type="hidden" name="action_envoyer_message" value="1">
                                                     <input type="hidden" name="id_campagne_historique" value="<?= $envoi['id_campagne'] ?>">
@@ -2058,7 +2021,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                             <?php endif; ?>
                                         <?php endif; ?>
                                         
-                                        <!-- Bouton Voir détails -->
                                         <button onclick="event.stopPropagation(); showDetails(<?= $envoiJson ?>)" 
                                                 class="text-blue-600 hover:text-blue-800" title="Voir détails">
                                             <i class="fas fa-eye"></i>
@@ -2074,7 +2036,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
     </div>
 </div>
 
-<!-- ===== MODAL OCTOPUSH (RÉPONSE) ===== -->
+<!-- ===== MODAL OCTOPUSH ===== -->
 <div id="octopushModal" class="modal-octopush <?= $octopushResponse ? 'active' : '' ?>">
     <div class="modal-content">
         <div class="modal-header">
@@ -2085,7 +2047,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             <?php if ($octopushResponse): ?>
                 <div style="text-align:center;margin-bottom:16px;">
                     <i class="fas fa-check-circle" style="font-size:48px;color:#10b981;"></i>
-                    <p style="color:#10b981;font-weight:600;margin-top:8px;"> Envoi effectué avec succès</p>
+                    <p style="color:#10b981;font-weight:600;margin-top:8px;">✅ Envoi effectué avec succès</p>
                     <?php if ($octopushSessionName): ?>
                         <p style="color:#9a3412;font-size:13px;margin-top:4px;">
                             <i class="fas fa-user mr-1"></i> Session: <?= htmlspecialchars($octopushSessionName) ?>
@@ -2130,9 +2092,9 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
 </div>
 
 <!-- ===== MODAL DÉTAILS ===== -->
-<div id="detailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-95 opacity-0" id="modalContainer">
-        <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-2xl">
+<div id="detailsModal">
+    <div class="modal-container" id="modalContainer">
+        <div class="modal-header-sticky">
             <div class="flex items-center">
                 <div id="modalIcon" class="w-10 h-10 rounded-full flex items-center justify-center mr-3">
                     <i id="modalIconImg" class="text-xl"></i>
@@ -2144,14 +2106,14 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             </button>
         </div>
         
-        <div class="p-6" id="modalContent">
+        <div class="modal-body-content" id="modalContent">
             <div class="text-center py-8">
                 <i class="fas fa-spinner fa-spin text-3xl text-blue-500"></i>
                 <p class="text-gray-500 mt-2">Chargement...</p>
             </div>
         </div>
         
-        <div class="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-3 flex justify-end rounded-b-2xl">
+        <div class="modal-footer-sticky">
             <button onclick="closeModal()" class="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition font-medium">
                 Fermer
             </button>
@@ -2162,15 +2124,14 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <script>
-// ===== TOAST NOTIFICATION =====
+// ===== TOAST =====
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
     
     const toast = document.createElement('div');
     toast.className = `toast-notification ${type}`;
-    const colors = { success: '#10b981', error: '#ef4444' };
-    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
+    toast.innerHTML = `<div class="toast-content">${message}</div>`;
     document.body.appendChild(toast);
     
     setTimeout(() => {
@@ -2184,16 +2145,6 @@ function showToast(message, type = 'success') {
 function closeOctopushModal() {
     const modal = document.getElementById('octopushModal');
     modal.classList.remove('active');
-}
-
-// ===== AFFICHER LES DÉTAILS DEPUIS UNE LIGNE =====
-function showDetailsFromRow(row) {
-    const envoi = {
-        id_campagne: row.dataset.id,
-        type_campagne: row.dataset.type,
-        statut: row.dataset.status,
-    };
-    showDetails(envoi);
 }
 
 // ===== FILTRES =====
@@ -2267,6 +2218,25 @@ filterStatus.addEventListener('change', applyFilters);
 document.getElementById('clearFilters').addEventListener('click', resetFilters);
 
 // ===== MODAL DÉTAILS =====
+function showDetailsFromRow(row) {
+    const envoi = {
+        id_campagne: row.dataset.id,
+        type_campagne: row.dataset.type,
+        statut: row.dataset.status,
+    };
+    // Récupérer les données depuis la ligne
+    const cells = row.querySelectorAll('td');
+    // On va chercher les données via une requête AJAX ou depuis les attributs data
+    // Pour simplifier, on utilise les données stockées dans la ligne
+    const envoiData = row._envoiData;
+    if (envoiData) {
+        showDetails(envoiData);
+    } else {
+        // Fallback: afficher un message
+        alert('Détails non disponibles');
+    }
+}
+
 function showDetails(envoi) {
     const modal = document.getElementById('detailsModal');
     const modalContainer = document.getElementById('modalContainer');
@@ -2372,14 +2342,11 @@ function showDetails(envoi) {
         `;
     }
     
-    // === AFFICHAGE DE LA RÉPONSE API OCTOPUSH ===
     let apiResponseHtml = '';
     if (envoi.reponse_api) {
         try {
             const apiData = JSON.parse(envoi.reponse_api);
-            // Vérifier si c'est une réponse Octopush ou WhatsApp
             if (apiData.sms_ticket !== undefined) {
-                // Réponse Octopush
                 apiResponseHtml = `
                     <div>
                         <div class="text-xs text-gray-500 font-semibold mb-1">Réponse API Octopush</div>
@@ -2398,7 +2365,6 @@ function showDetails(envoi) {
         } catch(e) {}
     }
     
-    // === AFFICHAGE DES DÉTAILS WHATSAPP (NOUVELLE STRUCTURE) ===
     let whatsappDetailsHtml = '';
     if (envoi.type_campagne === 'whatsapp' && envoi.reponse_api) {
         try {
@@ -2453,12 +2419,9 @@ function showDetails(envoi) {
                     </div>
                 `;
             }
-        } catch(e) {
-            console.log('Erreur parsing WhatsApp response:', e);
-        }
+        } catch(e) {}
     }
     
-    // Afficher la session Octopush si disponible
     let sessionInfo = '';
     if (envoi.appareil_utilise && envoi.appareil_utilise.includes('Octopush')) {
         sessionInfo = `
@@ -2538,9 +2501,9 @@ function showDetails(envoi) {
         </div>
     `;
     
-    modal.classList.remove('hidden');
     modal.classList.add('flex');
-    setTimeout(() => modalContainer.classList.remove('scale-95', 'opacity-0'), 10);
+    const container = document.getElementById('modalContainer');
+    container.classList.remove('scale-95', 'opacity-0');
 }
 
 function closeModal() {
@@ -2549,7 +2512,6 @@ function closeModal() {
     
     modalContainer.classList.add('scale-95', 'opacity-0');
     setTimeout(() => {
-        modal.classList.add('hidden');
         modal.classList.remove('flex');
     }, 300);
 }

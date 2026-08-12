@@ -132,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_sessio
             $_SESSION['octopush_session_id'] = $idConfig;
             $_SESSION['octopush_api_login'] = $session['api_login'];
             $_SESSION['octopush_api_key'] = $session['api_key'];
+            $_SESSION['octopush_session_name'] = $session['nom_config'];
             
             // Nettoyer les variables de session temporaires
             unset($_SESSION['message_sms_temp']);
@@ -141,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_choisir_sessio
             unset($_SESSION['campagne_config_id_temp']);
             unset($_SESSION['octopush_provider_id']);
             
-            $_SESSION['flash_message'] = " Session Octopush sélectionnée avec succès. La campagne est prête à être envoyée.";
+            $_SESSION['flash_message'] = "✅ Session Octopush sélectionnée avec succès. La campagne est prête à être envoyée.";
             
             // 🔥 REDIRIGER VERS LA PAGE DES DÉTAILS
             header('Location: index.php?page=campagnes/details&id=' . $campagneConfigId);
@@ -191,21 +192,32 @@ if ($destinatairesPreview) {
     <title>Choisir la session Octopush - <?= APP_NAME ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* ===== STYLES ===== */
-        * { box-sizing: border-box; }
+        /* ============================================
+           STYLES PRINCIPAUX - FULL WIDTH
+        ============================================ */
+        * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+        }
+        
         body { 
             margin: 0; 
             background: #f3f4f6;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
         }
         
         .container {
-            max-width: 1100px;
+            max-width: 100%;
             margin: 0 auto;
-            padding: 16px 20px;
+            padding: 16px 32px;
+            width: 100%;
         }
         
-        /* Toast */
+        /* ============================================
+           TOAST
+        ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -228,18 +240,23 @@ if ($destinatairesPreview) {
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.info .toast-content { background: #3b82f6; }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
         
-        /* Step indicator */
+        /* ============================================
+           STEP INDICATOR
+        ============================================ */
         .step-indicator {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 12px;
             margin-bottom: 24px;
-            padding: 12px 20px;
+            padding: 12px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            flex-wrap: wrap;
+            width: 100%;
         }
         .step {
             display: flex;
@@ -260,11 +277,12 @@ if ($destinatairesPreview) {
             font-weight: 700;
             font-size: 12px;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
         .step.active .number {
-            background: #3b82f6;
+            background: #ea580c;
             color: white;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);
         }
         .step.done .number {
             background: #10b981;
@@ -282,41 +300,57 @@ if ($destinatairesPreview) {
             height: 2px;
             background: #e5e7eb;
             border-radius: 2px;
+            flex-shrink: 0;
         }
         .step-line.done {
             background: #10b981;
         }
         
-        /* En-tête */
+        /* ============================================
+           EN-TÊTE
+        ============================================ */
         .header-section {
             display: flex;
             align-items: center;
             margin-bottom: 20px;
-            padding: 16px 20px;
+            padding: 16px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 12px;
         }
         .header-section .back-link {
             color: #6b7280;
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
-            margin-right: 16px;
             text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            flex-shrink: 0;
         }
         .header-section .back-link:hover {
             color: #374151;
+            background: #f3f4f6;
         }
         .header-section .icon-wrapper {
             background: #fff7ed;
-            padding: 10px;
+            padding: 10px 12px;
             border-radius: 12px;
-            margin-right: 14px;
+            flex-shrink: 0;
         }
         .header-section .icon-wrapper i {
             color: #ea580c;
             font-size: 22px;
+        }
+        .header-section .header-text {
+            flex: 1;
+            min-width: 150px;
         }
         .header-section .title {
             font-size: 22px;
@@ -329,15 +363,20 @@ if ($destinatairesPreview) {
             margin-top: 2px;
         }
         
-        /* Card principale */
+        /* ============================================
+           CARD PRINCIPALE
+        ============================================ */
         .main-card {
             background: white;
             border-radius: 14px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
             padding: 24px 28px;
+            width: 100%;
         }
         
-        /* Info campagne */
+        /* ============================================
+           INFO CAMPAGNE
+        ============================================ */
         .campagne-info {
             background: #f3e8ff;
             border: 2px solid #d8b4fe;
@@ -348,6 +387,8 @@ if ($destinatairesPreview) {
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
+            width: 100%;
         }
         .campagne-info .info-left {
             display: flex;
@@ -367,16 +408,24 @@ if ($destinatairesPreview) {
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
         .campagne-info .info-right {
             font-size: 14px;
             color: #6b21a8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .campagne-info .info-right i {
-            margin-right: 6px;
+            font-size: 16px;
         }
         
-        /* Info message */
+        /* ============================================
+           MESSAGE PREVIEW
+        ============================================ */
         .message-preview {
             background: #f0fdf4;
             border: 2px solid #bbf7d0;
@@ -387,22 +436,27 @@ if ($destinatairesPreview) {
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
+            width: 100%;
         }
         .message-preview .preview-left {
             display: flex;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
+            flex: 1;
+            min-width: 150px;
         }
         .message-preview .preview-left .label {
             font-size: 13px;
             color: #166534;
             font-weight: 600;
+            flex-shrink: 0;
         }
         .message-preview .preview-left .message-text {
             font-size: 14px;
             color: #14532d;
-            max-width: 300px;
+            max-width: 400px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -410,24 +464,75 @@ if ($destinatairesPreview) {
         .message-preview .preview-right {
             font-size: 13px;
             color: #166534;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
         }
         .message-preview .preview-right i {
-            margin-right: 4px;
+            font-size: 14px;
         }
         
-        /* Session cards */
+        .message-preview.warning {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+        .message-preview.warning .preview-left .label {
+            color: #991b1b;
+        }
+        .message-preview.warning .preview-left .message-text {
+            color: #991b1b;
+        }
+        
+        /* ============================================
+           OCTOPUSH INFO
+        ============================================ */
+        .octopush-info {
+            background: #fff7ed;
+            border: 2px solid #fed7aa;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #9a3412;
+            width: 100%;
+        }
+        .octopush-info i {
+            font-size: 18px;
+            color: #ea580c;
+            flex-shrink: 0;
+        }
+        .octopush-info span {
+            flex: 1;
+        }
+        
+        /* ============================================
+           SESSIONS GRID
+        ============================================ */
+        .sessions-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            margin-bottom: 0;
+            width: 100%;
+        }
+        
         .session-option {
             cursor: pointer;
             transition: all 0.3s ease;
             border: 2px solid #e5e7eb;
             background: white;
             border-radius: 12px;
-            padding: 20px 16px;
+            padding: 20px 18px;
             position: relative;
+            min-height: 140px;
         }
         .session-option:hover {
             transform: translateY(-4px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
         }
         .session-option.selected {
             border-color: #ea580c;
@@ -465,10 +570,14 @@ if ($destinatairesPreview) {
             font-size: 13px;
             color: #6b7280;
             margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .session-option .session-details .detail-item i {
             width: 18px;
             color: #9ca3af;
+            font-size: 14px;
         }
         .session-option .badge-selected {
             position: absolute;
@@ -480,30 +589,27 @@ if ($destinatairesPreview) {
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
-        }
-        .session-option .badge-selected i {
-            margin-right: 4px;
-        }
-        
-        /* Info Octopush */
-        .octopush-info {
-            background: #fff7ed;
-            border: 2px solid #fed7aa;
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 16px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-size: 14px;
-            color: #9a3412;
+            gap: 4px;
         }
-        .octopush-info i {
-            font-size: 18px;
-            color: #ea580c;
+        .session-option .badge-selected i {
+            font-size: 12px;
+        }
+        .session-option .session-status {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #dcfce7;
+            color: #166534;
+            margin-top: 4px;
         }
         
-        /* Empty state */
+        /* ============================================
+           EMPTY STATE
+        ============================================ */
         .empty-state {
             text-align: center;
             padding: 48px 20px;
@@ -545,7 +651,34 @@ if ($destinatairesPreview) {
             box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);
         }
         
-        /* Boutons */
+        /* ============================================
+           ERROR BOX
+        ============================================ */
+        .error-box {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+        .error-box i {
+            color: #ef4444;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .error-box span {
+            color: #991b1b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        /* ============================================
+           ACTION BUTTONS
+        ============================================ */
         .action-buttons {
             display: flex;
             gap: 12px;
@@ -553,7 +686,10 @@ if ($destinatairesPreview) {
             margin-top: 24px;
             padding-top: 16px;
             border-top: 2px solid #f3f4f6;
+            flex-wrap: wrap;
+            width: 100%;
         }
+        
         .btn-primary {
             background: #ea580c;
             color: white;
@@ -567,11 +703,13 @@ if ($destinatairesPreview) {
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            min-width: 200px;
+            justify-content: center;
         }
         .btn-primary:hover:not(:disabled) {
             background: #c2410c;
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(234, 88, 12, 0.3);
+            box-shadow: 0 4px 16px rgba(234, 88, 12, 0.3);
         }
         .btn-primary:disabled {
             opacity: 0.4;
@@ -579,6 +717,7 @@ if ($destinatairesPreview) {
             transform: none !important;
             box-shadow: none !important;
         }
+        
         .btn-outline {
             background: transparent;
             color: #6b7280;
@@ -593,70 +732,198 @@ if ($destinatairesPreview) {
             align-items: center;
             gap: 6px;
             text-decoration: none;
+            min-width: 120px;
+            justify-content: center;
         }
         .btn-outline:hover {
             background: #f9fafb;
             border-color: #d1d5db;
+            color: #374151;
         }
         
-        /* Erreur */
-        .error-box {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .error-box i {
-            color: #ef4444;
-            font-size: 18px;
-        }
-        .error-box span {
-            color: #991b1b;
-            font-size: 14px;
-            font-weight: 500;
+        /* ============================================
+           UTILITIES
+        ============================================ */
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-5 { margin-bottom: 20px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mr-1 { margin-right: 4px; }
+        .text-xs { font-size: 12px; }
+        .text-sm { font-size: 14px; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-400 { color: #9ca3af; }
+        .w-full { width: 100%; }
+        .hidden { display: none !important; }
+        
+        /* ============================================
+           RESPONSIVE
+        ============================================ */
+        @media (max-width: 1200px) {
+            .container { padding: 16px 24px; }
         }
         
-        /* Grille */
-        .sessions-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            margin-bottom: 0;
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .container { padding: 12px; }
-            .header-section { flex-wrap: wrap; padding: 14px; }
-            .header-section .title { font-size: 18px; }
-            .header-section .subtitle { font-size: 13px; }
-            .main-card { padding: 16px; }
-            .campagne-info { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .message-preview { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .message-preview .preview-left .message-text { max-width: 100%; white-space: normal; }
-            .step-indicator { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+        @media (max-width: 992px) {
+            .container { padding: 14px 20px; }
+            .main-card { padding: 20px; }
+            .step-indicator { padding: 10px 16px; gap: 8px; }
             .step { font-size: 12px; }
             .step .number { width: 24px; height: 24px; font-size: 10px; }
-            .step-line { width: 24px; }
-            .sessions-grid { grid-template-columns: 1fr; gap: 12px; }
-            .session-option { padding: 16px; }
-            .session-option .session-details { padding-left: 0; }
-            .session-option .header { flex-wrap: wrap; }
-            .action-buttons { flex-direction: column; }
+            .step-line { width: 28px; }
+            .sessions-grid { gap: 14px; }
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 12px 16px; }
+            
+            .header-section {
+                padding: 14px 16px;
+                gap: 8px;
+            }
+            .header-section .title { font-size: 19px; }
+            .header-section .subtitle { font-size: 13px; }
+            .header-section .icon-wrapper { padding: 8px 10px; }
+            .header-section .icon-wrapper i { font-size: 18px; }
+            
+            .main-card { padding: 16px; }
+            
+            .campagne-info {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px 16px;
+                gap: 6px;
+            }
+            .campagne-info .info-left .campagne-name { font-size: 14px; }
+            .campagne-info .info-right { font-size: 13px; }
+            
+            .message-preview {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px 16px;
+                gap: 6px;
+            }
+            .message-preview .preview-left {
+                width: 100%;
+                min-width: unset;
+            }
+            .message-preview .preview-left .message-text {
+                max-width: 100%;
+                white-space: normal;
+                word-break: break-word;
+            }
+            .message-preview .preview-right {
+                width: 100%;
+            }
+            
+            .sessions-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            .session-option {
+                padding: 16px 14px;
+                min-height: 100px;
+            }
+            .session-option .session-details {
+                padding-left: 0;
+                margin-top: 4px;
+            }
+            .session-option .header {
+                flex-wrap: wrap;
+            }
+            .session-option .icon-wrapper {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+            .session-option .session-name {
+                font-size: 15px;
+            }
+            .session-option .session-details .detail-item {
+                font-size: 12px;
+            }
+            .session-option .badge-selected {
+                top: 8px;
+                right: 8px;
+                font-size: 10px;
+                padding: 3px 10px;
+            }
+            
+            .octopush-info {
+                font-size: 13px;
+                padding: 10px 14px;
+            }
+            .octopush-info i {
+                font-size: 16px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
             .action-buttons .btn-primary,
-            .action-buttons .btn-outline { width: 100%; justify-content: center; }
+            .action-buttons .btn-outline {
+                width: 100%;
+                justify-content: center;
+                min-width: unset;
+            }
+            
+            .step-indicator {
+                gap: 6px;
+                padding: 8px 12px;
+            }
+            .step { font-size: 11px; gap: 4px; }
+            .step .number { width: 20px; height: 20px; font-size: 9px; }
+            .step-line { width: 16px; }
+            .step span:last-child { display: none; }
+            
             .empty-state { padding: 32px 16px; }
             .empty-state i { font-size: 44px; }
             .empty-state h3 { font-size: 18px; }
         }
         
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .main-card { padding: 22px; }
-            .sessions-grid { gap: 14px; }
+        @media (max-width: 480px) {
+            .container { padding: 8px 10px; }
+            .header-section { padding: 10px 12px; }
+            .header-section .title { font-size: 17px; }
+            .header-section .subtitle { font-size: 12px; }
+            .header-section .back-link { font-size: 12px; padding: 3px 8px; }
+            
+            .main-card { padding: 12px; }
+            
+            .campagne-info { padding: 10px 12px; }
+            .campagne-info .info-left .campagne-name { font-size: 13px; }
+            .campagne-info .info-left .sms-badge { font-size: 10px; padding: 2px 10px; }
+            .campagne-info .info-right { font-size: 12px; }
+            
+            .session-option {
+                padding: 12px 12px;
+                min-height: 80px;
+            }
+            .session-option .icon-wrapper {
+                width: 36px;
+                height: 36px;
+                font-size: 14px;
+            }
+            .session-option .session-name { font-size: 14px; }
+            
+            .btn-primary {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            .btn-outline {
+                padding: 10px 18px;
+                font-size: 13px;
+            }
+            
+            .octopush-info {
+                font-size: 12px;
+                padding: 8px 12px;
+            }
+            .octopush-info i {
+                font-size: 14px;
+            }
         }
     </style>
 </head>
@@ -694,7 +961,7 @@ if ($destinatairesPreview) {
         <div class="icon-wrapper">
             <i class="fas fa-bolt"></i>
         </div>
-        <div>
+        <div class="header-text">
             <div class="title">Choisir la session Octopush</div>
             <div class="subtitle">Sélectionnez la configuration Octopush à utiliser pour l'envoi</div>
         </div>
@@ -707,7 +974,7 @@ if ($destinatairesPreview) {
             <div class="info-left">
                 <i class="fas fa-bullhorn" style="color: #7c3aed; font-size: 16px;"></i>
                 <span class="campagne-name"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
-                <span class="sms-badge"><i class="fas fa-comment-dots mr-1"></i>SMS</span>
+                <span class="sms-badge"><i class="fas fa-comment-dots"></i> SMS</span>
             </div>
             <div class="info-right">
                 <i class="fas fa-arrow-right"></i> Étape 4 sur 4
@@ -719,17 +986,19 @@ if ($destinatairesPreview) {
             <div class="message-preview">
                 <div class="preview-left">
                     <span class="label"><i class="fas fa-envelope"></i> Message :</span>
-                    <span class="message-text"><?= htmlspecialchars(mb_substr($messagePreview, 0, 100)) ?><?= mb_strlen($messagePreview) > 100 ? '...' : '' ?></span>
+                    <span class="message-text" title="<?= htmlspecialchars($messagePreview) ?>">
+                        <?= htmlspecialchars(mb_substr($messagePreview, 0, 100)) ?><?= mb_strlen($messagePreview) > 100 ? '...' : '' ?>
+                    </span>
                 </div>
                 <div class="preview-right">
                     <i class="fas fa-users"></i> <?= $nbDestinataires ?> destinataire(s)
                 </div>
             </div>
         <?php else: ?>
-            <div class="message-preview" style="background: #fef2f2; border-color: #fecaca;">
+            <div class="message-preview warning">
                 <div class="preview-left">
-                    <span class="label" style="color: #991b1b;"><i class="fas fa-exclamation-triangle"></i> Avertissement :</span>
-                    <span class="message-text" style="color: #991b1b;">Aucun message trouvé.</span>
+                    <span class="label"><i class="fas fa-exclamation-triangle"></i> Avertissement :</span>
+                    <span class="message-text">Aucun message trouvé.</span>
                 </div>
             </div>
         <?php endif; ?>
@@ -779,6 +1048,7 @@ if ($destinatairesPreview) {
                                 </div>
                                 <div>
                                     <div class="session-name"><?= htmlspecialchars($session['nom_config']) ?></div>
+                                    <span class="session-status"><i class="fas fa-check-circle"></i> Configurée</span>
                                 </div>
                             </div>
                             
@@ -812,6 +1082,9 @@ if ($destinatairesPreview) {
 </div>
 
 <script>
+// ============================================
+// SÉLECTION DE LA SESSION
+// ============================================
 let selectedSession = null;
 
 function selectSession(sessionId) {
@@ -842,7 +1115,9 @@ function selectSession(sessionId) {
     document.getElementById('btnContinuer').disabled = false;
 }
 
-// Gestion du clavier pour l'accessibilité
+// ============================================
+// CLAVIER (Entrée/Espace)
+// ============================================
 document.querySelectorAll('.session-option').forEach(el => {
     el.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -853,7 +1128,9 @@ document.querySelectorAll('.session-option').forEach(el => {
     });
 });
 
-// Toast notification
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());

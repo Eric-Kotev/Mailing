@@ -300,21 +300,32 @@ if ($destinatairesPreview) {
     <title>Choisir le provider SMS - <?= APP_NAME ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* ===== STYLES (Garder les mêmes que précédemment) ===== */
-        * { box-sizing: border-box; }
+        /* ============================================
+           STYLES PRINCIPAUX - FULL WIDTH
+        ============================================ */
+        * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+        }
+        
         body { 
             margin: 0; 
             background: #f3f4f6;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
         }
         
         .container {
-            max-width: 1100px;
+            max-width: 100%;
             margin: 0 auto;
-            padding: 16px 20px;
+            padding: 16px 32px;
+            width: 100%;
         }
         
-        /* Toast */
+        /* ============================================
+           TOAST
+        ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -338,17 +349,21 @@ if ($destinatairesPreview) {
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.info .toast-content { background: #3b82f6; }
         
-        /* Step indicator */
+        /* ============================================
+           STEP INDICATOR
+        ============================================ */
         .step-indicator {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 12px;
             margin-bottom: 24px;
-            padding: 12px 20px;
+            padding: 12px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            flex-wrap: wrap;
+            width: 100%;
         }
         .step {
             display: flex;
@@ -369,6 +384,7 @@ if ($destinatairesPreview) {
             font-weight: 700;
             font-size: 12px;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
         .step.active .number {
             background: #3b82f6;
@@ -391,41 +407,57 @@ if ($destinatairesPreview) {
             height: 2px;
             background: #e5e7eb;
             border-radius: 2px;
+            flex-shrink: 0;
         }
         .step-line.done {
             background: #10b981;
         }
         
-        /* En-tête */
+        /* ============================================
+           EN-TÊTE
+        ============================================ */
         .header-section {
             display: flex;
             align-items: center;
             margin-bottom: 20px;
-            padding: 16px 20px;
+            padding: 16px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 12px;
         }
         .header-section .back-link {
             color: #6b7280;
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
-            margin-right: 16px;
             text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            flex-shrink: 0;
         }
         .header-section .back-link:hover {
             color: #374151;
+            background: #f3f4f6;
         }
         .header-section .icon-wrapper {
             background: #dbeafe;
-            padding: 10px;
+            padding: 10px 12px;
             border-radius: 12px;
-            margin-right: 14px;
+            flex-shrink: 0;
         }
         .header-section .icon-wrapper i {
             color: #2563eb;
             font-size: 22px;
+        }
+        .header-section .header-text {
+            flex: 1;
+            min-width: 150px;
         }
         .header-section .title {
             font-size: 22px;
@@ -438,15 +470,20 @@ if ($destinatairesPreview) {
             margin-top: 2px;
         }
         
-        /* Card principale */
+        /* ============================================
+           CARD PRINCIPALE
+        ============================================ */
         .main-card {
             background: white;
             border-radius: 14px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
             padding: 24px 28px;
+            width: 100%;
         }
         
-        /* Info campagne */
+        /* ============================================
+           INFO CAMPAGNE
+        ============================================ */
         .campagne-info {
             background: #f3e8ff;
             border: 2px solid #d8b4fe;
@@ -457,6 +494,8 @@ if ($destinatairesPreview) {
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
+            width: 100%;
         }
         .campagne-info .info-left {
             display: flex;
@@ -476,16 +515,24 @@ if ($destinatairesPreview) {
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
         .campagne-info .info-right {
             font-size: 14px;
             color: #6b21a8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .campagne-info .info-right i {
-            margin-right: 6px;
+            font-size: 16px;
         }
         
-        /* Info message */
+        /* ============================================
+           MESSAGE PREVIEW
+        ============================================ */
         .message-preview {
             background: #f0fdf4;
             border: 2px solid #bbf7d0;
@@ -496,22 +543,27 @@ if ($destinatairesPreview) {
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
+            width: 100%;
         }
         .message-preview .preview-left {
             display: flex;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
+            flex: 1;
+            min-width: 150px;
         }
         .message-preview .preview-left .label {
             font-size: 13px;
             color: #166534;
             font-weight: 600;
+            flex-shrink: 0;
         }
         .message-preview .preview-left .message-text {
             font-size: 14px;
             color: #14532d;
-            max-width: 300px;
+            max-width: 400px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -519,12 +571,65 @@ if ($destinatairesPreview) {
         .message-preview .preview-right {
             font-size: 13px;
             color: #166534;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-shrink: 0;
         }
         .message-preview .preview-right i {
-            margin-right: 4px;
+            font-size: 14px;
         }
         
-        /* Provider cards */
+        .message-preview.warning {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+        .message-preview.warning .preview-left .label {
+            color: #991b1b;
+        }
+        .message-preview.warning .preview-left .message-text {
+            color: #991b1b;
+        }
+        
+        /* ============================================
+           OCTOPUSH INFO
+        ============================================ */
+        .octopush-info {
+            background: #fff7ed;
+            border: 2px solid #fed7aa;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #9a3412;
+            width: 100%;
+        }
+        .octopush-info i {
+            font-size: 18px;
+            color: #ea580c;
+            flex-shrink: 0;
+        }
+        .octopush-info strong {
+            color: #7c2d12;
+        }
+        .octopush-info span {
+            flex: 1;
+        }
+        
+        /* ============================================
+           PROVIDERS GRID
+        ============================================ */
+        .providers-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            margin-bottom: 0;
+            width: 100%;
+        }
+        
         .provider-option {
             cursor: pointer;
             transition: all 0.3s ease;
@@ -534,10 +639,15 @@ if ($destinatairesPreview) {
             padding: 20px 16px;
             text-align: center;
             position: relative;
+            min-height: 160px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
         .provider-option:hover {
             transform: translateY(-4px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
         }
         .provider-option.selected {
             border-color: #3b82f6;
@@ -555,6 +665,7 @@ if ($destinatairesPreview) {
             font-size: 26px;
             background: #dbeafe;
             color: #2563eb;
+            flex-shrink: 0;
         }
         .provider-option .provider-name {
             font-size: 16px;
@@ -580,7 +691,9 @@ if ($destinatairesPreview) {
             margin-right: 4px;
         }
         
-        /* Badge Octopush spécial */
+        /* ============================================
+           BADGE OCTOPUSH SPÉCIAL
+        ============================================ */
         .provider-option .badge-octopush {
             position: absolute;
             top: -8px;
@@ -600,28 +713,20 @@ if ($destinatairesPreview) {
             font-size: 10px;
         }
         
-        /* Info Octopush */
-        .octopush-info {
-            background: #fff7ed;
-            border: 2px solid #fed7aa;
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-            color: #9a3412;
-        }
-        .octopush-info i {
-            font-size: 18px;
+        .provider-option .octopush-hint {
+            font-size: 11px;
             color: #ea580c;
+            font-weight: 600;
+            display: block;
+            margin-top: 2px;
         }
-        .octopush-info strong {
-            color: #7c2d12;
+        .provider-option .octopush-hint i {
+            margin-right: 2px;
         }
         
-        /* Empty state */
+        /* ============================================
+           EMPTY STATE
+        ============================================ */
         .empty-state {
             text-align: center;
             padding: 48px 20px;
@@ -647,7 +752,34 @@ if ($destinatairesPreview) {
             margin-top: 6px;
         }
         
-        /* Boutons */
+        /* ============================================
+           ERROR BOX
+        ============================================ */
+        .error-box {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+        .error-box i {
+            color: #ef4444;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .error-box span {
+            color: #991b1b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        /* ============================================
+           ACTION BUTTONS
+        ============================================ */
         .action-buttons {
             display: flex;
             gap: 12px;
@@ -655,7 +787,10 @@ if ($destinatairesPreview) {
             margin-top: 24px;
             padding-top: 16px;
             border-top: 2px solid #f3f4f6;
+            flex-wrap: wrap;
+            width: 100%;
         }
+        
         .btn-primary {
             background: #3b82f6;
             color: white;
@@ -669,11 +804,13 @@ if ($destinatairesPreview) {
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            min-width: 180px;
+            justify-content: center;
         }
         .btn-primary:hover:not(:disabled) {
             background: #2563eb;
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
         }
         .btn-primary:disabled {
             opacity: 0.4;
@@ -681,6 +818,7 @@ if ($destinatairesPreview) {
             transform: none !important;
             box-shadow: none !important;
         }
+        
         .btn-outline {
             background: transparent;
             color: #6b7280;
@@ -695,70 +833,202 @@ if ($destinatairesPreview) {
             align-items: center;
             gap: 6px;
             text-decoration: none;
+            min-width: 120px;
+            justify-content: center;
         }
         .btn-outline:hover {
             background: #f9fafb;
             border-color: #d1d5db;
+            color: #374151;
         }
         
-        /* Erreur */
-        .error-box {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .error-box i {
-            color: #ef4444;
-            font-size: 18px;
-        }
-        .error-box span {
-            color: #991b1b;
-            font-size: 14px;
-            font-weight: 500;
+        /* ============================================
+           UTILITIES
+        ============================================ */
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-5 { margin-bottom: 20px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mr-1 { margin-right: 4px; }
+        .text-xs { font-size: 12px; }
+        .text-sm { font-size: 14px; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-400 { color: #9ca3af; }
+        .w-full { width: 100%; }
+        .hidden { display: none !important; }
+        
+        /* ============================================
+           RESPONSIVE
+        ============================================ */
+        @media (max-width: 1200px) {
+            .container { padding: 16px 24px; }
         }
         
-        /* Grille */
-        .providers-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            margin-bottom: 0;
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .container { padding: 12px; }
-            .header-section { flex-wrap: wrap; padding: 14px; }
-            .header-section .title { font-size: 18px; }
-            .header-section .subtitle { font-size: 13px; }
-            .main-card { padding: 16px; }
-            .campagne-info { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .message-preview { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .message-preview .preview-left .message-text { max-width: 100%; white-space: normal; }
-            .step-indicator { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+        @media (max-width: 992px) {
+            .container { padding: 14px 20px; }
+            .main-card { padding: 20px; }
+            .step-indicator { padding: 10px 16px; gap: 8px; }
             .step { font-size: 12px; }
             .step .number { width: 24px; height: 24px; font-size: 10px; }
-            .step-line { width: 24px; }
-            .providers-grid { grid-template-columns: 1fr; gap: 12px; }
-            .provider-option { padding: 16px 12px; }
-            .provider-option .icon-wrapper { width: 56px; height: 56px; font-size: 22px; }
-            .provider-option .provider-name { font-size: 15px; }
-            .action-buttons { flex-direction: column; }
+            .step-line { width: 28px; }
+            .providers-grid { gap: 14px; }
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 12px 16px; }
+            
+            .header-section {
+                padding: 14px 16px;
+                gap: 8px;
+            }
+            .header-section .title { font-size: 19px; }
+            .header-section .subtitle { font-size: 13px; }
+            .header-section .icon-wrapper { padding: 8px 10px; }
+            .header-section .icon-wrapper i { font-size: 18px; }
+            
+            .main-card { padding: 16px; }
+            
+            .campagne-info {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px 16px;
+                gap: 6px;
+            }
+            .campagne-info .info-left .campagne-name { font-size: 14px; }
+            .campagne-info .info-right { font-size: 13px; }
+            
+            .message-preview {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px 16px;
+                gap: 6px;
+            }
+            .message-preview .preview-left {
+                width: 100%;
+                min-width: unset;
+            }
+            .message-preview .preview-left .message-text {
+                max-width: 100%;
+                white-space: normal;
+                word-break: break-word;
+            }
+            .message-preview .preview-right {
+                width: 100%;
+            }
+            
+            .providers-grid {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            .provider-option {
+                padding: 16px 14px;
+                min-height: 120px;
+                flex-direction: row;
+                text-align: left;
+                gap: 14px;
+                align-items: center;
+            }
+            .provider-option .icon-wrapper {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+                margin: 0;
+                flex-shrink: 0;
+            }
+            .provider-option .provider-name {
+                font-size: 15px;
+            }
+            .provider-option .provider-desc {
+                font-size: 12px;
+            }
+            .provider-option .badge-octopush {
+                top: -6px;
+                right: -6px;
+                font-size: 8px;
+                padding: 2px 8px;
+            }
+            .provider-option .octopush-hint {
+                font-size: 10px;
+            }
+            
+            .octopush-info {
+                font-size: 13px;
+                padding: 10px 14px;
+            }
+            .octopush-info i {
+                font-size: 16px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
             .action-buttons .btn-primary,
-            .action-buttons .btn-outline { width: 100%; justify-content: center; }
+            .action-buttons .btn-outline {
+                width: 100%;
+                justify-content: center;
+                min-width: unset;
+            }
+            
+            .step-indicator {
+                gap: 6px;
+                padding: 8px 12px;
+            }
+            .step { font-size: 11px; gap: 4px; }
+            .step .number { width: 20px; height: 20px; font-size: 9px; }
+            .step-line { width: 16px; }
+            .step span:last-child { display: none; }
+            
             .empty-state { padding: 32px 16px; }
             .empty-state i { font-size: 44px; }
             .empty-state h3 { font-size: 18px; }
         }
         
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .main-card { padding: 22px; }
-            .providers-grid { gap: 14px; }
+        @media (max-width: 480px) {
+            .container { padding: 8px 10px; }
+            .header-section { padding: 10px 12px; }
+            .header-section .title { font-size: 17px; }
+            .header-section .subtitle { font-size: 12px; }
+            .header-section .back-link { font-size: 12px; padding: 3px 8px; }
+            
+            .main-card { padding: 12px; }
+            
+            .campagne-info { padding: 10px 12px; }
+            .campagne-info .info-left .campagne-name { font-size: 13px; }
+            .campagne-info .info-left .sms-badge { font-size: 10px; padding: 2px 10px; }
+            .campagne-info .info-right { font-size: 12px; }
+            
+            .provider-option {
+                padding: 12px 12px;
+                min-height: 90px;
+                gap: 10px;
+            }
+            .provider-option .icon-wrapper {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+            .provider-option .provider-name { font-size: 14px; }
+            .provider-option .provider-desc { font-size: 11px; }
+            
+            .btn-primary {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            .btn-outline {
+                padding: 10px 18px;
+                font-size: 13px;
+            }
+            
+            .octopush-info {
+                font-size: 12px;
+                padding: 8px 12px;
+            }
+            .octopush-info i {
+                font-size: 14px;
+            }
         }
     </style>
 </head>
@@ -796,7 +1066,7 @@ if ($destinatairesPreview) {
         <div class="icon-wrapper">
             <i class="fas fa-server"></i>
         </div>
-        <div>
+        <div class="header-text">
             <div class="title">Choisir le provider SMS</div>
             <div class="subtitle">Sélectionnez le provider pour l'envoi de vos SMS</div>
         </div>
@@ -809,7 +1079,7 @@ if ($destinatairesPreview) {
             <div class="info-left">
                 <i class="fas fa-bullhorn" style="color: #7c3aed; font-size: 16px;"></i>
                 <span class="campagne-name"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
-                <span class="sms-badge"><i class="fas fa-comment-dots mr-1"></i>SMS</span>
+                <span class="sms-badge"><i class="fas fa-comment-dots"></i> SMS</span>
             </div>
             <div class="info-right">
                 <i class="fas fa-arrow-right"></i> Étape 3 sur 4
@@ -821,17 +1091,19 @@ if ($destinatairesPreview) {
             <div class="message-preview">
                 <div class="preview-left">
                     <span class="label"><i class="fas fa-envelope"></i> Message :</span>
-                    <span class="message-text"><?= htmlspecialchars(mb_substr($messagePreview, 0, 100)) ?><?= mb_strlen($messagePreview) > 100 ? '...' : '' ?></span>
+                    <span class="message-text" title="<?= htmlspecialchars($messagePreview) ?>">
+                        <?= htmlspecialchars(mb_substr($messagePreview, 0, 100)) ?><?= mb_strlen($messagePreview) > 100 ? '...' : '' ?>
+                    </span>
                 </div>
                 <div class="preview-right">
                     <i class="fas fa-users"></i> <?= $nbDestinataires ?> destinataire(s)
                 </div>
             </div>
         <?php else: ?>
-            <div class="message-preview" style="background: #fef2f2; border-color: #fecaca;">
+            <div class="message-preview warning">
                 <div class="preview-left">
-                    <span class="label" style="color: #991b1b;"><i class="fas fa-exclamation-triangle"></i> Avertissement :</span>
-                    <span class="message-text" style="color: #991b1b;">Aucun message n'a été composé. Veuillez composer un message d'abord.</span>
+                    <span class="label"><i class="fas fa-exclamation-triangle"></i> Avertissement :</span>
+                    <span class="message-text">Aucun message n'a été composé. Veuillez composer un message d'abord.</span>
                 </div>
             </div>
         <?php endif; ?>
@@ -889,20 +1161,22 @@ if ($destinatairesPreview) {
                                     <i class="fas fa-building"></i>
                                 <?php endif; ?>
                             </div>
-                            <div class="provider-name">
-                                <?= htmlspecialchars($provider['nom_providers']) ?>
-                                <?php if ($isOctopush): ?>
-                                    <span style="font-size: 11px; color: #ea580c; font-weight: 600; display: block; margin-top: 2px;">
-                                        <i class="fas fa-arrow-right"></i> Choix de session
-                                    </span>
+                            <div>
+                                <div class="provider-name">
+                                    <?= htmlspecialchars($provider['nom_providers']) ?>
+                                    <?php if ($isOctopush): ?>
+                                        <span class="octopush-hint">
+                                            <i class="fas fa-arrow-right"></i> Choix de session
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if (!empty($provider['description'])): ?>
+                                    <div class="provider-desc"><?= htmlspecialchars($provider['description']) ?></div>
+                                <?php endif; ?>
+                                <?php if ($providerActif == $provider['id_provider']): ?>
+                                    <span class="badge-actif"><i class="fas fa-check-circle"></i> Actif</span>
                                 <?php endif; ?>
                             </div>
-                            <?php if (!empty($provider['description'])): ?>
-                                <div class="provider-desc"><?= htmlspecialchars($provider['description']) ?></div>
-                            <?php endif; ?>
-                            <?php if ($providerActif == $provider['id_provider']): ?>
-                                <span class="badge-actif"><i class="fas fa-check-circle"></i>Actif</span>
-                            <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -925,6 +1199,9 @@ if ($destinatairesPreview) {
 </div>
 
 <script>
+// ============================================
+// SÉLECTION DU PROVIDER
+// ============================================
 let selectedProvider = <?= json_encode($providerActif) ?>;
 let selectedIsOctopush = false;
 
@@ -952,38 +1229,26 @@ function selectProvider(providerId) {
         // Ajouter le badge actif
         const badge = document.createElement('span');
         badge.className = 'badge-actif';
-        badge.innerHTML = '<i class="fas fa-check-circle"></i>Actif';
+        badge.innerHTML = '<i class="fas fa-check-circle"></i> Actif';
         selectedEl.appendChild(badge);
     }
     
     // Activer le bouton
     document.getElementById('id_provider').value = providerId;
-    document.getElementById('btnContinuer').disabled = false;
+    const btn = document.getElementById('btnContinuer');
+    btn.disabled = false;
     
     // Mettre à jour le texte du bouton si Octopush
-    const btnContinuer = document.getElementById('btnContinuer');
     if (selectedIsOctopush) {
-        btnContinuer.innerHTML = '<span>Choisir la session</span> <i class="fas fa-arrow-right"></i>';
+        btn.innerHTML = '<span>Choisir la session</span> <i class="fas fa-arrow-right"></i>';
     } else {
-        btnContinuer.innerHTML = '<span>Continuer vers l\'appareil</span> <i class="fas fa-arrow-right"></i>';
+        btn.innerHTML = '<span>Continuer vers l\'appareil</span> <i class="fas fa-arrow-right"></i>';
     }
 }
 
-// Si un provider est déjà sélectionné, activer le bouton
-document.addEventListener('DOMContentLoaded', function() {
-    if (selectedProvider) {
-        document.getElementById('btnContinuer').disabled = false;
-        
-        // Vérifier si le provider actif est Octopush
-        const activeEl = document.querySelector(`.provider-option[data-provider-id="${selectedProvider}"]`);
-        if (activeEl && activeEl.dataset.isOctopush === 'true') {
-            selectedIsOctopush = true;
-            document.getElementById('btnContinuer').innerHTML = '<span>Choisir la session</span> <i class="fas fa-arrow-right"></i>';
-        }
-    }
-});
-
-// Gestion du clavier pour l'accessibilité
+// ============================================
+// CLAVIER (Entrée/Espace)
+// ============================================
 document.querySelectorAll('.provider-option').forEach(el => {
     el.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -993,6 +1258,38 @@ document.querySelectorAll('.provider-option').forEach(el => {
         }
     });
 });
+
+// ============================================
+// INITIALISATION
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+    if (selectedProvider) {
+        const btn = document.getElementById('btnContinuer');
+        btn.disabled = false;
+        
+        // Vérifier si le provider actif est Octopush
+        const activeEl = document.querySelector(`.provider-option[data-provider-id="${selectedProvider}"]`);
+        if (activeEl && activeEl.dataset.isOctopush === 'true') {
+            selectedIsOctopush = true;
+            btn.innerHTML = '<span>Choisir la session</span> <i class="fas fa-arrow-right"></i>';
+        }
+    }
+});
+
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
+function showToast(message, type = 'success') {
+    const existingToasts = document.querySelectorAll('.toast-notification');
+    existingToasts.forEach(toast => toast.remove());
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    const colors = { success: '#10b981', error: '#ef4444', info: '#3b82f6' };
+    toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
 </script>
 
 </body>

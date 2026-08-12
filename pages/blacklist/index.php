@@ -180,10 +180,12 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* ============================================
-           STYLES PRINCIPAUX
+           STYLES PRINCIPAUX - FULL WIDTH
         ============================================ */
         * {
             box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
         
         body {
@@ -191,6 +193,14 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
             background-color: #f3f4f6;
             margin: 0;
             padding: 0;
+            min-height: 100vh;
+        }
+        
+        .main-container {
+            max-width: 100%;
+            padding: 20px 32px;
+            margin: 0 auto;
+            width: 100%;
         }
         
         .space-y-6 > :not([hidden]) ~ :not([hidden]) {
@@ -198,7 +208,7 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
         }
         
         /* ============================================
-           STYLES SELECT2 - TAILLE RÉDUITE
+           STYLES SELECT2 - TAILLE RÉDUITE & FULL WIDTH
         ============================================ */
         
         /* Cacher les selects natifs */
@@ -576,11 +586,12 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
         .toast-notification.info .toast-content { background: #3b82f6; }
         
         /* ============================================
-           STYLES EXISTANTS
+           STYLES EXISTANTS - FULL WIDTH
         ============================================ */
         .checkbox-column {
             width: 40px;
             text-align: center;
+            flex-shrink: 0;
         }
         .checkbox-column input {
             width: 18px;
@@ -615,9 +626,10 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
         
         .table-container {
             overflow-x: auto;
+            width: 100%;
         }
         .blacklist-table {
-            min-width: 800px;
+            min-width: 700px;
             width: 100%;
             border-collapse: collapse;
         }
@@ -634,9 +646,14 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
             font-size: 11px;
             letter-spacing: 0.5px;
             color: #6b7280;
+            text-align: left;
         }
         .blacklist-table tr:hover {
             background-color: #f9fafb;
+        }
+        .blacklist-table th:last-child,
+        .blacklist-table td:last-child {
+            text-align: right;
         }
         .contact-info {
             font-weight: 500;
@@ -683,7 +700,7 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
             background: white;
             border-radius: 12px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            padding: 16px;
+            padding: 20px 24px;
         }
         .stats-number {
             font-size: 28px;
@@ -695,6 +712,7 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
         }
         .search-input-wrapper {
             position: relative;
+            width: 100%;
         }
         .search-input-wrapper i {
             position: absolute;
@@ -709,6 +727,7 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
             border: 1px solid #e5e7eb;
             border-radius: 8px;
             font-size: 14px;
+            background: white;
         }
         .search-input-wrapper input:focus {
             outline: none;
@@ -729,6 +748,11 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
         
         .bulk-actions-bar {
             transition: all 0.3s ease;
+            display: none;
+        }
+
+        .bulk-actions-bar.show {
+            display: flex !important;
         }
         
         /* Labels des champs */
@@ -748,6 +772,344 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
             padding: 8px 14px !important;
             font-size: 14px !important;
             border-radius: 8px !important;
+            width: 100% !important;
+            border: 1px solid #e5e7eb !important;
+            transition: border-color 0.2s ease;
+        }
+        .motif-input:focus {
+            outline: none !important;
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+        }
+        
+        /* ============================================
+           RESPONSIVE
+        ============================================ */
+        @media (max-width: 1200px) {
+            .main-container {
+                padding: 16px 24px;
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .main-container {
+                padding: 16px 20px;
+            }
+            .stats-card {
+                padding: 16px 20px;
+            }
+            .stats-number {
+                font-size: 24px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 12px 16px;
+            }
+            .stats-card {
+                padding: 14px 16px;
+            }
+            .stats-number {
+                font-size: 22px;
+            }
+            .blacklist-table {
+                min-width: 600px;
+            }
+            .blacklist-table th,
+            .blacklist-table td {
+                padding: 8px 12px;
+                font-size: 13px;
+            }
+            .motif-text {
+                max-width: 120px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .main-container {
+                padding: 8px 10px;
+            }
+            .stats-number {
+                font-size: 20px;
+            }
+            .blacklist-table {
+                min-width: 500px;
+            }
+            .blacklist-table th,
+            .blacklist-table td {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+            .type-badge {
+                font-size: 10px;
+                padding: 3px 8px;
+            }
+            .action-btn {
+                font-size: 12px;
+            }
+            .confirm-modal-box {
+                width: 96%;
+                margin: 10px;
+            }
+            .confirm-modal-header {
+                padding: 16px 20px;
+            }
+            .confirm-modal-body {
+                padding: 16px 20px;
+            }
+            .confirm-modal-footer {
+                padding: 12px 20px 20px;
+            }
+        }
+        
+        /* ============================================
+           GRID SYSTEM PERSONNALISÉ
+        ============================================ */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        
+        .flex-center {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        @media (max-width: 992px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .grid-4 {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+        }
+        
+        @media (max-width: 640px) {
+            .grid-4 {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+        
+        /* ============================================
+           BOUTONS
+        ============================================ */
+        .btn-primary {
+            background: #ef4444;
+            color: white;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary:hover {
+            background: #dc2626;
+        }
+        
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #4b5563;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+        
+        .btn-success-custom {
+            background: #10b981;
+            color: white;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-success-custom:hover {
+            background: #059669;
+        }
+        
+        .bg-white {
+            background: white;
+        }
+        .rounded-lg {
+            border-radius: 12px;
+        }
+        .shadow {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .p-4 {
+            padding: 16px;
+        }
+        .p-6 {
+            padding: 24px;
+        }
+        .mb-4 {
+            margin-bottom: 16px;
+        }
+        .mt-2 {
+            margin-top: 8px;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-xs {
+            font-size: 12px;
+        }
+        .text-sm {
+            font-size: 14px;
+        }
+        .text-lg {
+            font-size: 18px;
+        }
+        .text-2xl {
+            font-size: 24px;
+        }
+        .font-bold {
+            font-weight: 700;
+        }
+        .font-semibold {
+            font-weight: 600;
+        }
+        .text-gray-400 {
+            color: #9ca3af;
+        }
+        .text-gray-500 {
+            color: #6b7280;
+        }
+        .text-gray-600 {
+            color: #4b5563;
+        }
+        .text-gray-700 {
+            color: #374151;
+        }
+        .text-gray-800 {
+            color: #1f2937;
+        }
+        .text-red-500 {
+            color: #ef4444;
+        }
+        .text-red-600 {
+            color: #dc2626;
+        }
+        .text-blue-600 {
+            color: #2563eb;
+        }
+        .text-blue-700 {
+            color: #1d4ed8;
+        }
+        .text-green-600 {
+            color: #16a34a;
+        }
+        .text-green-700 {
+            color: #15803d;
+        }
+        .gap-2 {
+            gap: 8px;
+        }
+        .gap-3 {
+            gap: 12px;
+        }
+        .gap-4 {
+            gap: 16px;
+        }
+        .flex-wrap {
+            flex-wrap: wrap;
+        }
+        .whitespace-nowrap {
+            white-space: nowrap;
+        }
+        .overflow-hidden {
+            overflow: hidden;
+        }
+        .border-b {
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .border-t {
+            border-top: 1px solid #e5e7eb;
+        }
+        .bg-gray-50 {
+            background: #f9fafb;
+        }
+        .bg-blue-50 {
+            background: #eff6ff;
+        }
+        .hidden {
+            display: none;
+        }
+        .flex {
+            display: flex;
+        }
+        .items-center {
+            align-items: center;
+        }
+        .justify-end {
+            justify-content: flex-end;
+        }
+        .justify-between {
+            justify-content: space-between;
+        }
+        .w-full {
+            width: 100%;
+        }
+        .cursor-pointer {
+            cursor: pointer;
+        }
+        .py-8 {
+            padding-top: 32px;
+            padding-bottom: 32px;
+        }
+        .py-12 {
+            padding-top: 48px;
+            padding-bottom: 48px;
+        }
+        .block {
+            display: block;
+        }
+        .mx-auto {
+            margin-left: auto;
+            margin-right: auto;
         }
     </style>
 </head>
@@ -788,8 +1150,8 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
 <!-- ============================================
      MODALE POUR RETIRER UN SEUL CONTACT
 ============================================ -->
-<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-content-unblacklist">
+<div id="unblacklistModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50 transition-all duration-300" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:9999;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 modal-content-unblacklist" style="background:white; border-radius:16px; max-width:450px; width:92%; margin:0 auto; transform:scale(0.95); opacity:0; transition:all 0.3s ease;">
         <div class="p-6 text-center">
             <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
                 <i class="fas fa-unlock-alt text-green-600 text-3xl"></i>
@@ -814,247 +1176,252 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
 </div>
 
 <!-- ============================================
-     CONTENU PRINCIPAL
+     CONTENU PRINCIPAL - FULL WIDTH
 ============================================ -->
-<div class="space-y-6" style="max-width: 1280px; margin: 0 auto; padding: 20px;">
-    <!-- En-tête -->
-    <div class="flex justify-between items-center flex-wrap gap-4">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-800">Blacklist</h1>
-            <p class="text-gray-500 text-sm mt-1">Gérez les contacts exclus par type de message</p>
+<div class="main-container">
+    <div class="space-y-6">
+        <!-- En-tête -->
+        <div class="flex-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Blacklist</h1>
+                <p class="text-gray-500 text-sm mt-1">Gérez les contacts exclus par type de message</p>
+            </div>
         </div>
-    </div>
 
-    <!-- Section Ajouter -->
-    <div id="addSection" class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
-            <i class="fas fa-plus-circle text-red-600"></i>
-            Ajouter des contacts à la blacklist
-        </h2>
-        <form method="POST" class="space-y-4" id="blacklistForm">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="form-label">
-                        <i class="fas fa-users text-gray-400"></i> Contacts * (sélection multiple possible)
-                    </label>
-                    <select name="id_contacts[]" id="contactsSearch" multiple="multiple">
-                        <?php foreach ($contactsAvecBlocages as $item): 
-                            $contact = $item['contact'];
-                            $nbBloques = $item['nb_bloques'];
-                            $totalTypes = $item['total_types'];
-                        ?>
-                            <option value="<?= $contact['id_contact'] ?>">
-                                <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?> 
-                                (<?= htmlspecialchars($contact['email'] ?? $contact['telephone'] ?? 'aucun contact') ?>)
-                                <?php if ($nbBloques > 0): ?>
-                                    - <?= $nbBloques ?>/<?= $totalTypes ?> type(s) bloqué(s)
-                                <?php endif; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <div class="selected-contacts-info hidden" id="selectedContactsInfo">
-                        <i class="fas fa-info-circle"></i>
-                        <span id="selectedContactsCount">0</span> contact(s) sélectionné(s)
+        <!-- Section Ajouter -->
+        <div id="addSection" class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-plus-circle text-red-600"></i>
+                Ajouter des contacts à la blacklist
+            </h2>
+            <form method="POST" class="space-y-4" id="blacklistForm">
+                <div class="grid-2">
+                    <div>
+                        <label class="form-label">
+                            <i class="fas fa-users text-gray-400"></i> Contacts * (sélection multiple possible)
+                        </label>
+                        <select name="id_contacts[]" id="contactsSearch" multiple="multiple">
+                            <?php foreach ($contactsAvecBlocages as $item): 
+                                $contact = $item['contact'];
+                                $nbBloques = $item['nb_bloques'];
+                                $totalTypes = $item['total_types'];
+                            ?>
+                                <option value="<?= $contact['id_contact'] ?>">
+                                    <?= htmlspecialchars($contact['prenom'] . ' ' . $contact['nom']) ?> 
+                                    (<?= htmlspecialchars($contact['email'] ?? $contact['telephone'] ?? 'aucun contact') ?>)
+                                    <?php if ($nbBloques > 0): ?>
+                                        - <?= $nbBloques ?>/<?= $totalTypes ?> type(s) bloqué(s)
+                                    <?php endif; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="selected-contacts-info hidden" id="selectedContactsInfo">
+                            <i class="fas fa-info-circle"></i>
+                            <span id="selectedContactsCount">0</span> contact(s) sélectionné(s)
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label">
+                            <i class="fas fa-envelope text-gray-400"></i> Types de message à bloquer * <span class="text-red-500">(plusieurs choix possibles)</span>
+                        </label>
+                        <select name="id_type_message[]" id="typeMessageSelect" multiple="multiple">
+                            <?php if (!empty($typeMessages)): ?>
+                                <?php foreach ($typeMessages as $type): ?>
+                                    <option value="<?= $type['id_type_message'] ?>">
+                                        <?= htmlspecialchars($type['libelle_type']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </select>
+                        <p class="text-xs text-gray-400 mt-2" id="selectedTypesHelp">
+                            <i class="fas fa-info-circle"></i> Maintenez Ctrl/Cmd pour sélectionner plusieurs types
+                        </p>
                     </div>
                 </div>
                 <div>
                     <label class="form-label">
-                        <i class="fas fa-envelope text-gray-400"></i> Types de message à bloquer * <span class="text-red-500">(plusieurs choix possibles)</span>
+                        <i class="fas fa-pencil-alt text-gray-400"></i> Motif (optionnel)
                     </label>
-                    <select name="id_type_message[]" id="typeMessageSelect" multiple="multiple">
-                        <?php if (!empty($typeMessages)): ?>
-                            <?php foreach ($typeMessages as $type): ?>
-                                <option value="<?= $type['id_type_message'] ?>">
-                                    <?= htmlspecialchars($type['libelle_type']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </select>
-                    <p class="text-xs text-gray-400 mt-2" id="selectedTypesHelp">
-                        <i class="fas fa-info-circle"></i> Maintenez Ctrl/Cmd pour sélectionner plusieurs types
-                    </p>
+                    <input type="text" name="motif" id="motifInput" placeholder="Pourquoi ces contacts sont bloqués ?" 
+                           class="motif-input">
+                </div>
+                <div class="flex-between">
+                    <div></div>
+                    <div class="flex-center">
+                        <button type="button" id="clearSelectionBtn" class="btn-secondary">
+                            <i class="fas fa-times mr-2"></i>Effacer la sélection
+                        </button>
+                        <button type="submit" name="ajouter_blacklist" class="btn-primary">
+                            <i class="fas fa-ban mr-2"></i>Ajouter à la blacklist
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Statistiques -->
+        <div class="grid-4">
+            <div class="stats-card">
+                <div class="flex-between">
+                    <div>
+                        <div class="stats-number"><?= $totalBlacklisted ?></div>
+                        <div class="stats-label">Total blocages</div>
+                    </div>
+                    <i class="fas fa-ban text-2xl text-gray-400"></i>
                 </div>
             </div>
+            <div class="stats-card">
+                <div class="flex-between">
+                    <div>
+                        <div class="stats-number"><?= count($contactsAvecBlocages) ?></div>
+                        <div class="stats-label">Contacts dans la base</div>
+                    </div>
+                    <i class="fas fa-users text-2xl text-gray-400"></i>
+                </div>
+            </div>
+            <div class="stats-card">
+                <div class="flex-between">
+                    <div>
+                        <div class="stats-number"><?= count($blocagesParContact) ?></div>
+                        <div class="stats-label">Contacts blacklistés</div>
+                    </div>
+                    <i class="fas fa-user-slash text-2xl text-gray-400"></i>
+                </div>
+            </div>
+            <div class="stats-card">
+                <div class="flex-between">
+                    <div>
+                        <div class="stats-number"><?= count($typeMessages) ?></div>
+                        <div class="stats-label">Types de messages</div>
+                    </div>
+                    <i class="fas fa-envelope text-2xl text-gray-400"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Barre de recherche -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="search-input-wrapper">
+                <i class="fas fa-search"></i>
+                <input type="text" id="searchInput" 
+                       placeholder="Rechercher par nom, email, téléphone, type ou motif...">
+            </div>
+            <div class="mt-2 text-right">
+                <span id="filteredCount" class="text-xs text-gray-500"></span>
+            </div>
+        </div>
+
+        <!-- Barre d'actions groupées -->
+        <div id="bulkActionsBar" class="bulk-actions-bar bg-blue-50 rounded-lg p-4 flex-between">
             <div>
-                <label class="form-label">
-                    <i class="fas fa-pencil-alt text-gray-400"></i> Motif (optionnel)
-                </label>
-                <input type="text" name="motif" id="motifInput" placeholder="Pourquoi ces contacts sont bloqués ?" 
-                       class="motif-input w-full border border-gray-300 rounded-lg focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200">
+                <span id="selectedCount" class="text-sm font-semibold text-blue-700">0</span>
+                <span class="text-sm text-blue-600">blocage(s) sélectionné(s)</span>
             </div>
-            <div class="flex justify-end space-x-3">
-                <button type="button" id="clearSelectionBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg transition">
-                    <i class="fas fa-times mr-2"></i>Effacer la sélection
-                </button>
-                <button type="submit" name="ajouter_blacklist" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition">
-                    <i class="fas fa-ban mr-2"></i>Ajouter à la blacklist
-                </button>
-            </div>
-        </form>
-    </div>
+            <button id="bulkUnblacklistBtn" class="btn-success-custom">
+                <i class="fas fa-check-double"></i> Retirer les sélectionnés
+            </button>
+        </div>
 
-    <!-- Statistiques -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="stats-card">
-            <div class="flex justify-between items-center">
-                <div>
-                    <div class="stats-number"><?= $totalBlacklisted ?></div>
-                    <div class="stats-label">Total blocages</div>
+        <!-- Liste de la blacklist -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="p-4 border-b bg-gray-50 flex-between">
+                <h2 class="text-lg font-bold flex items-center gap-2">
+                    <i class="fas fa-list text-red-600"></i>
+                    Liste des blocages
+                </h2>
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-600 flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" id="selectAllCheckbox" class="rounded">
+                        <span>Tout sélectionner</span>
+                    </label>
                 </div>
-                <i class="fas fa-ban text-2xl text-gray-400"></i>
             </div>
-        </div>
-        <div class="stats-card">
-            <div class="flex justify-between items-center">
-                <div>
-                    <div class="stats-number"><?= count($contactsAvecBlocages) ?></div>
-                    <div class="stats-label">Contacts dans la base</div>
-                </div>
-                <i class="fas fa-users text-2xl text-gray-400"></i>
-            </div>
-        </div>
-        <div class="stats-card">
-            <div class="flex justify-between items-center">
-                <div>
-                    <div class="stats-number"><?= count($blocagesParContact) ?></div>
-                    <div class="stats-label">Contacts blacklistés</div>
-                </div>
-                <i class="fas fa-user-slash text-2xl text-gray-400"></i>
-            </div>
-        </div>
-        <div class="stats-card">
-            <div class="flex justify-between items-center">
-                <div>
-                    <div class="stats-number"><?= count($typeMessages) ?></div>
-                    <div class="stats-label">Types de messages</div>
-                </div>
-                <i class="fas fa-envelope text-2xl text-gray-400"></i>
-            </div>
-        </div>
-    </div>
-
-    <!-- Barre de recherche -->
-    <div class="bg-white rounded-lg shadow p-4">
-        <div class="search-input-wrapper">
-            <i class="fas fa-search"></i>
-            <input type="text" id="searchInput" 
-                   placeholder="Rechercher par nom, email, téléphone, type ou motif...">
-        </div>
-        <div class="mt-2 text-right">
-            <span id="filteredCount" class="text-xs text-gray-500"></span>
-        </div>
-    </div>
-
-    <!-- Barre d'actions groupées -->
-    <div id="bulkActionsBar" class="hidden bg-blue-50 rounded-lg p-4 flex justify-between items-center bulk-actions-bar flex-wrap gap-3">
-        <div>
-            <span id="selectedCount" class="text-sm font-semibold text-blue-700">0</span>
-            <span class="text-sm text-blue-600">blocage(s) sélectionné(s)</span>
-        </div>
-        <button id="bulkUnblacklistBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
-            <i class="fas fa-check-double"></i> Retirer les sélectionnés
-        </button>
-    </div>
-
-    <!-- Liste de la blacklist -->
-    <div class="bg-white rounded-lg shadow overflow-hidden">
-        <div class="p-4 border-b bg-gray-50 flex justify-between items-center flex-wrap gap-3">
-            <h2 class="text-lg font-bold flex items-center gap-2">
-                <i class="fas fa-list text-red-600"></i>
-                Liste des blocages
-            </h2>
-            <div class="flex items-center gap-2">
-                <label class="text-sm text-gray-600 flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" id="selectAllCheckbox" class="rounded">
-                    <span>Tout sélectionner</span>
-                </label>
-            </div>
-        </div>
-        <div class="table-container">
-            <table class="blacklist-table">
-                <thead>
-                    <tr>
-                        <th class="checkbox-column">
-                            <input type="checkbox" id="selectAllHeader" class="rounded">
-                        </th>
-                        <th>Contact</th>
-                        <th>Type bloqué</th>
-                        <th>Motif</th>
-                        <th>Date</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="blacklistTableBody">
-                    <?php if (empty($blacklistWithContact)): ?>
+            <div class="table-container">
+                <table class="blacklist-table">
+                    <thead>
                         <tr>
-                            <td colspan="6" class="text-center py-12 text-gray-500">
-                                <i class="fas fa-check-circle text-4xl mb-2 block text-gray-300"></i>
-                                Aucun contact blacklisté
-                                <div class="text-sm mt-1">Utilisez le formulaire ci-dessus pour ajouter un blocage</div>
-                            </td>
+                            <th class="checkbox-column">
+                                <input type="checkbox" id="selectAllHeader" class="rounded">
+                            </th>
+                            <th>Contact</th>
+                            <th>Type bloqué</th>
+                            <th>Motif</th>
+                            <th>Date</th>
+                            <th>Action</th>
                         </tr>
-                    <?php else: ?>
-                        <?php foreach ($blacklistWithContact as $bl): 
-                            $typeLabel = '';
-                            $typeClass = '';
-                            foreach ($typeMessages as $t) {
-                                if ($t['id_type_message'] == $bl['id_type_message']) {
-                                    $typeLabel = $t['libelle_type'];
-                                    switch(strtolower($typeLabel)) {
-                                        case 'sms': $typeClass = 'type-badge-sms'; break;
-                                        case 'whatsapp': $typeClass = 'type-badge-whatsapp'; break;
-                                        case 'email': $typeClass = 'type-badge-email'; break;
-                                        default: $typeClass = 'type-badge-sms';
-                                    }
-                                    break;
-                                }
-                            }
-                        ?>
-                            <tr class="blacklist-row" 
-                                data-id="<?= $bl['id_blacklist'] ?>"
-                                data-name="<?= strtolower(htmlspecialchars($bl['contact']['prenom'] . ' ' . $bl['contact']['nom'])) ?>"
-                                data-email="<?= strtolower(htmlspecialchars($bl['contact']['email'] ?? '')) ?>"
-                                data-phone="<?= strtolower(htmlspecialchars($bl['contact']['telephone'] ?? '')) ?>"
-                                data-type="<?= strtolower($typeLabel) ?>"
-                                data-motif="<?= strtolower(htmlspecialchars($bl['motif'] ?? '')) ?>">
-                                <td class="checkbox-column">
-                                    <input type="checkbox" value="<?= $bl['id_blacklist'] ?>" class="contact-checkbox rounded">
-                                </td>
-                                <td>
-                                    <div class="contact-info"><?= htmlspecialchars($bl['contact']['prenom'] . ' ' . $bl['contact']['nom']) ?></div>
-                                    <div class="contact-detail">
-                                        <?php if (!empty($bl['contact']['email'])): ?>
-                                            <i class="fas fa-envelope text-gray-400 text-xs mr-1"></i><?= htmlspecialchars($bl['contact']['email']) ?>
-                                        <?php elseif (!empty($bl['contact']['telephone'])): ?>
-                                            <i class="fas fa-phone text-gray-400 text-xs mr-1"></i><?= htmlspecialchars($bl['contact']['telephone']) ?>
-                                        <?php else: ?>
-                                            <span class="text-gray-400">Aucun contact</span>
-                                        <?php endif; ?>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="type-badge <?= $typeClass ?>">
-                                        <i class="fas <?= $typeLabel == 'WhatsApp' ? 'fa-brands fa-whatsapp' : ($typeLabel == 'SMS' ? 'fa-comment-dots' : 'fa-envelope') ?> text-xs mr-1"></i>
-                                        <?= htmlspecialchars($typeLabel) ?>
-                                    </span>
-                                </td>
-                                <td class="motif-text" title="<?= htmlspecialchars($bl['motif'] ?? '') ?>">
-                                    <?= htmlspecialchars($bl['motif'] ?? '-') ?>
-                                </td>
-                                <td class="whitespace-nowrap text-sm text-gray-500">
-                                    <?= date('d/m/Y', strtotime($bl['date_ajout'])) ?>
-                                </td>
-                                <td class="whitespace-nowrap">
-                                    <button onclick="openUnblacklistModal('<?= $bl['id_blacklist'] ?>', '<?= addslashes($bl['contact']['prenom'] . ' ' . $bl['contact']['nom']) ?>', '<?= addslashes($typeLabel) ?>')"
-                                            class="action-btn btn-retirer" title="Retirer de la blacklist">
-                                        <i class="fas fa-check-circle"></i> Retirer
-                                    </button>
+                    </thead>
+                    <tbody id="blacklistTableBody">
+                        <?php if (empty($blacklistWithContact)): ?>
+                            <tr>
+                                <td colspan="6" class="text-center py-12 text-gray-500">
+                                    <i class="fas fa-check-circle text-4xl mb-2 block text-gray-300"></i>
+                                    Aucun contact blacklisté
+                                    <div class="text-sm mt-1">Utilisez le formulaire ci-dessus pour ajouter un blocage</div>
                                 </td>
                             </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                        <?php else: ?>
+                            <?php foreach ($blacklistWithContact as $bl): 
+                                $typeLabel = '';
+                                $typeClass = '';
+                                foreach ($typeMessages as $t) {
+                                    if ($t['id_type_message'] == $bl['id_type_message']) {
+                                        $typeLabel = $t['libelle_type'];
+                                        switch(strtolower($typeLabel)) {
+                                            case 'sms': $typeClass = 'type-badge-sms'; break;
+                                            case 'whatsapp': $typeClass = 'type-badge-whatsapp'; break;
+                                            case 'email': $typeClass = 'type-badge-email'; break;
+                                            default: $typeClass = 'type-badge-sms';
+                                        }
+                                        break;
+                                    }
+                                }
+                            ?>
+                                <tr class="blacklist-row" 
+                                    data-id="<?= $bl['id_blacklist'] ?>"
+                                    data-name="<?= strtolower(htmlspecialchars($bl['contact']['prenom'] . ' ' . $bl['contact']['nom'])) ?>"
+                                    data-email="<?= strtolower(htmlspecialchars($bl['contact']['email'] ?? '')) ?>"
+                                    data-phone="<?= strtolower(htmlspecialchars($bl['contact']['telephone'] ?? '')) ?>"
+                                    data-type="<?= strtolower($typeLabel) ?>"
+                                    data-motif="<?= strtolower(htmlspecialchars($bl['motif'] ?? '')) ?>">
+                                    <td class="checkbox-column">
+                                        <input type="checkbox" value="<?= $bl['id_blacklist'] ?>" class="contact-checkbox rounded">
+                                    </td>
+                                    <td>
+                                        <div class="contact-info"><?= htmlspecialchars($bl['contact']['prenom'] . ' ' . $bl['contact']['nom']) ?></div>
+                                        <div class="contact-detail">
+                                            <?php if (!empty($bl['contact']['email'])): ?>
+                                                <i class="fas fa-envelope text-gray-400 text-xs mr-1"></i><?= htmlspecialchars($bl['contact']['email']) ?>
+                                            <?php elseif (!empty($bl['contact']['telephone'])): ?>
+                                                <i class="fas fa-phone text-gray-400 text-xs mr-1"></i><?= htmlspecialchars($bl['contact']['telephone']) ?>
+                                            <?php else: ?>
+                                                <span class="text-gray-400">Aucun contact</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="type-badge <?= $typeClass ?>">
+                                            <i class="fas <?= $typeLabel == 'WhatsApp' ? 'fa-brands fa-whatsapp' : ($typeLabel == 'SMS' ? 'fa-comment-dots' : 'fa-envelope') ?> text-xs mr-1"></i>
+                                            <?= htmlspecialchars($typeLabel) ?>
+                                        </span>
+                                    </td>
+                                    <td class="motif-text" title="<?= htmlspecialchars($bl['motif'] ?? '') ?>">
+                                        <?= htmlspecialchars($bl['motif'] ?? '-') ?>
+                                    </td>
+                                    <td class="whitespace-nowrap text-sm text-gray-500">
+                                        <?= date('d/m/Y', strtotime($bl['date_ajout'])) ?>
+                                    </td>
+                                    <td class="whitespace-nowrap">
+                                        <button onclick="openUnblacklistModal('<?= $bl['id_blacklist'] ?>', '<?= addslashes($bl['contact']['prenom'] . ' ' . $bl['contact']['nom']) ?>', '<?= addslashes($typeLabel) ?>')"
+                                                class="action-btn btn-retirer" title="Retirer de la blacklist">
+                                            <i class="fas fa-check-circle"></i> Retirer
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -1167,8 +1534,7 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
         
         document.getElementById('unblacklistContactName').innerHTML = `${contactName} (${typeLabel})`;
         
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
+        modal.style.display = 'flex';
         setTimeout(() => modalContent.classList.add('modal-show'), 10);
     }
 
@@ -1177,8 +1543,7 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
         const modalContent = modal.querySelector('.modal-content-unblacklist');
         modalContent.classList.remove('modal-show');
         setTimeout(() => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            modal.style.display = 'none';
             unblacklistData = null;
         }, 200);
     }
@@ -1294,22 +1659,25 @@ $toastType = isset($_GET['type']) ? $_GET['type'] : 'success';
     const bulkUnblacklistBtn = document.getElementById('bulkUnblacklistBtn');
 
     function updateBulkActionsBar() {
-        const checked = document.querySelectorAll('.contact-checkbox:checked');
-        const count = checked.length;
-        
-        if (count > 0) {
-            bulkActionsBar.classList.remove('hidden');
-            selectedCountSpan.textContent = count;
-        } else {
-            bulkActionsBar.classList.add('hidden');
-        }
-        
-        const visibleRows = document.querySelectorAll('.blacklist-row:not(.hidden-row)');
-        const allCount = visibleRows.length;
-        const allChecked = count === allCount && allCount > 0;
-        if (selectAllHeader) selectAllHeader.checked = allChecked;
-        if (selectAllCheckbox) selectAllCheckbox.checked = allChecked;
+    const checked = document.querySelectorAll('.contact-checkbox:checked');
+    const count = checked.length;
+    const bulkActionsBar = document.getElementById('bulkActionsBar');
+    
+    if (count > 0) {
+        bulkActionsBar.style.display = 'flex';
+        bulkActionsBar.classList.remove('hidden');
+        selectedCountSpan.textContent = count;
+    } else {
+        bulkActionsBar.style.display = 'none';
+        bulkActionsBar.classList.add('hidden');
     }
+    
+    const visibleRows = document.querySelectorAll('.blacklist-row:not(.hidden-row)');
+    const allCount = visibleRows.length;
+    const allChecked = count === allCount && allCount > 0;
+    if (selectAllHeader) selectAllHeader.checked = allChecked;
+    if (selectAllCheckbox) selectAllCheckbox.checked = allChecked;
+}
 
     function toggleAllCheckboxes(checked) {
         document.querySelectorAll('.blacklist-row:not(.hidden-row) .contact-checkbox').forEach(cb => {

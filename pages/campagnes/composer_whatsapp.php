@@ -400,22 +400,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Composer le message WhatsApp - <?= APP_NAME ?></title>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* ===== STYLES ÉQUILIBRÉS ===== */
-        * { box-sizing: border-box; }
+        /* ============================================
+           STYLES PRINCIPAUX - FULL WIDTH
+        ============================================ */
+        * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+        }
+        
         body { 
             margin: 0; 
             background: #f3f4f6;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
         }
         
         .container {
-            max-width: 1000px;
+            max-width: 100%;
             margin: 0 auto;
-            padding: 16px 20px;
+            padding: 16px 32px;
+            width: 100%;
         }
         
-        /* Toast */
+        /* ============================================
+           TOAST
+        ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -438,18 +450,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.info .toast-content { background: #3b82f6; }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
         
-        /* Step indicator */
+        /* ============================================
+           STEP INDICATOR
+        ============================================ */
         .step-indicator {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 12px;
             margin-bottom: 24px;
-            padding: 12px 20px;
+            padding: 12px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            flex-wrap: wrap;
+            width: 100%;
         }
         .step {
             display: flex;
@@ -470,6 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             font-weight: 700;
             font-size: 12px;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
         .step.active .number {
             background: #25D366;
@@ -492,40 +510,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             height: 2px;
             background: #e5e7eb;
             border-radius: 2px;
+            flex-shrink: 0;
         }
         .step-line.done {
             background: #10b981;
         }
         
-        /* En-tête */
+        /* ============================================
+           EN-TÊTE
+        ============================================ */
         .header-section {
             display: flex;
             align-items: center;
             margin-bottom: 20px;
-            padding: 16px 20px;
+            padding: 16px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 12px;
         }
         .header-section .back-link {
             color: #6b7280;
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
-            margin-right: 16px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            flex-shrink: 0;
         }
         .header-section .back-link:hover {
             color: #374151;
+            background: #f3f4f6;
         }
         .header-section .icon-wrapper {
             background: #dcfce7;
-            padding: 10px;
+            padding: 10px 12px;
             border-radius: 12px;
-            margin-right: 14px;
+            flex-shrink: 0;
         }
         .header-section .icon-wrapper i {
             color: #16a34a;
             font-size: 22px;
+        }
+        .header-section .header-text {
+            flex: 1;
+            min-width: 150px;
         }
         .header-section .title {
             font-size: 22px;
@@ -538,15 +573,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             margin-top: 2px;
         }
         
-        /* Card principale */
+        /* ============================================
+           CARD PRINCIPALE
+        ============================================ */
         .main-card {
             background: white;
             border-radius: 14px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
             padding: 24px 28px;
+            width: 100%;
         }
         
-        /* Info campagne */
+        /* ============================================
+           INFO CAMPAGNE
+        ============================================ */
         .campagne-info {
             background: #f3e8ff;
             border: 2px solid #d8b4fe;
@@ -557,6 +597,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
+            width: 100%;
         }
         .campagne-info .info-left {
             display: flex;
@@ -576,16 +618,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
         .campagne-info .info-right {
             font-size: 14px;
             color: #6b21a8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .campagne-info .info-right i {
-            margin-right: 6px;
+            font-size: 16px;
         }
         
-        /* Labels */
+        /* ============================================
+           FORMULAIRES
+        ============================================ */
         .form-label {
             display: block;
             font-size: 14px;
@@ -596,19 +646,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         .form-label i {
             margin-right: 6px;
         }
+        .form-label .required {
+            color: #ef4444;
+        }
+        .form-label .optional {
+            font-size: 12px;
+            font-weight: 400;
+            color: #9ca3af;
+        }
         
-        /* Type d'envoi */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        /* ============================================
+           TYPE D'ENVOI
+        ============================================ */
+        .type-envoi-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
         .type-envoi-option {
             cursor: pointer;
             transition: all 0.3s ease;
             border: 2px solid #e5e7eb;
             border-radius: 10px;
-            padding: 14px 12px;
+            padding: 14px 16px;
             text-align: center;
+            background: white;
         }
         .type-envoi-option:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
         .type-envoi-option.border-green-500 {
             border-color: #25D366;
@@ -630,7 +701,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             color: #6b7280;
         }
         
-        /* Select2 */
+        /* ============================================
+           SELECT2
+        ============================================ */
         .select2-container--default .select2-selection--single {
             border: 2px solid #d1d5db;
             border-radius: 8px;
@@ -640,6 +713,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             line-height: 40px;
             padding-left: 12px;
             font-size: 14px;
+            color: #1f2937;
         }
         .select2-container--default .select2-selection--single .select2-selection__arrow {
             height: 40px;
@@ -647,6 +721,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         }
         .select2-container--default .select2-selection--single .select2-selection__arrow b {
             border-width: 5px 5px 0 5px;
+            border-color: #6b7280 transparent transparent transparent;
         }
         .select2-dropdown {
             border-radius: 8px;
@@ -656,8 +731,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         .select2-search__field {
             border-radius: 6px !important;
             border: 2px solid #d1d5db !important;
-            padding: 6px !important;
+            padding: 6px 10px !important;
             font-size: 14px !important;
+        }
+        .select2-search__field:focus {
+            border-color: #25D366 !important;
         }
         .select2-results__option {
             padding: 8px 12px !important;
@@ -667,13 +745,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             background-color: #25D366 !important;
         }
         
-        /* Textarea */
+        /* ============================================
+           TEXTAREA
+        ============================================ */
         textarea#message {
             padding: 12px 14px;
             font-size: 14px;
             border-radius: 8px;
             border: 2px solid #d1d5db;
             min-height: 120px;
+            width: 100%;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            resize: vertical;
         }
         textarea#message:focus {
             outline: none;
@@ -681,14 +765,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
         }
         
-        /* Upload buttons */
+        .char-counter {
+            font-size: 13px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            background: #f3f4f6;
+            display: inline-block;
+            font-weight: 500;
+            color: #4b5563;
+        }
+        
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        /* ============================================
+           UPLOAD BUTTONS
+        ============================================ */
         .upload-btn-group {
             display: flex;
             gap: 10px;
             margin-bottom: 12px;
+            flex-wrap: wrap;
         }
         .upload-btn-group button {
             flex: 1;
+            min-width: 140px;
             padding: 10px 14px;
             font-size: 14px;
             font-weight: 600;
@@ -696,16 +802,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             border: none;
             cursor: pointer;
             transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         .upload-btn-group button:hover {
             transform: translateY(-2px);
         }
         .upload-btn-group button i {
-            margin-right: 6px;
             font-size: 14px;
         }
+        .upload-btn-group .btn-upload-file {
+            background: #e5e7eb;
+            color: #4b5563;
+        }
+        .upload-btn-group .btn-upload-file:hover {
+            background: #d1d5db;
+        }
+        .upload-btn-group .btn-record-audio {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+        .upload-btn-group .btn-record-audio:hover {
+            background: #fee2e2;
+        }
         
-        /* Upload area */
+        /* ============================================
+           UPLOAD AREA
+        ============================================ */
         .upload-area {
             border: 2px dashed #d1d5db;
             border-radius: 10px;
@@ -713,6 +838,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             text-align: center;
             transition: all 0.2s;
             cursor: pointer;
+            width: 100%;
         }
         .upload-area:hover {
             border-color: #25D366;
@@ -734,92 +860,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             margin-top: 4px;
         }
         
-        /* Délais */
-        .delay-input {
-            width: 120px;
-            text-align: center;
-            border: 2px solid #d1d5db;
-            border-radius: 8px;
-            padding: 8px 12px;
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-        .delay-input:focus {
-            outline: none;
-            border-color: #25D366;
-            box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
-        }
-        .delay-section {
+        .upload-area .file-info {
+            margin-top: 12px;
+            padding: 10px 14px;
             background: #f0fdf4;
-            border: 2px solid #bbf7d0;
-            border-radius: 10px;
-            padding: 16px 20px;
-            margin-top: 8px;
-        }
-        .delay-section .delay-label {
-            font-size: 14px;
-            font-weight: 600;
-            color: #166534;
-        }
-        .delay-section .delay-desc {
-            font-size: 12px;
-            color: #15803d;
-            margin-top: 4px;
-        }
-        
-        /* Action buttons */
-        .action-buttons {
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-            margin-top: 24px;
-            padding-top: 16px;
-            border-top: 2px solid #f3f4f6;
-        }
-        .btn-primary {
-            background: #25D366;
-            color: white;
-            padding: 11px 28px;
             border-radius: 8px;
-            font-size: 15px;
-            font-weight: 700;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-            display: inline-flex;
+            border: 1px solid #bbf7d0;
+            display: flex;
             align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
             gap: 8px;
         }
-        .btn-primary:hover {
-            background: #1da851;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(37, 211, 102, 0.3);
-        }
-        .btn-outline {
-            background: transparent;
-            color: #6b7280;
-            padding: 11px 22px;
-            border-radius: 8px;
+        .upload-area .file-info .file-name {
             font-size: 14px;
-            font-weight: 600;
-            border: 2px solid #e5e7eb;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            color: #166534;
+            font-weight: 500;
         }
-        .btn-outline:hover {
-            background: #f9fafb;
-            border-color: #d1d5db;
+        .upload-area .file-info .file-remove {
+            color: #dc2626;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: color 0.2s;
+            background: none;
+            border: none;
+        }
+        .upload-area .file-info .file-remove:hover {
+            color: #b91c1c;
         }
         
-        /* Audio recording */
-        #recordingTimer {
+        /* ============================================
+           AUDIO RECORDING
+        ============================================ */
+        .audio-record-area {
+            border: 2px solid #d1d5db;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            width: 100%;
+        }
+        .audio-record-area .timer {
             font-size: 28px;
             font-weight: 700;
             font-family: monospace;
             color: #374151;
+            margin-bottom: 10px;
+        }
+        .audio-record-area .record-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
         }
         .record-btn {
             padding: 10px 22px;
@@ -851,50 +943,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         .record-btn-stop:hover {
             background: #4b5563;
         }
+        .record-btn-start.recording-active {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
         
-        /* Blacklist warning */
-        .blacklist-warning {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-            padding: 10px 14px;
+        .audio-record-area .audio-preview {
+            margin-top: 12px;
+            padding: 10px;
+            background: #f3f4f6;
             border-radius: 8px;
-            margin-bottom: 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
         }
-        .blacklist-warning i {
-            color: #ef4444;
-            font-size: 16px;
+        .audio-record-area .audio-preview audio {
+            width: 100%;
         }
-        .blacklist-warning span {
+        .audio-record-area .audio-preview .audio-remove {
+            margin-top: 6px;
+            color: #dc2626;
+            cursor: pointer;
+            font-weight: 600;
             font-size: 13px;
-            color: #991b1b;
-            font-weight: 500;
+            transition: color 0.2s;
+            background: none;
+            border: none;
+        }
+        .audio-record-area .audio-preview .audio-remove:hover {
+            color: #b91c1c;
         }
         
-        /* Erreur */
-        .error-box {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .error-box i {
-            color: #ef4444;
-            font-size: 18px;
-        }
-        .error-box span {
-            color: #991b1b;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        /* Mic error */
+        /* ============================================
+           MIC ERROR
+        ============================================ */
         .mic-error {
             background: #fef2f2;
             border: 2px solid #fecaca;
@@ -902,11 +984,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             padding: 14px 16px;
             margin-top: 10px;
             display: none;
+            text-align: left;
         }
         .mic-error .icon {
             color: #dc2626;
             font-size: 20px;
             margin-right: 10px;
+            flex-shrink: 0;
         }
         .mic-error .title {
             font-weight: 700;
@@ -928,42 +1012,324 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             margin-bottom: 3px;
         }
         
-        /* Char counter */
-        .char-counter {
+        /* ============================================
+           BLACKLIST WARNING
+        ============================================ */
+        .blacklist-warning {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+        .blacklist-warning i {
+            color: #ef4444;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .blacklist-warning span {
             font-size: 13px;
-            padding: 3px 10px;
-            border-radius: 6px;
-            background: #f3f4f6;
-            display: inline-block;
+            color: #991b1b;
             font-weight: 500;
-            color: #4b5563;
         }
         
-        /* Responsive */
-        @media (max-width: 768px) {
-            .container { padding: 12px; }
-            .header-section { flex-wrap: wrap; padding: 14px; }
-            .header-section .title { font-size: 18px; }
-            .header-section .subtitle { font-size: 13px; }
-            .main-card { padding: 16px; }
-            .campagne-info { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .step-indicator { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+        /* ============================================
+           ERROR BOX
+        ============================================ */
+        .error-box {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+        .error-box i {
+            color: #ef4444;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .error-box span {
+            color: #991b1b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        /* ============================================
+           DELAY SECTION
+        ============================================ */
+        .delay-section {
+            background: #f0fdf4;
+            border: 2px solid #bbf7d0;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-top: 8px;
+            width: 100%;
+        }
+        .delay-section .delay-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #166534;
+            display: block;
+            margin-bottom: 8px;
+        }
+        .delay-section .delay-label i {
+            margin-right: 6px;
+        }
+        .delay-section .delay-inputs {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .delay-section .delay-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .delay-section .delay-group label {
+            font-size: 13px;
+            color: #166534;
+            font-weight: 500;
+        }
+        .delay-input {
+            width: 100px;
+            text-align: center;
+            border: 2px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+            transition: all 0.2s;
+            background: white;
+        }
+        .delay-input:focus {
+            outline: none;
+            border-color: #25D366;
+            box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+        }
+        .delay-section .delay-hint {
+            font-size: 12px;
+            color: #15803d;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        /* ============================================
+           ACTION BUTTONS
+        ============================================ */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 2px solid #f3f4f6;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        
+        .btn-primary {
+            background: #25D366;
+            color: white;
+            padding: 11px 28px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 180px;
+            justify-content: center;
+        }
+        .btn-primary:hover {
+            background: #1da851;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(37, 211, 102, 0.3);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-outline {
+            background: transparent;
+            color: #6b7280;
+            padding: 11px 22px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 2px solid #e5e7eb;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            min-width: 120px;
+            justify-content: center;
+        }
+        .btn-outline:hover {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            color: #374151;
+        }
+        
+        /* ============================================
+           UTILITIES
+        ============================================ */
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-5 { margin-bottom: 20px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mr-1 { margin-right: 4px; }
+        .text-xs { font-size: 12px; }
+        .text-sm { font-size: 14px; }
+        .text-gray-400 { color: #9ca3af; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .w-full { width: 100%; }
+        .hidden { display: none !important; }
+        
+        /* ============================================
+           RESPONSIVE
+        ============================================ */
+        @media (max-width: 1200px) {
+            .container { padding: 16px 24px; }
+        }
+        
+        @media (max-width: 992px) {
+            .container { padding: 14px 20px; }
+            .main-card { padding: 20px; }
+            .step-indicator { padding: 10px 16px; gap: 8px; }
             .step { font-size: 12px; }
             .step .number { width: 24px; height: 24px; font-size: 10px; }
-            .step-line { width: 24px; }
-            .type-envoi-option { padding: 12px 10px; }
-            .type-envoi-option i { font-size: 20px; }
-            .type-envoi-option .option-title { font-size: 14px; }
-            .action-buttons { flex-direction: column; }
-            .action-buttons .btn-primary,
-            .action-buttons .btn-outline { width: 100%; justify-content: center; }
-            .upload-btn-group { flex-direction: column; }
-            .delay-input { width: 100%; }
-            .delay-section .flex { flex-direction: column; gap: 8px; align-items: flex-start !important; }
+            .step-line { width: 28px; }
         }
         
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .main-card { padding: 22px; }
+        @media (max-width: 768px) {
+            .container { padding: 12px 16px; }
+            
+            .header-section {
+                padding: 14px 16px;
+                gap: 8px;
+            }
+            .header-section .title { font-size: 19px; }
+            .header-section .subtitle { font-size: 13px; }
+            .header-section .icon-wrapper { padding: 8px 10px; }
+            .header-section .icon-wrapper i { font-size: 18px; }
+            
+            .main-card { padding: 16px; }
+            
+            .campagne-info {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px 16px;
+                gap: 6px;
+            }
+            .campagne-info .info-left .campagne-name { font-size: 14px; }
+            .campagne-info .info-right { font-size: 13px; }
+            
+            .type-envoi-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            .type-envoi-option { padding: 12px 14px; }
+            .type-envoi-option i { font-size: 20px; }
+            .type-envoi-option .option-title { font-size: 14px; }
+            .type-envoi-option .option-desc { font-size: 12px; }
+            
+            .upload-btn-group { flex-direction: column; }
+            .upload-btn-group button { min-width: unset; width: 100%; }
+            
+            .delay-section .delay-inputs {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .delay-section .delay-group { width: 100%; }
+            .delay-input { width: 100%; }
+            .delay-section .delay-hint { margin-top: 4px; }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            .action-buttons .btn-primary,
+            .action-buttons .btn-outline {
+                width: 100%;
+                justify-content: center;
+                min-width: unset;
+            }
+            
+            .step-indicator {
+                gap: 6px;
+                padding: 8px 12px;
+            }
+            .step { font-size: 11px; gap: 4px; }
+            .step .number { width: 20px; height: 20px; font-size: 9px; }
+            .step-line { width: 16px; }
+            .step span:last-child { display: none; }
+        }
+        
+        @media (max-width: 480px) {
+            .container { padding: 8px 10px; }
+            .header-section { padding: 10px 12px; }
+            .header-section .title { font-size: 17px; }
+            .header-section .subtitle { font-size: 12px; }
+            .header-section .back-link { font-size: 12px; padding: 3px 8px; }
+            
+            .main-card { padding: 12px; }
+            
+            .campagne-info { padding: 10px 12px; }
+            .campagne-info .info-left .campagne-name { font-size: 13px; }
+            .campagne-info .info-left .whatsapp-badge { font-size: 10px; padding: 2px 10px; }
+            .campagne-info .info-right { font-size: 12px; }
+            
+            textarea#message {
+                min-height: 90px;
+                font-size: 13px;
+                padding: 10px 12px;
+            }
+            
+            .upload-area { padding: 16px; }
+            .upload-area .upload-icon { font-size: 28px; }
+            .upload-area .upload-title { font-size: 14px; }
+            .upload-area .upload-desc { font-size: 12px; }
+            
+            .audio-record-area { padding: 14px; }
+            .audio-record-area .timer { font-size: 22px; }
+            
+            .btn-primary {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            .btn-outline {
+                padding: 10px 18px;
+                font-size: 13px;
+            }
+            
+            .select2-container--default .select2-selection--single {
+                min-height: 36px;
+            }
+            .select2-container--default .select2-selection--single .select2-selection__rendered {
+                line-height: 34px;
+                font-size: 13px;
+            }
+            .select2-container--default .select2-selection--single .select2-selection__arrow {
+                height: 34px;
+            }
         }
     </style>
 </head>
@@ -1001,7 +1367,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         <div class="icon-wrapper">
             <i class="fab fa-whatsapp"></i>
         </div>
-        <div>
+        <div class="header-text">
             <div class="title">Composer le message WhatsApp</div>
             <div class="subtitle">Rédigez votre message et choisissez les destinataires</div>
         </div>
@@ -1014,7 +1380,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             <div class="info-left">
                 <i class="fas fa-bullhorn" style="color: #7c3aed; font-size: 16px;"></i>
                 <span class="campagne-name"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
-                <span class="whatsapp-badge"><i class="fab fa-whatsapp mr-1"></i>WhatsApp</span>
+                <span class="whatsapp-badge"><i class="fab fa-whatsapp"></i> WhatsApp</span>
             </div>
             <div class="info-right">
                 <i class="fas fa-users"></i> <?= count($contacts) ?> contact(s) disponibles
@@ -1042,9 +1408,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             <input type="hidden" name="action_enregistrer" value="1">
             
             <!-- ===== TYPE D'ENVOI ===== -->
-            <div class="mb-5">
-                <label class="form-label"><i class="fas fa-envelope"></i> Type d'envoi *</label>
-                <div class="grid grid-cols-2 gap-3">
+            <div class="form-group">
+                <label class="form-label"><i class="fas fa-envelope"></i> Type d'envoi <span class="required">*</span></label>
+                <div class="type-envoi-grid">
                     <div id="typeSimple" 
                          class="type-envoi-option <?= (!isset($_POST['type_envoi']) || $_POST['type_envoi'] == 'simple') ? 'border-green-500' : '' ?>">
                         <i class="fas fa-user text-green-600"></i>
@@ -1062,8 +1428,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             </div>
             
             <!-- Envoi unique -->
-            <div id="simpleZone" class="mb-4">
-                <label class="form-label"><i class="fab fa-whatsapp text-green-600"></i> Destinataire *</label>
+            <div id="simpleZone" class="form-group">
+                <label class="form-label"><i class="fab fa-whatsapp text-green-600"></i> Destinataire <span class="required">*</span></label>
                 <select name="contact_unique" id="contact_unique" class="w-full" style="width: 100%;">
                     <option value="">Sélectionnez un contact...</option>
                     <?php foreach ($contacts as $contact): ?>
@@ -1075,8 +1441,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             </div>
             
             <!-- Envoi par liste -->
-            <div id="multipleZone" class="mb-4" style="display: none;">
-                <label class="form-label"><i class="fas fa-list"></i> Sélectionner une liste *</label>
+            <div id="multipleZone" class="form-group" style="display: none;">
+                <label class="form-label"><i class="fas fa-list"></i> Sélectionner une liste <span class="required">*</span></label>
                 <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;">
                     <option value="">-- Sélectionnez une liste --</option>
                     <?php foreach ($listes as $liste): ?>
@@ -1086,32 +1452,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                     <?php endforeach; ?>
                 </select>
                 <p class="text-xs text-gray-500 mt-1">
-                    <i class="fas fa-info-circle mr-1"></i>
+                    <i class="fas fa-info-circle"></i>
                     Les contacts blacklistés pour WhatsApp seront automatiquement exclus.
                 </p>
             </div>
             
             <!-- ===== MESSAGE ===== -->
-            <div class="mb-4">
-                <label class="form-label"><i class="fas fa-comment"></i> Message <span id="messageRequired" class="text-gray-400 text-sm font-normal">(optionnel si fichier/audio)</span></label>
-                <textarea name="message" id="message" rows="4" 
-                          class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:border-green-500 focus:ring-3 focus:ring-green-100 transition"
-                          placeholder="Votre message WhatsApp..."><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : '' ?></textarea>
-                <div class="flex justify-between mt-1">
+            <div class="form-group">
+                <label class="form-label"><i class="fas fa-comment"></i> Message <span class="optional">(optionnel si fichier/audio)</span></label>
+                <textarea name="message" id="message" rows="4"
+                          placeholder="Votre message WhatsApp..." 
+                          class="w-full"><?= isset($_POST['message']) ? htmlspecialchars($_POST['message']) : '' ?></textarea>
+                <div class="flex-between mt-1">
                     <span class="char-counter" id="charCounter">0 caractères</span>
                     <span class="text-xs text-gray-500">WhatsApp accepte les messages longs</span>
                 </div>
             </div>
             
             <!-- ===== PIÈCE JOINTE ===== -->
-            <div class="mb-4">
-                <label class="form-label">Pièce jointe <span class="text-gray-400 text-sm font-normal">(optionnel)</span></label>
+            <div class="form-group">
+                <label class="form-label"><i class="fas fa-paperclip"></i> Pièce jointe <span class="optional">(optionnel)</span></label>
                 
                 <div class="upload-btn-group">
-                    <button type="button" id="uploadFileBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-700">
+                    <button type="button" id="uploadFileBtn" class="btn-upload-file">
                         <i class="fas fa-upload"></i> Fichier
                     </button>
-                    <button type="button" id="recordAudioBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-700">
+                    <button type="button" id="recordAudioBtn" class="btn-record-audio">
                         <i class="fas fa-microphone"></i> Enregistrer audio
                     </button>
                 </div>
@@ -1122,18 +1488,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                     <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
                     <div class="upload-title">Cliquez ou glissez un fichier ici</div>
                     <div class="upload-desc">Images, vidéos, audio, PDF (Max 10 Mo)</div>
-                    <div id="fileInfo" class="mt-2 text-sm hidden">
-                        <i class="fas fa-file mr-1"></i> <span id="fileName"></span>
-                        <button type="button" id="removeFileBtn" class="text-red-500 ml-2 hover:text-red-700 font-medium">Supprimer</button>
+                    <div id="fileInfo" class="file-info hidden">
+                        <span class="file-name"><i class="fas fa-file mr-1"></i> <span id="fileName"></span></span>
+                        <button type="button" id="removeFileBtn" class="file-remove">
+                            <i class="fas fa-times"></i> Supprimer
+                        </button>
                     </div>
                 </div>
                 
                 <!-- Enregistrement audio -->
-                <div id="audioRecordArea" class="border-2 border-gray-300 rounded-lg p-5 text-center hidden">
-                    <div class="mb-2">
-                        <div id="recordingTimer" class="text-2xl font-bold font-mono text-gray-700 mb-2">00:00</div>
-                    </div>
-                    <div class="flex justify-center space-x-3">
+                <div id="audioRecordArea" class="audio-record-area hidden">
+                    <div class="timer" id="recordingTimer">00:00</div>
+                    <div class="record-buttons">
                         <button type="button" id="startRecordBtn" class="record-btn record-btn-start">
                             <i class="fas fa-circle"></i> Commencer
                         </button>
@@ -1144,9 +1510,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                     
                     <!-- Erreur microphone -->
                     <div id="micError" class="mic-error">
-                        <div class="flex items-start">
+                        <div class="flex" style="display:flex; gap:10px; align-items:flex-start;">
                             <i class="fas fa-microphone-slash icon"></i>
-                            <div class="text-left">
+                            <div>
                                 <div class="title">Impossible d'accéder au microphone</div>
                                 <div class="description">
                                     Pour enregistrer un message vocal, vous devez autoriser l'accès au microphone.
@@ -1160,9 +1526,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                         </div>
                     </div>
                     
-                    <div id="audioPreview" class="mt-3 hidden">
+                    <div id="audioPreview" class="audio-preview hidden">
                         <audio controls class="w-full"></audio>
-                        <button type="button" id="removeAudioBtn" class="text-red-500 text-sm mt-2 font-medium hover:text-red-700">Supprimer l'audio</button>
+                        <button type="button" id="removeAudioBtn" class="audio-remove">
+                            <i class="fas fa-times"></i> Supprimer l'audio
+                        </button>
                     </div>
                     <input type="hidden" name="audio_data" id="audioData">
                 </div>
@@ -1170,22 +1538,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             
             <!-- ===== DÉLAIS (visible uniquement pour envoi multiple) ===== -->
             <div id="delaySection" class="delay-section" style="<?= (isset($_POST['type_envoi']) && $_POST['type_envoi'] == 'multiple') ? 'display:block;' : 'display:none;' ?>">
-                <label class="delay-label"><i class="fas fa-hourglass-half mr-1"></i> Délai entre les messages (secondes)</label>
-                <div class="flex items-center space-x-4 mt-2 flex-wrap">
-                    <div class="flex items-center space-x-2">
-                        <span class="text-sm text-gray-600">Min :</span>
+                <label class="delay-label"><i class="fas fa-hourglass-half"></i> Délai entre les messages</label>
+                <div class="delay-inputs">
+                    <div class="delay-group">
+                        <label>Min :</label>
                         <input type="number" name="min_delay" id="min_delay" value="<?= isset($_POST['min_delay']) ? $_POST['min_delay'] : 60 ?>" 
                                class="delay-input" min="1" max="3600" step="1">
-                        <span class="text-sm text-gray-500">sec</span>
+                        <span class="text-xs text-gray-500">sec</span>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <span class="text-sm text-gray-600">Max :</span>
+                    <div class="delay-group">
+                        <label>Max :</label>
                         <input type="number" name="max_delay" id="max_delay" value="<?= isset($_POST['max_delay']) ? $_POST['max_delay'] : 180 ?>" 
                                class="delay-input" min="1" max="3600" step="1">
-                        <span class="text-sm text-gray-500">sec</span>
+                        <span class="text-xs text-gray-500">sec</span>
                     </div>
-                    <span class="text-xs text-gray-500 mt-1 sm:mt-0">
-                        <i class="fas fa-info-circle mr-1"></i> Délai aléatoire entre chaque envoi
+                    <span class="delay-hint">
+                        <i class="fas fa-info-circle"></i> Délai aléatoire entre chaque envoi
                     </span>
                 </div>
             </div>
@@ -1224,7 +1592,9 @@ $(document).ready(function() {
     });
 });
 
-// Gestion du type d'envoi
+// ============================================
+// GESTION DU TYPE D'ENVOI
+// ============================================
 const typeSimple = document.getElementById('typeSimple');
 const typeMultiple = document.getElementById('typeMultiple');
 const simpleZone = document.getElementById('simpleZone');
@@ -1280,8 +1650,6 @@ const fichierInput = document.getElementById('fichier');
 const fileInfo = document.getElementById('fileInfo');
 const fileNameSpan = document.getElementById('fileName');
 const removeFileBtn = document.getElementById('removeFileBtn');
-const messageRequired = document.getElementById('messageRequired');
-const micError = document.getElementById('micError');
 
 uploadFileBtn.addEventListener('click', () => {
     fileUploadArea.classList.remove('hidden');
@@ -1298,7 +1666,7 @@ recordAudioBtn.addEventListener('click', () => {
 
 async function checkMicrophoneSupport() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        micError.style.display = 'block';
+        document.getElementById('micError').style.display = 'block';
         return;
     }
     
@@ -1307,16 +1675,16 @@ async function checkMicrophoneSupport() {
                      window.location.hostname === '127.0.0.1';
     
     if (!isSecure) {
-        micError.style.display = 'block';
+        document.getElementById('micError').style.display = 'block';
         return;
     }
     
     try {
         const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         testStream.getTracks().forEach(track => track.stop());
-        micError.style.display = 'none';
+        document.getElementById('micError').style.display = 'none';
     } catch (err) {
-        micError.style.display = 'block';
+        document.getElementById('micError').style.display = 'block';
     }
 }
 
@@ -1331,7 +1699,6 @@ function handleFile(file) {
     
     fileNameSpan.textContent = `${file.name} (${sizeMB} Mo)`;
     fileInfo.classList.remove('hidden');
-    messageRequired.innerHTML = '<span class="text-gray-400 text-sm font-normal">(optionnel)</span>';
     
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(file);
@@ -1339,7 +1706,8 @@ function handleFile(file) {
 }
 
 fileUploadArea.addEventListener('click', (e) => {
-    if (e.target !== removeFileBtn && !removeFileBtn.contains(e.target)) {
+    if (e.target !== removeFileBtn && !removeFileBtn.contains(e.target) && 
+        e.target !== document.querySelector('#fileInfo') && !document.querySelector('#fileInfo').contains(e.target)) {
         fichierInput.click();
     }
 });
@@ -1378,9 +1746,6 @@ removeFileBtn.addEventListener('click', () => {
 function resetFileUpload() {
     fichierInput.value = '';
     fileInfo.classList.add('hidden');
-    if (!audioDataInput.value && !document.getElementById('message').value.trim()) {
-        messageRequired.innerHTML = '<span class="text-gray-400 text-sm font-normal">(optionnel si fichier/audio)</span>';
-    }
 }
 
 // ============================================
@@ -1407,7 +1772,7 @@ async function startRecording() {
                      window.location.hostname === '127.0.0.1';
     
     if (!isSecure) {
-        micError.style.display = 'block';
+        document.getElementById('micError').style.display = 'block';
         showToast('Utilisez HTTPS ou localhost pour accéder au microphone', 'error');
         return;
     }
@@ -1421,7 +1786,7 @@ async function startRecording() {
             } 
         });
         
-        micError.style.display = 'none';
+        document.getElementById('micError').style.display = 'none';
         
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
@@ -1446,7 +1811,6 @@ async function startRecording() {
             const reader = new FileReader();
             reader.onloadend = () => {
                 audioDataInput.value = reader.result;
-                messageRequired.innerHTML = '<span class="text-gray-400 text-sm font-normal">(optionnel)</span>';
             };
             reader.readAsDataURL(audioBlob);
             
@@ -1469,7 +1833,7 @@ async function startRecording() {
         }, 1000);
         
     } catch (err) {
-        micError.style.display = 'block';
+        document.getElementById('micError').style.display = 'block';
         showToast('Impossible d\'accéder au microphone', 'error');
     }
 }
@@ -1508,10 +1872,6 @@ function resetRecording() {
     startRecordBtn.classList.remove('hidden');
     stopRecordBtn.classList.add('hidden');
     startRecordBtn.classList.remove('recording-active');
-    
-    if (!fichierInput.files.length && !document.getElementById('message').value.trim()) {
-        messageRequired.innerHTML = '<span class="text-gray-400 text-sm font-normal">(optionnel si fichier/audio)</span>';
-    }
 }
 
 startRecordBtn.addEventListener('click', startRecording);
@@ -1519,12 +1879,11 @@ stopRecordBtn.addEventListener('click', stopRecording);
 
 removeAudioBtn.addEventListener('click', () => {
     resetRecording();
-    if (!fichierInput.files.length && !document.getElementById('message').value.trim()) {
-        messageRequired.innerHTML = '<span class="text-gray-400 text-sm font-normal">(optionnel si fichier/audio)</span>';
-    }
 });
 
-// Compteur de caractères
+// ============================================
+// COMPTEUR DE CARACTÈRES
+// ============================================
 const messageTextarea = document.getElementById('message');
 const charCounter = document.getElementById('charCounter');
 
@@ -1532,16 +1891,14 @@ if (messageTextarea) {
     messageTextarea.addEventListener('input', function() {
         const length = this.value.length;
         charCounter.textContent = length + ' caractères';
-        if (this.value.trim() === '' && !fichierInput.files.length && !audioDataInput.value) {
-            messageRequired.innerHTML = '<span class="text-gray-400 text-sm font-normal">(optionnel si fichier/audio)</span>';
-        } else {
-            messageRequired.innerHTML = '<span class="text-gray-400 text-sm font-normal">(optionnel)</span>';
-        }
     });
     
     charCounter.textContent = messageTextarea.value.length + ' caractères';
 }
 
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
@@ -1554,7 +1911,9 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-// Validation du formulaire
+// ============================================
+// VALIDATION DU FORMULAIRE
+// ============================================
 document.getElementById('composerForm').addEventListener('submit', function(e) {
     const type_envoi = document.getElementById('type_envoi').value;
     const message = document.getElementById('message').value.trim();

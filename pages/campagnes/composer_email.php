@@ -4,22 +4,14 @@ global $db;
 // ============================================
 // DÉTECTION PRÉCOCE DE LA REQUÊTE AJAX (UPLOAD)
 // ============================================
-// On doit savoir dès le début si c'est une requête AJAX d'upload,
-// pour ne JAMAIS rediriger vers du HTML dans ce cas (c'est la cause
-// de "Unexpected token '<' is not valid JSON" en prod).
 $isAjaxUpload = ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_upload_file']));
 
 if ($isAjaxUpload) {
-    // On désactive l'affichage des erreurs à l'écran : toute erreur PHP
-    // (warning/notice/deprecated) doit partir dans les logs, jamais dans
-    // la réponse, sinon elle casse le JSON avec du HTML.
     ini_set('display_errors', 0);
-    error_reporting(E_ALL); // on log quand même tout
+    error_reporting(E_ALL);
 
     header('Content-Type: application/json');
 
-    // Attrape les erreurs "classiques" (warning, notice...) et les transforme
-    // en réponse JSON propre au lieu de laisser fuir du HTML.
     set_error_handler(function ($errno, $errstr, $errfile, $errline) {
         error_log("PHP Error [upload]: $errstr in $errfile:$errline");
         if (!headers_sent()) {
@@ -32,9 +24,6 @@ if ($isAjaxUpload) {
         exit;
     });
 
-    // Attrape les erreurs FATALES (function not found, etc.) qui ne passent
-    // pas par set_error_handler. Sans ça, PHP/Apache/Nginx renvoie sa propre
-    // page d'erreur HTML -> exactement le bug que tu as en prod.
     register_shutdown_function(function () {
         $err = error_get_last();
         if ($err !== null && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
@@ -42,8 +31,6 @@ if ($isAjaxUpload) {
             if (!headers_sent()) {
                 header('Content-Type: application/json');
             }
-            // On ne peut pas faire de exit propre ici (on est déjà en shutdown),
-            // mais on peut encore émettre du contenu si rien n'a été envoyé.
             if (ob_get_length() === false || ob_get_length() === 0) {
                 echo json_encode([
                     'success' => false,
@@ -54,9 +41,6 @@ if ($isAjaxUpload) {
     });
 }
 
-// ============================================
-// FONCTION UTILITAIRE : répondre en JSON et quitter (pour l'AJAX)
-// ============================================
 function respondJsonAndExit($data) {
     if (!headers_sent()) {
         header('Content-Type: application/json');
@@ -65,9 +49,6 @@ function respondJsonAndExit($data) {
     exit;
 }
 
-// ============================================
-// VÉRIFICATION DE SESSION
-// ============================================
 if (empty($_SESSION['user_id'])) {
     if ($isAjaxUpload) {
         respondJsonAndExit([
@@ -81,9 +62,6 @@ if (empty($_SESSION['user_id'])) {
 
 $idCompte = $_SESSION['user_id'];
 
-// ============================================
-// RÉCUPÉRATION DE LA CAMPAGNE CONFIG
-// ============================================
 $campagneConfigId = $_POST['campagne_config_id'] ?? $_SESSION['campagne_config_id'] ?? $_GET['campagne_config_id'] ?? null;
 
 if (!$campagneConfigId) {
@@ -97,7 +75,6 @@ if (!$campagneConfigId) {
     exit;
 }
 
-// Récupérer les infos de la campagne config
 $campagneConfig = $db->select('campagne_config', [
     'id_campagne_config' => $campagneConfigId,
     'id_compte' => $idCompte
@@ -117,7 +94,6 @@ if (empty($campagneConfig)) {
 
 $campagne = $campagneConfig[0];
 
-// Vérifier que le type de message est Email
 $typeMessage = $_SESSION['type_message'] ?? null;
 if ($typeMessage !== 'email') {
     if ($isAjaxUpload) {
@@ -131,9 +107,6 @@ if ($typeMessage !== 'email') {
     exit;
 }
 
-// ============================================
-// RÉCUPÉRATION DE L'ID DU TYPE MESSAGE EMAIL
-// ============================================
 $emailTypeId = null;
 $typeMessageEmail = $db->select('type_message', ['libelle_type' => 'Email']);
 if (empty($typeMessageEmail)) {
@@ -143,9 +116,6 @@ if (!empty($typeMessageEmail)) {
     $emailTypeId = $typeMessageEmail[0]['id_type_message'];
 }
 
-// ============================================
-// RÉCUPÉRATION DE LA BLACKLIST POUR EMAIL
-// ============================================
 $blacklistIds = [];
 if ($emailTypeId) {
     $blacklist = $db->select('blacklist', ['id_type_message' => $emailTypeId]);
@@ -156,10 +126,8 @@ if ($emailTypeId) {
     }
 }
 
-// Récupérer tous les contacts du compte
 $tousContacts = $db->select('contact', ['id_compte' => $idCompte]);
 
-// Filtrer les contacts non blacklistés ET qui ont un email
 $contacts = [];
 $contactsSansEmail = [];
 foreach ($tousContacts as $contact) {
@@ -172,7 +140,6 @@ foreach ($tousContacts as $contact) {
     }
 }
 
-// Récupérer les listes avec le nombre de contacts (excluant blacklist Email)
 $listesBrutes = $db->select('liste', ['id_compte' => $idCompte]);
 $listes = [];
 
@@ -206,7 +173,6 @@ $uploadedMediaId = null;
 $uploadedFileName = null;
 $uploadError = null;
 
-// Récupérer les données du formulaire en session
 $formData = $_SESSION['form_data'] ?? [];
 $formData['objet'] = $formData['objet'] ?? '';
 $formData['corps'] = $formData['corps'] ?? '';
@@ -214,7 +180,6 @@ $formData['liste_id'] = $formData['liste_id'] ?? '';
 $formData['from_email'] = $formData['from_email'] ?? 'noreply@votre-domaine.com';
 $formData['from_name'] = $formData['from_name'] ?? 'Votre Entreprise';
 
-// Récupérer les infos de l'upload en session
 $uploadedMediaId = $_SESSION['uploaded_media_id'] ?? null;
 $uploadedFileName = $_SESSION['uploaded_file_name'] ?? null;
 $uploadedMediaUrl = $_SESSION['uploaded_media_url'] ?? null;
@@ -222,20 +187,12 @@ $uploadError = $_SESSION['upload_error'] ?? null;
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
 
-// Nettoyer les erreurs d'upload après affichage
 unset($_SESSION['upload_error']);
 
-// ============================================
-// TRAITEMENT DE L'UPLOAD DE FICHIER (AJAX)
-// ============================================
 if ($isAjaxUpload) {
-
     $hasFile = isset($_FILES['piece_jointe']) && $_FILES['piece_jointe']['error'] === UPLOAD_ERR_OK;
 
     if (!$hasFile) {
-        // On donne un message plus précis selon le code d'erreur PHP d'upload,
-        // ça aide beaucoup à diagnostiquer les soucis de config prod
-        // (post_max_size, upload_max_filesize, etc.)
         $uploadErrCode = $_FILES['piece_jointe']['error'] ?? null;
         $msg = "Veuillez sélectionner un fichier à importer";
         if ($uploadErrCode === UPLOAD_ERR_INI_SIZE || $uploadErrCode === UPLOAD_ERR_FORM_SIZE) {
@@ -252,12 +209,10 @@ if ($isAjaxUpload) {
 
     $file = $_FILES['piece_jointe'];
 
-    // Vérifier la taille du fichier (max 10 Mo)
     if ($file['size'] > 10 * 1024 * 1024) {
         respondJsonAndExit(['success' => false, 'message' => "Le fichier est trop volumineux. Maximum 10 Mo."]);
     }
 
-    // Vérifier le type de fichier
     $allowedTypes = [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
         'application/pdf', 'application/msword',
@@ -267,7 +222,6 @@ if ($isAjaxUpload) {
         'text/plain', 'text/csv'
     ];
 
-    // Vérifier que l'extension fileinfo est bien disponible en prod
     if (!function_exists('mime_content_type')) {
         error_log("=== ERREUR: extension 'fileinfo' non disponible sur ce serveur ===");
         respondJsonAndExit([
@@ -286,8 +240,7 @@ if ($isAjaxUpload) {
         respondJsonAndExit(['success' => false, 'message' => "Type de fichier non autorisé. Types autorisés: images, PDF, Word, Excel, CSV, TXT"]);
     }
 
-    // Créer le dossier d'upload si nécessaire
-    $uploadDir =  __DIR__ . '/uploads/pieces_jointes/';
+    $uploadDir = __DIR__ . '/uploads/pieces_jointes/';
     if (!is_dir($uploadDir)) {
         if (!@mkdir($uploadDir, 0777, true) && !is_dir($uploadDir)) {
             error_log("=== ERREUR: impossible de créer le dossier $uploadDir (droits d'écriture ?) ===");
@@ -307,7 +260,6 @@ if ($isAjaxUpload) {
         respondJsonAndExit(['success' => false, 'message' => "Impossible de déplacer le fichier uploadé."]);
     }
 
-    // Uploader le fichier vers Listmonk avec multipart/form-data
     $apiUrl = 'http://164.68.103.147:9005/api/media';
     $username = 'test';
     $password = 'lqXJrA1sfE1YobhQ0CyP9UiMpi1MOsb83p554Uuc1IRDKVRR';
@@ -318,9 +270,8 @@ if ($isAjaxUpload) {
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_USERPWD, $username . ':' . $password);
     curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-    curl_setopt($ch, CURLOPT_VERBOSE, false); 
-    
-    // Créer le fichier CURLFile pour l'upload multipart
+    curl_setopt($ch, CURLOPT_VERBOSE, false);
+
     $fileInfo = new CURLFile($filePath, mime_content_type($filePath), $file['name']);
     $postFields = ['file' => $fileInfo];
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
@@ -360,7 +311,6 @@ if ($isAjaxUpload) {
         }
 
         if ($mediaId) {
-            // Stocker en session pour utilisation ultérieure
             $_SESSION['uploaded_media_id'] = $mediaId;
             $_SESSION['uploaded_file_name'] = $file['name'];
             $_SESSION['uploaded_media_url'] = $mediaUrl;
@@ -387,9 +337,6 @@ if ($isAjaxUpload) {
     }
 }
 
-// ============================================
-// TRAITEMENT POUR SUPPRIMER LE FICHIER UPLOADÉ
-// ============================================
 if (isset($_GET['remove_upload']) && $_GET['remove_upload'] == 1) {
     unset($_SESSION['uploaded_media_id']);
     unset($_SESSION['uploaded_file_name']);
@@ -399,9 +346,6 @@ if (isset($_GET['remove_upload']) && $_GET['remove_upload'] == 1) {
     exit;
 }
 
-// ============================================
-// FONCTION POUR CRÉER UNE CAMPAGNE SUR LISTMONK
-// ============================================
 function createListmonkCampaign($campaignData) {
     $apiUrl = 'http://164.68.103.147:9005/api/campaigns';
     $username = 'test';
@@ -420,12 +364,10 @@ function createListmonkCampaign($campaignData) {
         'enabled' => true
     ];
 
-    // Ajouter les pièces jointes si présentes (pour les fichiers non-image)
     if (!empty($campaignData['attachments']) && is_array($campaignData['attachments'])) {
         $payload['attachments'] = $campaignData['attachments'];
     }
 
-    // Gestion de la planification
     if (!empty($campaignData['send_at'])) {
         $payload['send_at'] = $campaignData['send_at'];
         $payload['status'] = 'scheduled';
@@ -476,9 +418,6 @@ function createListmonkCampaign($campaignData) {
     }
 }
 
-// ============================================
-// FONCTION POUR METTRE À JOUR LE STATUT D'UNE CAMPAGNE
-// ============================================
 function updateListmonkCampaignStatus($campaignId, $status) {
     $apiUrl = "http://164.68.103.147:9005/api/campaigns/{$campaignId}/status";
     $username = 'test';
@@ -501,11 +440,7 @@ function updateListmonkCampaignStatus($campaignId, $status) {
     return $httpCode === 200 || $httpCode === 201 || $httpCode === 204;
 }
 
-// ============================================
-// TRAITEMENT DU FORMULAIRE PRINCIPAL
-// ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])) {
-    // Sauvegarder les données du formulaire en session
     $_SESSION['form_data'] = [
         'objet' => $_POST['objet'] ?? '',
         'corps' => $_POST['corps'] ?? '',
@@ -523,15 +458,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
     $date_planification = $_POST['date_planification'] ?? null;
     $media_id = $_POST['media_id'] ?? null;
 
-    // Si media_id n'est pas dans le POST mais existe en session, l'utiliser
     if (empty($media_id) && !empty($_SESSION['uploaded_media_id'])) {
         $media_id = $_SESSION['uploaded_media_id'];
     }
 
-    // Récupérer l'URL du média
     $mediaUrl = $_SESSION['uploaded_media_url'] ?? null;
 
-    // Validation des emails expéditeurs
     if (empty($from_email)) {
         $from_email = 'noreply@votre-domaine.com';
     }
@@ -539,7 +471,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         $from_name = 'Votre Entreprise';
     }
 
-    // Validation
     if (empty($objet)) {
         $error = "Veuillez saisir un objet";
     } elseif (empty($corps)) {
@@ -547,13 +478,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
     } elseif (empty($liste_id)) {
         $error = "Veuillez sélectionner une liste de diffusion";
     } else {
-        // Préparer les données
         $destinataires = [];
         $destinatairesNoms = [];
         $contactsSansEmailDansListe = 0;
         $listmonkListId = null;
 
-        // Récupérer le listmonk_id de la liste sélectionnée
         foreach ($listes as $l) {
             if ($l['id_liste'] == $liste_id) {
                 $listmonkListId = $l['listmonk_id'];
@@ -564,7 +493,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         if (!$listmonkListId) {
             $error = "Cette liste n'est pas liée à Listmonk. Veuillez d'abord synchroniser la liste.";
         } else {
-            // Récupérer les contacts de la liste
             $listeContacts = $db->select('liste_contact', ['id_liste' => $liste_id]);
             foreach ($listeContacts as $lc) {
                 if (!in_array($lc['id_contact'], $blacklistIds)) {
@@ -588,12 +516,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         }
 
         if (empty($error) && $listmonkListId) {
-            // Préparer le corps du message avec l'image si présente
             $bodyContent = $corps;
 
-            // Si une image est uploadée, l'insérer dans le corps du message
             if (!empty($media_id) && !empty($mediaUrl)) {
-                // Déterminer si c'est une image
                 $isImage = false;
                 $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
                 $extension = strtolower(pathinfo($uploadedFileName ?? '', PATHINFO_EXTENSION));
@@ -602,15 +527,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 }
 
                 if ($isImage) {
-                    // Insérer l'image dans le corps du message
                     $bodyContent .= '<br><br><img src="' . $mediaUrl . '" alt="' . htmlspecialchars($uploadedFileName ?? 'Image') . '" style="max-width:100%;">';
                 } else {
-                    // Pour les fichiers non-image, ajouter un lien de téléchargement
                     $bodyContent .= '<br><br><strong>Pièce jointe :</strong> <a href="' . $mediaUrl . '">' . htmlspecialchars($uploadedFileName ?? 'Fichier') . '</a>';
                 }
             }
 
-            // 1. CRÉER LA CAMPAGNE SUR LISTMONK
             $campaignData = [
                 'name' => $campagne['nom_campagne'] . ' - ' . date('Y-m-d H:i'),
                 'subject' => $objet,
@@ -620,18 +542,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 'from_name' => $from_name
             ];
 
-            // Ajouter les pièces jointes pour les fichiers non-image (PDF, DOC, etc.)
             if (!empty($media_id)) {
                 $extension = strtolower(pathinfo($uploadedFileName ?? '', PATHINFO_EXTENSION));
                 $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
                 if (!in_array($extension, $imageExtensions)) {
-                    // Pour les fichiers non-image, on les attache comme pièce jointe
                     $campaignData['attachments'] = [(int)$media_id];
                 }
-                // Pour les images, on les inclut déjà dans le body
             }
 
-            // VÉRIFIER LA DATE DE PLANIFICATION
             $hasSchedule = false;
             $scheduleDate = null;
 
@@ -644,9 +562,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
             }
 
             if ($hasSchedule && $scheduleDate) {
-                // Format: 2026-08-01T09:00:00.000000+03:00
                 $datetime = new DateTime($scheduleDate);
-                $datetime->setTimezone(new DateTimeZone('+03:00')); // Fuseau horaire de Madagascar
+                $datetime->setTimezone(new DateTimeZone('+03:00'));
                 $campaignData['send_at'] = $datetime->format('Y-m-d\TH:i:s.000000P');
             }
 
@@ -674,7 +591,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 error_log("=== ERREUR LISTMONK: " . $result['error']);
             }
 
-            // 2. ENREGISTRER DANS LA BASE DE DONNÉES
             if (empty($error) || $listmonkCampaignId) {
                 $finalStatut = 'pret_a_envoyer';
                 if ($hasSchedule) {
@@ -700,7 +616,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                     'created_at' => date('Y-m-d H:i:s')
                 ];
 
-                // Ajouter les informations de la pièce jointe UNIQUEMENT si présente
                 if (!empty($media_id)) {
                     $campagneData['listmonk_media_id'] = $media_id;
                     $campagneData['piece_jointe'] = json_encode([
@@ -720,14 +635,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                         'listmonk_campaign_id' => $listmonkCampaignId
                     ];
 
-                    // Ajouter le media_id UNIQUEMENT si présent
                     if (!empty($media_id)) {
                         $updateData['listmonk_media_id'] = $media_id;
                     }
 
                     $db->update('campagne_config', $updateData, ['id_campagne_config' => $campagneConfigId]);
 
-                    // Nettoyer la session
                     unset($_SESSION['form_data']);
                     unset($_SESSION['uploaded_media_id']);
                     unset($_SESSION['uploaded_file_name']);
@@ -762,7 +675,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                     }
                     $success = $successMsg;
 
-                    // Redirection automatique après succès
                     echo '<meta http-equiv="refresh" content="3;url=index.php?page=campagnes/details&id=' . $campagneConfigId . '">';
 
                 } catch (Exception $e) {
@@ -776,7 +688,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
     }
 }
 
-// Nettoyer les messages flash après affichage
 $flashMessage = isset($_SESSION['flash_message']) ? $_SESSION['flash_message'] : null;
 $flashError = isset($_SESSION['flash_error']) ? $_SESSION['flash_error'] : null;
 unset($_SESSION['flash_message']);
@@ -791,9 +702,36 @@ unset($_SESSION['flash_error']);
     <title>Composer l'email - <?= APP_NAME ?></title>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
     <style>
+        /* ============================================
+           STYLES PRINCIPAUX - FULL WIDTH
+        ============================================ */
+        * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+        }
+        
+        body { 
+            margin: 0; 
+            background: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+        }
+        
+        .container-full {
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 16px 32px;
+            width: 100%;
+        }
+        
+        /* ============================================
+           TOAST
+        ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -818,34 +756,22 @@ unset($_SESSION['flash_error']);
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.info .toast-content { background: #3b82f6; }
         .toast-notification.warning .toast-content { background: #f59e0b; }
-
-        .select2-container--default .select2-selection--single {
-            border: 1px solid #d1d5db;
-            border-radius: 0.5rem;
-            min-height: 42px;
-        }
-        .select2-container--default .select2-selection--single .select2-selection__rendered {
-            line-height: 40px;
-            padding-left: 12px;
-        }
-        .select2-container--default .select2-selection--single .select2-selection__arrow {
-            height: 40px;
-        }
-
-        .campagne-info {
-            background: #f3e8ff;
-            border: 1px solid #d8b4fe;
-            border-radius: 12px;
-            padding: 12px 16px;
-            margin-bottom: 20px;
-        }
-
+        
+        /* ============================================
+           STEP INDICATOR
+        ============================================ */
         .step-indicator {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 12px;
-            margin-bottom: 32px;
+            margin-bottom: 24px;
+            padding: 12px 24px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            flex-wrap: wrap;
+            width: 100%;
         }
         .step {
             display: flex;
@@ -866,10 +792,12 @@ unset($_SESSION['flash_error']);
             font-weight: 600;
             font-size: 12px;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
         .step.active .number {
             background: #d97706;
             color: white;
+            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
         }
         .step.done .number {
             background: #10b981;
@@ -879,200 +807,289 @@ unset($_SESSION['flash_error']);
             color: #1f2937;
             font-weight: 500;
         }
+        .step.done {
+            color: #6b7280;
+        }
         .step-line {
             width: 40px;
             height: 2px;
             background: #e5e7eb;
+            border-radius: 2px;
+            flex-shrink: 0;
         }
         .step-line.done {
             background: #10b981;
         }
-
-        .btn-primary {
-            background: #d97706;
-            color: white;
-            padding: 10px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-        }
-        .btn-primary:hover {
-            background: #b45309;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
-        }
-        .btn-secondary {
-            background: #10b981;
-            color: white;
-            padding: 10px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-        }
-        .btn-secondary:hover {
-            background: #059669;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-        .btn-outline {
-            background: transparent;
-            color: #6b7280;
-            padding: 10px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            border: 2px solid #e5e7eb;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .btn-outline:hover {
-            background: #f9fafb;
-            border-color: #d1d5db;
-        }
-
-        .btn-upload {
-            background: #3b82f6;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            height: 44px;
-            white-space: nowrap;
-        }
-        .btn-upload:hover:not(:disabled) {
-            background: #2563eb;
-        }
-        .btn-upload:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-upload.loading {
-            background: #93c5fd;
-            cursor: wait;
-        }
-        .btn-upload-remove {
-            background: #ef4444;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            height: 44px;
-            white-space: nowrap;
-        }
-        .btn-upload-remove:hover {
-            background: #dc2626;
-        }
-
-        .action-buttons {
+        
+        /* ============================================
+           EN-TÊTE
+        ============================================ */
+        .header-section {
             display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 16px 24px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            width: 100%;
+            flex-wrap: wrap;
             gap: 12px;
-            justify-content: flex-end;
-            margin-top: 24px;
+        }
+        .header-section .back-link {
+            color: #6b7280;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+        .header-section .back-link:hover {
+            color: #374151;
+            background: #f3f4f6;
+        }
+        .header-section .icon-wrapper {
+            background: #fef3c7;
+            padding: 10px 12px;
+            border-radius: 12px;
+            flex-shrink: 0;
+        }
+        .header-section .icon-wrapper i {
+            color: #d97706;
+            font-size: 22px;
+        }
+        .header-section .header-text {
+            flex: 1;
+            min-width: 150px;
+        }
+        .header-section .title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        .header-section .subtitle {
+            font-size: 14px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        
+        /* ============================================
+           CARD PRINCIPALE
+        ============================================ */
+        .main-card {
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            padding: 24px 28px;
+            width: 100%;
+        }
+        
+        /* ============================================
+           INFO CAMPAGNE
+        ============================================ */
+        .campagne-info {
+            background: #f3e8ff;
+            border: 2px solid #d8b4fe;
+            border-radius: 12px;
+            padding: 14px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+        }
+        .campagne-info .info-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
             flex-wrap: wrap;
         }
-
-        .email-badge {
+        .campagne-info .info-left .campagne-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: #5b21b6;
+        }
+        .campagne-info .info-left .email-badge {
             background: #d97706;
             color: white;
-            padding: 2px 10px;
+            padding: 3px 12px;
             border-radius: 20px;
-            font-size: 11px;
-            font-weight: 500;
-            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
-
-        #fileUploadArea {
-            transition: all 0.2s ease;
-            cursor: pointer;
-            min-height: 80px;
-        }
-        #fileUploadArea.drag-over {
-            border-color: #d97706;
-            background-color: #fffbeb;
-        }
-
-        .blacklist-warning {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-        }
-
-        .info-badge {
+        .campagne-info .info-left .info-badge {
             display: inline-flex;
             align-items: center;
             padding: 2px 10px;
             border-radius: 12px;
             font-size: 11px;
             font-weight: 500;
-            margin-left: 6px;
+            gap: 4px;
         }
         .info-badge.success { background: #dcfce7; color: #166534; }
         .info-badge.warning { background: #fef3c7; color: #92400e; }
         .info-badge.danger { background: #fee2e2; color: #991b1b; }
         .info-badge.info { background: #dbeafe; color: #1e40af; }
-
+        
+        .campagne-info .info-right {
+            font-size: 14px;
+            color: #6b21a8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .campagne-info .info-right i {
+            font-size: 16px;
+        }
+        
+        /* ============================================
+           FORMULAIRES
+        ============================================ */
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 5px;
+        }
+        .form-label i {
+            margin-right: 6px;
+        }
+        .form-label .required {
+            color: #ef4444;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        /* ============================================
+           SENDER INFO
+        ============================================ */
+        .sender-info {
+            background: #f0fdf4;
+            border: 2px solid #86efac;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            width: 100%;
+        }
+        .sender-info .sender-title {
+            font-weight: 700;
+            color: #166534;
+            margin-bottom: 12px;
+            font-size: 15px;
+        }
+        .sender-info .sender-title i {
+            margin-right: 6px;
+        }
+        
+        /* ============================================
+           LISTE INFO
+        ============================================ */
+        .liste-info {
+            background: #eff6ff;
+            border: 2px solid #93c5fd;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            width: 100%;
+        }
+        .liste-info .liste-title {
+            font-weight: 700;
+            color: #1e40af;
+            margin-bottom: 12px;
+            font-size: 15px;
+        }
+        .liste-info .liste-title i {
+            margin-right: 6px;
+        }
+        
+        /* ============================================
+           SELECT2
+        ============================================ */
+        .select2-container--default .select2-selection--single {
+            border: 2px solid #d1d5db;
+            border-radius: 8px;
+            min-height: 42px;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 40px;
+            padding-left: 12px;
+            font-size: 14px;
+            color: #1f2937;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 40px;
+            width: 32px;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow b {
+            border-width: 5px 5px 0 5px;
+            border-color: #6b7280 transparent transparent transparent;
+        }
+        .select2-dropdown {
+            border-radius: 8px;
+            border-color: #d1d5db;
+            font-size: 14px;
+        }
+        .select2-search__field {
+            border-radius: 6px !important;
+            border: 2px solid #d1d5db !important;
+            padding: 6px 10px !important;
+            font-size: 14px !important;
+        }
+        .select2-search__field:focus {
+            border-color: #d97706 !important;
+        }
+        .select2-results__option {
+            padding: 8px 12px !important;
+            font-size: 14px !important;
+        }
+        .select2-results__option--highlighted {
+            background-color: #d97706 !important;
+        }
+        
+        /* ============================================
+           SUMMERNOTE
+        ============================================ */
         .note-editor {
             border-radius: 8px !important;
-            border-color: #d1d5db !important;
+            border: 2px solid #d1d5db !important;
+            width: 100%;
         }
         .note-editor .note-toolbar {
             background: #f9fafb !important;
             border-radius: 8px 8px 0 0 !important;
+            border-bottom: 1px solid #d1d5db !important;
         }
         .note-editor .note-editable {
             min-height: 300px !important;
+            font-size: 14px;
         }
-
-        .planification-zone {
-            background: #fef3c7;
-            border: 1px solid #fcd34d;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-top: 12px;
+        .note-editor:focus-within {
+            border-color: #d97706 !important;
+            box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.1);
         }
-
-        .sender-info {
-            background: #f0fdf4;
-            border: 1px solid #86efac;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 16px;
-        }
-        .sender-info label {
-            font-weight: 500;
-            color: #166534;
-        }
-
-        .liste-info {
-            background: #eff6ff;
-            border: 1px solid #93c5fd;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 16px;
-        }
-        .liste-info label {
-            font-weight: 500;
-            color: #1e40af;
-        }
-
+        
+        /* ============================================
+           FILE UPLOAD
+        ============================================ */
         .file-upload-container {
             display: flex;
             gap: 12px;
             align-items: flex-start;
             flex-wrap: wrap;
+            width: 100%;
         }
         .file-upload-container .file-input-area {
             flex: 1;
@@ -1084,123 +1101,484 @@ unset($_SESSION['flash_error']);
             flex-wrap: wrap;
             align-items: center;
         }
-
+        
+        #fileUploadArea {
+            border: 2px dashed #d1d5db;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            min-height: 80px;
+            width: 100%;
+        }
+        #fileUploadArea:hover {
+            border-color: #d97706;
+            background-color: #fffbeb;
+        }
+        #fileUploadArea.drag-over {
+            border-color: #d97706;
+            background-color: #fef3c7;
+        }
+        #fileUploadArea .upload-icon {
+            font-size: 32px;
+            color: #9ca3af;
+            margin-bottom: 4px;
+        }
+        #fileUploadArea .upload-title {
+            font-size: 14px;
+            color: #4b5563;
+            font-weight: 500;
+        }
+        #fileUploadArea .upload-desc {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+        
+        .btn-upload {
+            background: #3b82f6;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            height: 44px;
+            white-space: nowrap;
+        }
+        .btn-upload:hover:not(:disabled) {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+        .btn-upload:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .btn-upload.loading {
+            background: #93c5fd;
+            cursor: wait;
+        }
+        
+        .btn-upload-remove {
+            background: #ef4444;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            height: 44px;
+            white-space: nowrap;
+        }
+        .btn-upload-remove:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+        
         .uploaded-file-info {
             background: #dcfce7;
-            border: 1px solid #86efac;
-            border-radius: 8px;
-            padding: 10px 14px;
+            border: 2px solid #86efac;
+            border-radius: 10px;
+            padding: 12px 16px;
             margin-top: 8px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
             gap: 8px;
+            width: 100%;
         }
         .uploaded-file-info .file-details {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
         .uploaded-file-info .file-details i {
             color: #16a34a;
+            font-size: 24px;
         }
         .uploaded-file-info .file-details .media-id {
             font-size: 12px;
             color: #6b7280;
             background: #e5e7eb;
-            padding: 2px 8px;
+            padding: 2px 10px;
             border-radius: 12px;
         }
-
-        .text-center { text-align: center; }
-        .text-gray-500 { color: #6b7280; }
-        .font-bold { font-weight: 700; }
+        
+        /* ============================================
+           PLANIFICATION ZONE
+        ============================================ */
+        .planification-zone {
+            background: #fef3c7;
+            border: 2px solid #fcd34d;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-top: 12px;
+            width: 100%;
+        }
+        
+        /* ============================================
+           BLACKLIST WARNING
+        ============================================ */
+        .blacklist-warning {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+        .blacklist-warning i {
+            color: #ef4444;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .blacklist-warning span {
+            font-size: 13px;
+            color: #991b1b;
+            font-weight: 500;
+        }
+        
+        /* ============================================
+           SUCCESS / ERROR BOX
+        ============================================ */
+        .success-box {
+            background: #f0fdf4;
+            border-left: 4px solid #10b981;
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            width: 100%;
+        }
+        .success-box i {
+            color: #10b981;
+            font-size: 18px;
+            margin-right: 8px;
+        }
+        .success-box .success-text {
+            color: #166534;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .success-box .success-link {
+            margin-top: 8px;
+            display: block;
+        }
+        .success-box .success-link a {
+            color: #166534;
+            font-weight: 600;
+            text-decoration: underline;
+        }
+        
+        .error-box {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+        .error-box i {
+            color: #ef4444;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .error-box span {
+            color: #991b1b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        /* ============================================
+           ACTION BUTTONS
+        ============================================ */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 2px solid #f3f4f6;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        
+        .btn-primary {
+            background: #d97706;
+            color: white;
+            padding: 11px 28px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 180px;
+            justify-content: center;
+        }
+        .btn-primary:hover {
+            background: #b45309;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(217, 119, 6, 0.3);
+        }
+        
+        .btn-secondary {
+            background: #10b981;
+            color: white;
+            padding: 11px 28px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 180px;
+            justify-content: center;
+        }
+        .btn-secondary:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-outline {
+            background: transparent;
+            color: #6b7280;
+            padding: 11px 22px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 2px solid #e5e7eb;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            min-width: 120px;
+            justify-content: center;
+        }
+        .btn-outline:hover {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            color: #374151;
+        }
+        
+        /* ============================================
+           RADIO GROUP
+        ============================================ */
+        .radio-group {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            color: #4b5563;
+            cursor: pointer;
+        }
+        .radio-group input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #d97706;
+            cursor: pointer;
+        }
+        
+        /* ============================================
+           UTILITIES
+        ============================================ */
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-5 { margin-bottom: 20px; }
         .mt-1 { margin-top: 4px; }
         .mt-2 { margin-top: 8px; }
         .mt-3 { margin-top: 12px; }
-        .mb-1 { margin-bottom: 4px; }
-        .mb-2 { margin-bottom: 8px; }
-        .mb-4 { margin-bottom: 16px; }
-        .mb-6 { margin-bottom: 24px; }
         .mr-1 { margin-right: 4px; }
         .mr-2 { margin-right: 8px; }
-        .mr-4 { margin-right: 16px; }
-        .ml-2 { margin-left: 8px; }
-        .hidden { display: none; }
-        .w-full { width: 100%; }
-        .max-w-4xl { max-width: 56rem; }
-        .mx-auto { margin-left: auto; margin-right: auto; }
-        .py-8 { padding-top: 32px; padding-bottom: 32px; }
-        .px-4 { padding-left: 16px; padding-right: 16px; }
-        .p-3 { padding: 12px; }
-        .p-4 { padding: 16px; }
-        .p-6 { padding: 24px; }
-        .rounded { border-radius: 4px; }
-        .rounded-lg { border-radius: 8px; }
-        .rounded-full { border-radius: 9999px; }
-        .shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .bg-white { background: #ffffff; }
-        .bg-yellow-100 { background: #fef3c7; }
-        .bg-green-100 { background: #d1fae5; }
-        .bg-red-100 { background: #fee2e2; }
-        .text-yellow-600 { color: #d97706; }
-        .text-green-700 { color: #047857; }
-        .text-red-700 { color: #b91c1c; }
+        .text-xs { font-size: 12px; }
+        .text-sm { font-size: 14px; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-400 { color: #9ca3af; }
         .text-gray-700 { color: #374151; }
         .text-gray-800 { color: #1f2937; }
-        .text-white { color: #ffffff; }
-        .text-sm { font-size: 0.875rem; }
-        .text-xs { font-size: 0.75rem; }
-        .text-xl { font-size: 1.25rem; }
-        .text-2xl { font-size: 1.5rem; }
-        .font-medium { font-weight: 500; }
-        .font-semibold { font-weight: 600; }
-        .font-bold { font-weight: 700; }
-        .border { border: 1px solid #e5e7eb; }
-        .border-2 { border-width: 2px; }
-        .border-gray-200 { border-color: #e5e7eb; }
-        .border-gray-300 { border-color: #d1d5db; }
-        .border-yellow-500 { border-color: #d97706; }
-        .border-green-500 { border-color: #10b981; }
-        .border-red-500 { border-color: #ef4444; }
-        .border-l-4 { border-left-width: 4px; }
-        .border-dashed { border-style: dashed; }
-        .grid { display: grid; }
-        .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .gap-3 { gap: 12px; }
-        .gap-4 { gap: 16px; }
-        .flex { display: flex; }
-        .flex-wrap { flex-wrap: wrap; }
-        .items-center { align-items: center; }
-        .justify-center { justify-content: center; }
-        .justify-end { justify-content: flex-end; }
-        .justify-between { justify-content: space-between; }
-        .cursor-pointer { cursor: pointer; }
-        .transition { transition: all 0.2s ease; }
-        .hover\:border-yellow-300:hover { border-color: #fcd34d; }
-        .hover\:text-gray-700:hover { color: #374151; }
-        .hover\:text-red-700:hover { color: #b91c1c; }
-        .focus\:outline-none:focus { outline: none; }
-        .focus\:border-yellow-500:focus { border-color: #d97706; }
-        .focus\:ring-2:focus { ring-width: 2px; }
-        .focus\:ring-yellow-200:focus { ring-color: #fde68a; }
-        .focus\:ring-yellow-500:focus { ring-color: #d97706; }
-
-        @media (min-width: 768px) {
-            .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .text-green-600 { color: #16a34a; }
+        .text-red-600 { color: #dc2626; }
+        .text-yellow-600 { color: #d97706; }
+        .text-blue-600 { color: #2563eb; }
+        .w-full { width: 100%; }
+        .hidden { display: none !important; }
+        
+        .grid-cols-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        /* ============================================
+           RESPONSIVE
+        ============================================ */
+        @media (max-width: 1200px) {
+            .container-full { padding: 16px 24px; }
+        }
+        
+        @media (max-width: 992px) {
+            .container-full { padding: 14px 20px; }
+            .main-card { padding: 20px; }
+            .step-indicator { padding: 10px 16px; gap: 8px; }
+            .step { font-size: 12px; }
+            .step .number { width: 24px; height: 24px; font-size: 10px; }
+            .step-line { width: 28px; }
+            .grid-cols-2 { grid-template-columns: 1fr; }
+        }
+        
+        @media (max-width: 768px) {
+            .container-full { padding: 12px 16px; }
+            
+            .header-section {
+                padding: 14px 16px;
+                gap: 8px;
+            }
+            .header-section .title { font-size: 19px; }
+            .header-section .subtitle { font-size: 13px; }
+            .header-section .icon-wrapper { padding: 8px 10px; }
+            .header-section .icon-wrapper i { font-size: 18px; }
+            
+            .main-card { padding: 16px; }
+            
+            .campagne-info {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px 16px;
+                gap: 6px;
+            }
+            .campagne-info .info-left .campagne-name { font-size: 14px; }
+            .campagne-info .info-right { font-size: 13px; }
+            
+            .sender-info,
+            .liste-info {
+                padding: 12px 14px;
+            }
+            
+            .file-upload-container {
+                flex-direction: column;
+            }
+            .file-upload-container .upload-actions {
+                width: 100%;
+            }
+            .file-upload-container .upload-actions button {
+                flex: 1;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            .action-buttons .btn-primary,
+            .action-buttons .btn-secondary,
+            .action-buttons .btn-outline {
+                width: 100%;
+                justify-content: center;
+                min-width: unset;
+            }
+            
+            .step-indicator {
+                gap: 6px;
+                padding: 8px 12px;
+            }
+            .step { font-size: 11px; gap: 4px; }
+            .step .number { width: 20px; height: 20px; font-size: 9px; }
+            .step-line { width: 16px; }
+            .step span:last-child { display: none; }
+            
+            .radio-group {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-start;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .container-full { padding: 8px 10px; }
+            .header-section { padding: 10px 12px; }
+            .header-section .title { font-size: 17px; }
+            .header-section .subtitle { font-size: 12px; }
+            .header-section .back-link { font-size: 12px; padding: 3px 8px; }
+            
+            .main-card { padding: 12px; }
+            
+            .campagne-info { padding: 10px 12px; }
+            .campagne-info .info-left .campagne-name { font-size: 13px; }
+            .campagne-info .info-left .email-badge { font-size: 10px; padding: 2px 10px; }
+            .campagne-info .info-right { font-size: 12px; }
+            
+            .sender-info,
+            .liste-info {
+                padding: 10px 12px;
+            }
+            .sender-info .sender-title,
+            .liste-info .liste-title {
+                font-size: 13px;
+            }
+            
+            #fileUploadArea { padding: 14px; }
+            #fileUploadArea .upload-icon { font-size: 24px; }
+            #fileUploadArea .upload-title { font-size: 13px; }
+            #fileUploadArea .upload-desc { font-size: 11px; }
+            
+            .btn-upload,
+            .btn-upload-remove {
+                padding: 8px 14px;
+                font-size: 13px;
+                height: 38px;
+            }
+            
+            .btn-primary,
+            .btn-secondary {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            .btn-outline {
+                padding: 10px 18px;
+                font-size: 13px;
+            }
+            
+            .planification-zone { padding: 12px 14px; }
+            
+            .note-editor .note-editable {
+                min-height: 200px !important;
+            }
         }
     </style>
 </head>
 <body>
 
-<div class="max-w-4xl mx-auto py-8 px-4">
-    <!-- Indicateur d'étape -->
+<div class="container-full">
+    <!-- ===== STEP INDICATOR ===== -->
     <div class="step-indicator">
         <div class="step done">
             <span class="number"><i class="fas fa-check"></i></span>
-            <span>Type de message</span>
+            <span>Type</span>
         </div>
         <div class="step-line done"></div>
         <div class="step active">
@@ -1214,54 +1592,58 @@ unset($_SESSION['flash_error']);
         </div>
     </div>
 
-    <div class="flex items-center mb-6">
-        <a href="javascript:history.back()" class="text-gray-500 hover:text-gray-700 mr-4">
+    <!-- ===== EN-TÊTE ===== -->
+    <div class="header-section">
+        <a href="javascript:history.back()" class="back-link">
             <i class="fas fa-arrow-left"></i> Retour
         </a>
-        <div class="bg-yellow-100 p-3 rounded-full mr-4">
-            <i class="fas fa-envelope text-yellow-600 text-xl"></i>
+        <div class="icon-wrapper">
+            <i class="fas fa-envelope"></i>
         </div>
-        <div>
-            <h1 class="text-2xl font-bold text-gray-800">Composer l'email</h1>
-            <p class="text-gray-500">Rédigez votre email et choisissez une liste de diffusion</p>
+        <div class="header-text">
+            <div class="title">Composer l'email</div>
+            <div class="subtitle">Rédigez votre email et choisissez une liste de diffusion</div>
         </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow p-6">
+    <!-- ===== CARD PRINCIPALE ===== -->
+    <div class="main-card">
         <!-- Info campagne -->
         <div class="campagne-info">
-            <div class="campagne-info-title">
-                <i class="fas fa-bullhorn mr-2"></i>
-                Campagne : <?= htmlspecialchars($campagne['nom_campagne']) ?>
-                <span class="email-badge ml-2"><i class="fas fa-envelope mr-1"></i>Email</span>
+            <div class="info-left">
+                <i class="fas fa-bullhorn" style="color: #7c3aed; font-size: 16px;"></i>
+                <span class="campagne-name"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
+                <span class="email-badge"><i class="fas fa-envelope"></i> Email</span>
                 <?php if (!empty($campagne['listmonk_id'])): ?>
-                    <span class="info-badge info ml-2">
-                        <i class="fab fa-listmonk mr-1"></i> Listmonk ID: <?= $campagne['listmonk_id'] ?>
+                    <span class="info-badge info">
+                        <i class="fab fa-listmonk"></i> Listmonk ID: <?= $campagne['listmonk_id'] ?>
                     </span>
                 <?php endif; ?>
                 <?php if (!empty($campagne['date_planification'])): ?>
-                    <span class="info-badge warning ml-2">
-                        <i class="fas fa-calendar-alt mr-1"></i>
+                    <span class="info-badge warning">
+                        <i class="fas fa-calendar-alt"></i>
                         Planifiée le <?= date('d/m/Y H:i', strtotime($campagne['date_planification'])) ?>
                     </span>
                 <?php endif; ?>
             </div>
-            <div class="text-sm text-purple-700 mt-1">
-                <i class="fas fa-users mr-1"></i> <?= count($contacts) ?> contact(s) avec email disponibles
+            <div class="info-right">
+                <i class="fas fa-users"></i> <?= count($contacts) ?> contact(s) avec email
                 <?php if (count($contactsSansEmail) > 0): ?>
-                    <span class="info-badge warning ml-2">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        <?= count($contactsSansEmail) ?> contact(s) sans email
+                    <span class="info-badge warning" style="margin-left:4px;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <?= count($contactsSansEmail) ?> sans email
                     </span>
                 <?php endif; ?>
             </div>
         </div>
 
+        <!-- Success / Error -->
         <?php if ($success): ?>
-            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded">
-                <i class="fas fa-check-circle mr-2"></i> <?= $success ?>
-                <div class="mt-2">
-                    <a href="index.php?page=campagnes/details&id=<?= $campagneConfigId ?>" class="text-green-700 underline font-semibold">
+            <div class="success-box">
+                <i class="fas fa-check-circle"></i>
+                <span class="success-text"><?= $success ?></span>
+                <div class="success-link">
+                    <a href="index.php?page=campagnes/details&id=<?= $campagneConfigId ?>">
                         Voir la campagne →
                     </a>
                 </div>
@@ -1269,34 +1651,38 @@ unset($_SESSION['flash_error']);
         <?php endif; ?>
 
         <?php if ($error): ?>
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
-                <i class="fas fa-exclamation-circle mr-2"></i> <?= $error ?>
+            <div class="error-box">
+                <i class="fas fa-exclamation-circle"></i>
+                <span><?= htmlspecialchars($error) ?></span>
             </div>
         <?php endif; ?>
 
         <?php if ($flashMessage): ?>
-            <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded">
-                <i class="fas fa-check-circle mr-2"></i> <?= $flashMessage ?>
+            <div class="success-box">
+                <i class="fas fa-check-circle"></i>
+                <span class="success-text"><?= $flashMessage ?></span>
             </div>
         <?php endif; ?>
 
         <?php if ($flashError): ?>
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
-                <i class="fas fa-exclamation-circle mr-2"></i> <?= $flashError ?>
+            <div class="error-box">
+                <i class="fas fa-exclamation-circle"></i>
+                <span><?= $flashError ?></span>
             </div>
         <?php endif; ?>
 
         <?php if ($uploadError): ?>
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
-                <i class="fas fa-exclamation-circle mr-2"></i> ❌ Erreur d'import: <?= $uploadError ?>
+            <div class="error-box">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>❌ Erreur d'import: <?= htmlspecialchars($uploadError) ?></span>
             </div>
         <?php endif; ?>
 
         <!-- Avertissement blacklist -->
         <?php if (count($tousContacts) - count($contacts) - count($contactsSansEmail) > 0): ?>
             <div class="blacklist-warning">
-                <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-                <span class="text-sm text-red-700">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>
                     <?= (count($tousContacts) - count($contacts) - count($contactsSansEmail)) ?> contact(s) blacklistés pour les emails ne sont pas affichés.
                 </span>
             </div>
@@ -1311,33 +1697,33 @@ unset($_SESSION['flash_error']);
             <!-- INFORMATIONS EXPÉDITEUR -->
             <!-- ============================================ -->
             <div class="sender-info">
-                <h4 class="font-bold text-green-700 mb-2">
-                    <i class="fas fa-user-circle mr-1"></i> Informations de l'expéditeur
-                </h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div class="sender-title">
+                    <i class="fas fa-user-circle"></i> Informations de l'expéditeur
+                </div>
+                <div class="grid-cols-2">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            <i class="fas fa-envelope mr-1"></i> Email expéditeur *
+                        <label class="form-label">
+                            <i class="fas fa-envelope"></i> Email expéditeur <span class="required">*</span>
                         </label>
                         <input type="email" name="from_email" id="from_email" required
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
                                placeholder="expediteur@votre-domaine.com"
                                value="<?= htmlspecialchars($formData['from_email']) ?>">
                         <p class="text-xs text-gray-500 mt-1">
-                            <i class="fas fa-info-circle mr-1"></i>
+                            <i class="fas fa-info-circle"></i>
                             L'email qui apparaîtra dans le champ "De" du message
                         </p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            <i class="fas fa-user mr-1"></i> Nom expéditeur *
+                        <label class="form-label">
+                            <i class="fas fa-user"></i> Nom expéditeur <span class="required">*</span>
                         </label>
                         <input type="text" name="from_name" id="from_name" required
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
                                placeholder="Votre Entreprise"
                                value="<?= htmlspecialchars($formData['from_name']) ?>">
                         <p class="text-xs text-gray-500 mt-1">
-                            <i class="fas fa-info-circle mr-1"></i>
+                            <i class="fas fa-info-circle"></i>
                             Le nom qui apparaîtra dans le champ "De" du message
                         </p>
                     </div>
@@ -1348,9 +1734,9 @@ unset($_SESSION['flash_error']);
             <!-- SÉLECTION DE LA LISTE -->
             <!-- ============================================ -->
             <div class="liste-info">
-                <h4 class="font-bold text-blue-700 mb-2">
-                    <i class="fas fa-list mr-1"></i> Liste de diffusion *
-                </h4>
+                <div class="liste-title">
+                    <i class="fas fa-list"></i> Liste de diffusion <span class="required">*</span>
+                </div>
                 <select name="liste_id" id="liste_id" class="w-full" style="width: 100%;" required>
                     <option value="">-- Sélectionnez une liste --</option>
                     <?php foreach ($listes as $liste): ?>
@@ -1362,7 +1748,7 @@ unset($_SESSION['flash_error']);
                                 , <span class="text-yellow-600"><?= $liste['nombre_sans_email'] ?> sans email</span>
                             <?php endif; ?>)
                             <?php if ($liste['listmonk_id']): ?>
-                                <span class="text-green-600 text-xs">✓ Synchronisée avec Listmonk</span>
+                                <span class="text-green-600 text-xs">✓ Synchronisée</span>
                             <?php else: ?>
                                 <span class="text-red-500 text-xs">⚠️ Non synchronisée</span>
                             <?php endif; ?>
@@ -1370,22 +1756,22 @@ unset($_SESSION['flash_error']);
                     <?php endforeach; ?>
                 </select>
                 <p class="text-xs text-gray-500 mt-2">
-                    <i class="fas fa-info-circle mr-1"></i>
+                    <i class="fas fa-info-circle"></i>
                     Seuls les contacts avec une adresse email valide seront inclus dans l'envoi.
                     Les contacts blacklistés pour les emails sont automatiquement exclus.
                 </p>
                 <?php if (count($listes) === 0): ?>
                     <p class="text-sm text-red-600 mt-2">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        <i class="fas fa-exclamation-triangle"></i>
                         Aucune liste disponible. <a href="index.php?page=listes/creer" class="text-blue-600 underline">Créez une liste</a> avant de continuer.
                     </p>
                 <?php endif; ?>
             </div>
 
             <!-- Objet -->
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    <i class="fas fa-tag mr-1"></i> Objet *
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-tag"></i> Objet <span class="required">*</span>
                 </label>
                 <input type="text" name="objet" id="objet" required
                        class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
@@ -1394,41 +1780,41 @@ unset($_SESSION['flash_error']);
             </div>
 
             <!-- Corps du message avec Summernote -->
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">
-                    <i class="fas fa-comment mr-1"></i> Corps du message *
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-comment"></i> Corps du message <span class="required">*</span>
                 </label>
                 <textarea name="corps" id="corps" rows="10"
                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
                           placeholder="Contenu de l'email..."><?= htmlspecialchars($formData['corps']) ?></textarea>
                 <p class="text-xs text-gray-500 mt-1">
-                    <i class="fas fa-code mr-1"></i> Le contenu supporte le HTML (mise en forme, images, liens...)
+                    <i class="fas fa-code"></i> Le contenu supporte le HTML (mise en forme, images, liens...)
                 </p>
             </div>
 
             <!-- Pièce jointe -->
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                    <i class="fas fa-paperclip mr-1"></i> Pièce jointe (optionnel)
+            <div class="form-group">
+                <label class="form-label">
+                    <i class="fas fa-paperclip"></i> Pièce jointe <span class="text-gray-400 text-sm font-normal">(optionnel)</span>
                 </label>
 
                 <div class="file-upload-container">
                     <div class="file-input-area">
-                        <div id="fileUploadArea" class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                        <div id="fileUploadArea">
                             <input type="file" name="piece_jointe" id="piece_jointe" class="hidden" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv">
-                            <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
-                            <p class="text-gray-500 text-sm" id="fileLabel">Cliquez ou glissez un fichier ici</p>
-                            <p class="text-xs text-gray-400">Images, PDF, Word, Excel, CSV, TXT (Max 10 Mo)</p>
+                            <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                            <div class="upload-title" id="fileLabel">Cliquez ou glissez un fichier ici</div>
+                            <div class="upload-desc">Images, PDF, Word, Excel, CSV, TXT (Max 10 Mo)</div>
                         </div>
                     </div>
 
                     <div class="upload-actions">
                         <button type="button" id="uploadButton" class="btn-upload" disabled>
-                            <i class="fas fa-upload mr-1"></i> Importer
+                            <i class="fas fa-upload"></i> Importer
                         </button>
                         <?php if ($uploadedMediaId): ?>
                             <a href="?page=campagnes/composer&campagne_config_id=<?= $campagneConfigId ?>&remove_upload=1" class="btn-upload-remove">
-                                <i class="fas fa-trash mr-1"></i> Supprimer
+                                <i class="fas fa-trash"></i> Supprimer
                             </a>
                         <?php endif; ?>
                     </div>
@@ -1438,7 +1824,7 @@ unset($_SESSION['flash_error']);
                 <?php if ($uploadedMediaId && $uploadedFileName): ?>
                     <div class="uploaded-file-info">
                         <div class="file-details">
-                            <i class="fas fa-file fa-2x"></i>
+                            <i class="fas fa-file"></i>
                             <div>
                                 <div class="font-medium text-gray-800"><?= htmlspecialchars($uploadedFileName) ?></div>
                                 <div class="text-xs text-gray-500">
@@ -1450,37 +1836,31 @@ unset($_SESSION['flash_error']);
                     </div>
                 <?php endif; ?>
 
-                <p class="text-xs text-blue-600 mt-1">
-                    <i class="fas fa-info-circle mr-1"></i>
+                <p class="text-xs text-blue-600 mt-2">
+                    <i class="fas fa-info-circle"></i>
                     Importez d'abord votre fichier sur Listmonk, puis il sera attaché à l'email.
                     <br>Les images seront intégrées directement dans le message.
                 </p>
             </div>
 
             <!-- Options d'envoi -->
-            <div class="mb-4">
-                <div class="flex items-center gap-4">
-                    <div class="flex items-center">
-                        <input type="radio" name="envoyer_maintenant" id="envoyerMaintenant" value="1" checked
-                               class="h-4 w-4 text-yellow-600 focus:ring-yellow-500">
-                        <label for="envoyerMaintenant" class="ml-2 text-sm text-gray-700">Envoyer maintenant</label>
-                    </div>
-                    <div class="flex items-center">
-                        <input type="radio" name="envoyer_maintenant" id="envoyerPlusTard" value="0"
-                               class="h-4 w-4 text-yellow-600 focus:ring-yellow-500">
-                        <label for="envoyerPlusTard" class="ml-2 text-sm text-gray-700">Planifier</label>
-                    </div>
+            <div class="form-group">
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="envoyer_maintenant" value="1" checked>
+                        Envoyer maintenant
+                    </label>
                 </div>
 
                 <div id="planificationZone" class="planification-zone" style="display: none;">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        <i class="fas fa-calendar-alt mr-1"></i> Date et heure de planification *
+                    <label class="form-label">
+                        <i class="fas fa-calendar-alt"></i> Date et heure de planification <span class="required">*</span>
                     </label>
                     <input type="datetime-local" name="date_planification" id="date_planification"
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
                            min="<?= date('Y-m-d\TH:i') ?>">
                     <p class="text-xs text-gray-500 mt-1">
-                        <i class="fas fa-info-circle mr-1"></i>
+                        <i class="fas fa-info-circle"></i>
                         La campagne sera envoyée automatiquement à la date et heure sélectionnées.
                     </p>
                 </div>
@@ -1489,13 +1869,13 @@ unset($_SESSION['flash_error']);
             <!-- Actions -->
             <div class="action-buttons">
                 <a href="index.php?page=campagnes/choix_type&campagne_id=<?= $campagneConfigId ?>" class="btn-outline">
-                    <i class="fas fa-times mr-2"></i>Annuler
+                    <i class="fas fa-times"></i> Annuler
                 </a>
                 <button type="submit" name="action_enregistrer" value="1" class="btn-primary">
-                    <i class="fas fa-save mr-2"></i>Enregistrer & préparer
+                    <i class="fas fa-save"></i> Enregistrer &amp; préparer
                 </button>
                 <button type="submit" name="action_enregistrer" value="1" onclick="document.querySelector('input[name=envoyer_maintenant][value=1]').checked = true; document.getElementById('date_planification').value = ''; this.form.submit();" class="btn-secondary">
-                    <i class="fas fa-paper-plane mr-2"></i>Envoyer immédiatement
+                    <i class="fas fa-paper-plane"></i> Envoyer immédiatement
                 </button>
             </div>
         </form>
@@ -1503,7 +1883,7 @@ unset($_SESSION['flash_error']);
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/fr.js"></script>
 
 <script>
 $(document).ready(function() {
@@ -1566,7 +1946,7 @@ function handleFile(file) {
     uploadButton.disabled = false;
     fileLabel.textContent = file.name + ' (' + sizeMB + ' Mo)';
     fileLabel.style.color = '#16a34a';
-    const icon = fileUploadArea.querySelector('i');
+    const icon = fileUploadArea.querySelector('.upload-icon i');
     if (icon) {
         icon.className = 'fas fa-file text-3xl text-green-500 mb-2';
     }
@@ -1582,13 +1962,12 @@ function resetFileUpload() {
     uploadButton.disabled = true;
     fileLabel.textContent = 'Cliquez ou glissez un fichier ici';
     fileLabel.style.color = '#6b7280';
-    const icon = fileUploadArea.querySelector('i');
+    const icon = fileUploadArea.querySelector('.upload-icon i');
     if (icon) {
         icon.className = 'fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2';
     }
 }
 
-// Upload du fichier via AJAX
 uploadButton.addEventListener('click', function() {
     if (!selectedFile) {
         showToast('Veuillez sélectionner un fichier', 'error');
@@ -1597,7 +1976,7 @@ uploadButton.addEventListener('click', function() {
 
     uploadButton.disabled = true;
     uploadButton.classList.add('loading');
-    uploadButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Importation...';
+    uploadButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importation...';
 
     const formData = new FormData();
     formData.append('action_upload_file', '1');
@@ -1612,10 +1991,6 @@ uploadButton.addEventListener('click', function() {
         }
     })
     .then(function(response) {
-        // On lit toujours en texte d'abord : ça permet de détecter
-        // proprement une réponse non-JSON (session expirée -> redirect HTML,
-        // erreur 500, erreur Nginx 413, etc.) au lieu de planter avec
-        // "Unexpected token '<'".
         return response.text().then(function(text) {
             return { ok: response.ok, status: response.status, text: text };
         });
@@ -1623,7 +1998,7 @@ uploadButton.addEventListener('click', function() {
     .then(function(result) {
         uploadButton.disabled = false;
         uploadButton.classList.remove('loading');
-        uploadButton.innerHTML = '<i class="fas fa-upload mr-1"></i> Importer';
+        uploadButton.innerHTML = '<i class="fas fa-upload"></i> Importer';
 
         let data;
         try {
@@ -1641,8 +2016,6 @@ uploadButton.addEventListener('click', function() {
         if (data.success) {
             document.getElementById('media_id').value = data.media_id;
             showToast('✅ ' + data.message, 'success');
-
-            // Mettre à jour l'affichage
             updateUploadedFileInfo(data.media_id, data.file_name);
             resetFileUpload();
         } else {
@@ -1653,23 +2026,21 @@ uploadButton.addEventListener('click', function() {
         showToast('❌ Erreur de connexion: ' + error.message, 'error');
         uploadButton.disabled = false;
         uploadButton.classList.remove('loading');
-        uploadButton.innerHTML = '<i class="fas fa-upload mr-1"></i> Importer';
+        uploadButton.innerHTML = '<i class="fas fa-upload"></i> Importer';
     });
 });
 
 function updateUploadedFileInfo(mediaId, fileName) {
-    // Supprimer l'ancienne info
     const oldInfo = document.querySelector('.uploaded-file-info');
     if (oldInfo) {
         oldInfo.remove();
     }
 
-    // Créer la nouvelle info
     const infoDiv = document.createElement('div');
     infoDiv.className = 'uploaded-file-info';
     infoDiv.innerHTML = `
         <div class="file-details">
-            <i class="fas fa-file fa-2x"></i>
+            <i class="fas fa-file"></i>
             <div>
                 <div class="font-medium text-gray-800">${escapeHtml(fileName)}</div>
                 <div class="text-xs text-gray-500">
@@ -1685,7 +2056,6 @@ function updateUploadedFileInfo(mediaId, fileName) {
         container.parentNode.insertBefore(infoDiv, container.nextSibling);
     }
 
-    // Ajouter le bouton supprimer s'il n'existe pas
     const removeBtn = document.querySelector('.btn-upload-remove');
     if (!removeBtn) {
         const actions = document.querySelector('.upload-actions');
@@ -1693,7 +2063,7 @@ function updateUploadedFileInfo(mediaId, fileName) {
             const newRemoveBtn = document.createElement('a');
             newRemoveBtn.href = '?page=campagnes/composer&campagne_config_id=<?= $campagneConfigId ?>&remove_upload=1';
             newRemoveBtn.className = 'btn-upload-remove';
-            newRemoveBtn.innerHTML = '<i class="fas fa-trash mr-1"></i> Supprimer';
+            newRemoveBtn.innerHTML = '<i class="fas fa-trash"></i> Supprimer';
             actions.appendChild(newRemoveBtn);
         }
     }
