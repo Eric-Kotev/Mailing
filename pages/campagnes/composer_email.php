@@ -1,4 +1,5 @@
 <?php
+
 global $db;
 
 // ============================================
@@ -529,7 +530,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
                 if ($isImage) {
                     $bodyContent .= '<br><br><img src="' . $mediaUrl . '" alt="' . htmlspecialchars($uploadedFileName ?? 'Image') . '" style="max-width:100%;">';
                 } else {
-                    $bodyContent .= '<br><br><strong>Pièce jointe :</strong> <a href="' . $mediaUrl . '">' . htmlspecialchars($uploadedFileName ?? 'Fichier') . '</a>';
+                    $bodyContent .= '<br><br><strong>Télecharger ici la Pièce jointe :</strong> <a href="' . htmlspecialchars($mediaUrl) . '" target="_blank" rel="noopener noreferrer">' . htmlspecialchars($uploadedFileName ?? 'Fichier') . '</a>';                
                 }
             }
 
@@ -1804,7 +1805,7 @@ unset($_SESSION['flash_error']);
                             <input type="file" name="piece_jointe" id="piece_jointe" class="hidden" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv">
                             <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
                             <div class="upload-title" id="fileLabel">Cliquez ou glissez un fichier ici</div>
-                            <div class="upload-desc">Images, PDF, Word, Excel, CSV, TXT (Max 10 Mo)</div>
+                            <div class="upload-desc">Images, PDF, Word, Excel, CSV, TXT </div>
                         </div>
                     </div>
 
@@ -1846,10 +1847,6 @@ unset($_SESSION['flash_error']);
             <!-- Options d'envoi -->
             <div class="form-group">
                 <div class="radio-group">
-                    <label>
-                        <input type="radio" name="envoyer_maintenant" value="1" checked>
-                        Envoyer maintenant
-                    </label>
                 </div>
 
                 <div id="planificationZone" class="planification-zone" style="display: none;">
@@ -1934,6 +1931,8 @@ const fileLabel = document.getElementById('fileLabel');
 let selectedFile = null;
 
 function handleFile(file) {
+    console.log('Taille du fichier en octets :', file.size);
+    console.log('Taille en Mo :', (file.size / 1024 / 1024).toFixed(2));
     const sizeMB = (file.size / 1024 / 1024).toFixed(2);
 
     if (file.size > 10 * 1024 * 1024) {

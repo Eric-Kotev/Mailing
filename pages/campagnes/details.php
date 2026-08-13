@@ -54,6 +54,74 @@ foreach ($envois as $e) {
 }
 
 // ============================================
+// FONCTION DE DÉDUCTION DU CRÉDIT CLIENT
+// ============================================
+// Soustrait du crédit du compte client (table compte, colonne credits_total)
+// le montant correspondant au tarif de l'opérateur (table provider, colonne tarif)
+// multiplié par le nombre d'envois réellement réussis.
+function deduireCreditClient($idCompte, $idProvider, $quantite) {
+    global $db;
+
+    if (empty($idProvider) || $quantite <= 0) {
+        return;
+    }
+
+    $provider = $db->select('provider', ['id_provider' => $idProvider]);
+    if (empty($provider)) {
+        return;
+    }
+
+    $tarif = (float)$provider[0]['tarif'];
+    if ($tarif <= 0) {
+        return;
+    }
+
+    $montant = $tarif * $quantite;
+
+    $compte = $db->select('compte', ['id_compte' => $idCompte]);
+    if (empty($compte)) {
+        return;
+    }
+
+    $creditsActuels = (float)($compte[0]['credits_total'] ?? 0);
+    $nouveauSolde = $creditsActuels - $montant;
+
+    $db->update('compte', [
+        'credits_total' => $nouveauSolde
+    ], ['id_compte' => $idCompte]);
+}
+
+// ============================================
+// FONCTION DE RÉSOLUTION DU PROVIDER PAR FOURNISSEUR
+// ============================================
+// Au lieu de se fier à campagne_config.provider_id (qui peut être obsolète
+// ou pointer vers le mauvais opérateur), on va chercher directement, pour
+// le compte client, le provider dont le fournisseur (table provider,
+// colonne description) correspond au nom attendu : "Octopush", "WAHA",
+// "SMS API Gateway" ou "Listmonk". C'est le même principe que
+// resolveFournisseurTable() utilisé dans operators.php / operator_details.php.
+function getProviderByFournisseur($fournisseurLabel) {
+    global $db;
+    
+    // Ne pas filtrer par id_compte, récupérer tous les providers
+    $providers = $db->select('provider', [], '*', 'description ASC');
+    
+    if (empty($providers)) {
+        return null;
+    }
+    
+    $target = mb_strtolower(trim($fournisseurLabel));
+    
+    foreach ($providers as $p) {
+        if (mb_strtolower(trim($p['description'])) === $target) {
+            return $p;
+        }
+    }
+    
+    return null;
+}
+
+// ============================================
 // FONCTION DE MISE À JOUR DU STATUT GLOBAL
 // ============================================
 function mettreAJourStatutCampagne($idCampagneConfig, $idCompte) {
@@ -464,6 +532,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                     'updated_at' => date('Y-m-d H:i:s')
                 ], ['id_campagne' => $id_campagne_historique]);
                 
+                // Déduction du crédit client : tarif de l'opérateur Octopush x nombre d'envois réussis
+                // (résolution du provider par fournisseur, pas via campagne_config.provider_id)
+                $providerOctopush = getProviderByFournisseur('Octopush');
+                deduireCreditClient($idCompte, $providerOctopush['id_provider'] ?? null, count($destinataires));
+                
                 $_SESSION['octopush_response'] = $resultat['data'];
                 $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush (Session: " . $sessionName . ")!";
             } else {
@@ -532,10 +605,14 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
     try {
         $device_id = $campagne['device_id'] ?? null;
         $appareilId = $campagne['appareil_id'] ?? null;
-        $providerId = $campagne['provider_id'] ?? null;
+        
+        // Résolution du provider par fournisseur (SMS API Gateway) plutôt que
+        // via campagne_config.provider_id, qui peut être obsolète ou incorrect.
+        $providerSms = getProviderByFournisseur('SMS API Gateway');
+        $providerId = $providerSms['id_provider'] ?? null;
         
         if (!$providerId) {
-            return ['success' => false, 'error' => 'Provider non configuré'];
+            return ['success' => false, 'error' => 'Provider SMS API Gateway non configuré'];
         }
         
         if (empty($device_id)) {
@@ -621,6 +698,9 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
         ], ['id_campagne' => $campagneData['id_campagne']]);
         
         if ($httpCode === 200) {
+            // Déduction du crédit client : tarif de l'opérateur SMS x nombre d'envois réussis
+            deduireCreditClient($idCompte, $providerId, $nb_succes);
+            
             return ['success' => true, 'message' => count($recipients) . ' SMS envoyés avec succès'];
         } else {
             return ['success' => false, 'error' => 'Erreur API (HTTP ' . $httpCode . '): ' . substr($response, 0, 200)];
@@ -635,6 +715,11 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
     global $db;
     
     try {
+        // Résolution du provider par fournisseur (WAHA) plutôt que via
+        // campagne_config.provider_id, qui peut être obsolète ou incorrect.
+        $providerWaha = getProviderByFournisseur('WAHA');
+        $providerId = $providerWaha['id_provider'] ?? null;
+        
         $session = $db->select('whatsapp_sessions', [
             'id_compte' => $idCompte,
             'est_active' => true
@@ -884,6 +969,11 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             'updated_at' => date('Y-m-d H:i:s')
         ], ['id_campagne' => $campagneData['id_campagne']]);
         
+        // Déduction du crédit client : tarif de l'opérateur WhatsApp x nombre d'envois réussis
+        if ($succes > 0) {
+            deduireCreditClient($idCompte, $providerId, $succes);
+        }
+        
         if ($statut === 'envoye') {
             return [
                 'success' => true, 
@@ -927,6 +1017,11 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
     global $db;
     
     try {
+        // Résolution du provider par fournisseur (Listmonk) plutôt que via
+        // campagne_config.provider_id, qui peut être obsolète ou incorrect.
+        $providerListmonk = getProviderByFournisseur('Listmonk');
+        $providerId = $providerListmonk['id_provider'] ?? null;
+        
         $from_email = $campagneData['from_email'] ?? 'noreply@votre-domaine.com';
         $from_name = $campagneData['from_name'] ?? 'Votre Entreprise';
         $objet = $campagneData['objet'] ?? 'Email';
@@ -939,15 +1034,20 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
         $result = updateListmonkCampaignStatus($listmonkCampaignId, 'running');
         
         if ($result['success']) {
+            $nbDestinataires = (int)$campagneData['nb_destinataires'];
+            
             $db->update('campagne', [
                 'statut' => 'envoye',
-                'nb_envoyes' => $campagneData['nb_destinataires'],
-                'nb_succes' => $campagneData['nb_destinataires'],
+                'nb_envoyes' => $nbDestinataires,
+                'nb_succes' => $nbDestinataires,
                 'nb_erreurs' => 0,
                 'appareil_utilise' => 'Listmonk (ID: ' . $listmonkCampaignId . ')'
             ], ['id_campagne' => $campagneData['id_campagne']]);
             
-            return ['success' => true, 'message' => $campagneData['nb_destinataires'] . ' emails envoyés avec succès via Listmonk'];
+            // Déduction du crédit client : tarif de l'opérateur Email x nombre d'envois réussis
+            deduireCreditClient($idCompte, $providerId, $nbDestinataires);
+            
+            return ['success' => true, 'message' => $nbDestinataires . ' emails envoyés avec succès via Listmonk'];
         } else {
             $errorMsg = 'Erreur Listmonk (HTTP ' . $result['http_code'] . '): ' . substr($result['response'], 0, 200);
             

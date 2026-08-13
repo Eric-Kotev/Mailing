@@ -84,6 +84,29 @@ foreach ($campaigns as $campaign) {
 // Derniers comptes créés
 $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
 
+// ============================================
+// NOUVEAU: Clients avec crédit faible
+// ============================================
+
+// Récupérer tous les clients avec leurs crédits
+$allClients = $db->select('compte', ['role' => 'client'], '*', 'credits_total ASC');
+
+// Définir un seuil de crédit faible (par exemple 50 €)
+$creditThreshold = 50;
+
+// Filtrer les clients avec un crédit inférieur au seuil
+$lowCreditClients = array_filter($allClients, function($client) use ($creditThreshold) {
+    return ($client['credits_total'] ?? 0) < $creditThreshold;
+});
+
+// Si vous voulez limiter l'affichage aux 5 premiers clients avec le plus faible crédit
+$lowCreditClients = array_slice($lowCreditClients, 0, 5);
+
+// Calculer le nombre total de clients avec crédit faible
+$totalLowCreditClients = count(array_filter($allClients, function($client) use ($creditThreshold) {
+    return ($client['credits_total'] ?? 0) < $creditThreshold;
+}));
+
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -267,13 +290,14 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             margin-top: 4px;
         }
 
-        /* ===== TABLE ===== */
+        /* ===== TABLES ===== */
         .table-container {
             background: white;
             border-radius: 16px;
             border: 1px solid var(--border);
             overflow: hidden;
             width: 100%;
+            margin-bottom: 24px;
         }
 
         .table-header {
@@ -296,6 +320,15 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
 
         .table-header h3 i {
             color: var(--muted);
+        }
+
+        .table-header h3 .badge-count {
+            background: var(--danger-soft-bg);
+            color: var(--danger-soft-fg);
+            font-size: 11px;
+            padding: 2px 10px;
+            border-radius: 100px;
+            margin-left: 6px;
         }
 
         .table-header a {
@@ -343,13 +376,20 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             word-wrap: break-word;
         }
 
-        /* Colonne widths */
-        th:nth-child(1), td:nth-child(1) { width: 25%; }
-        th:nth-child(2), td:nth-child(2) { width: 20%; }
-        th:nth-child(3), td:nth-child(3) { width: 15%; }
-        th:nth-child(4), td:nth-child(4) { width: 12%; }
-        th:nth-child(5), td:nth-child(5) { width: 13%; }
-        th:nth-child(6), td:nth-child(6) { width: 15%; }
+        /* Colonne widths pour la table des derniers comptes */
+        .table-recent th:nth-child(1), .table-recent td:nth-child(1) { width: 25%; }
+        .table-recent th:nth-child(2), .table-recent td:nth-child(2) { width: 20%; }
+        .table-recent th:nth-child(3), .table-recent td:nth-child(3) { width: 15%; }
+        .table-recent th:nth-child(4), .table-recent td:nth-child(4) { width: 12%; }
+        .table-recent th:nth-child(5), .table-recent td:nth-child(5) { width: 13%; }
+        .table-recent th:nth-child(6), .table-recent td:nth-child(6) { width: 15%; }
+
+        /* Colonne widths pour la table des crédits faibles */
+        .table-low-credit th:nth-child(1), .table-low-credit td:nth-child(1) { width: 30%; }
+        .table-low-credit th:nth-child(2), .table-low-credit td:nth-child(2) { width: 20%; }
+        .table-low-credit th:nth-child(3), .table-low-credit td:nth-child(3) { width: 15%; }
+        .table-low-credit th:nth-child(4), .table-low-credit td:nth-child(4) { width: 15%; }
+        .table-low-credit th:nth-child(5), .table-low-credit td:nth-child(5) { width: 20%; }
 
         tr:last-child td { 
             border-bottom: none; 
@@ -392,6 +432,36 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             color: var(--danger-soft-fg); 
         }
 
+        .badge-credit-low {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--danger-soft-bg);
+            color: var(--danger-soft-fg);
+        }
+
+        .badge-credit-medium {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--warning-soft-bg);
+            color: var(--warning-soft-fg);
+        }
+
+        .badge-credit-high {
+            display: inline-block;
+            padding: 3px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--success-soft-bg);
+            color: var(--success-soft-fg);
+        }
+
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -402,6 +472,15 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             font-size: 48px;
             color: var(--border);
             margin-bottom: 12px;
+        }
+
+        .credit-warning {
+            color: var(--danger);
+            font-weight: 700;
+        }
+
+        .credit-warning i {
+            margin-right: 4px;
         }
 
         /* ===== RESPONSIVE ===== */
@@ -463,12 +542,17 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             }
             
             /* Reset column widths for mobile */
-            th:nth-child(1), td:nth-child(1),
-            th:nth-child(2), td:nth-child(2),
-            th:nth-child(3), td:nth-child(3),
-            th:nth-child(4), td:nth-child(4),
-            th:nth-child(5), td:nth-child(5),
-            th:nth-child(6), td:nth-child(6) {
+            .table-recent th:nth-child(1), .table-recent td:nth-child(1),
+            .table-recent th:nth-child(2), .table-recent td:nth-child(2),
+            .table-recent th:nth-child(3), .table-recent td:nth-child(3),
+            .table-recent th:nth-child(4), .table-recent td:nth-child(4),
+            .table-recent th:nth-child(5), .table-recent td:nth-child(5),
+            .table-recent th:nth-child(6), .table-recent td:nth-child(6),
+            .table-low-credit th:nth-child(1), .table-low-credit td:nth-child(1),
+            .table-low-credit th:nth-child(2), .table-low-credit td:nth-child(2),
+            .table-low-credit th:nth-child(3), .table-low-credit td:nth-child(3),
+            .table-low-credit th:nth-child(4), .table-low-credit td:nth-child(4),
+            .table-low-credit th:nth-child(5), .table-low-credit td:nth-child(5) {
                 width: auto;
                 min-width: 80px;
             }
@@ -545,6 +629,71 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
         </div>
     </div>
 
+    <!-- ===== NOUVEAU: CLIENTS AVEC CRÉDIT FAIBLE ===== -->
+    <div class="table-container">
+        <div class="table-header">
+            <h3>
+                <i class="fas fa-exclamation-triangle" style="color: var(--danger);"></i>
+                Clients avec crédit faible
+                <span class="badge-count"><?= $totalLowCreditClients ?></span>
+            </h3>
+            <a href="?page=admin/clients">Voir tous →</a>
+        </div>
+
+        <?php if (empty($lowCreditClients)): ?>
+            <div class="empty-state">
+                <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                <p>Aucun client avec un crédit faible</p>
+                <p style="font-size: 13px; margin-top: 4px;">Tous les clients ont un crédit suffisant</p>
+            </div>
+        <?php else: ?>
+            <div class="table-wrapper">
+                <table class="table-low-credit">
+                    <thead>
+                        <tr>
+                            <th>Entreprise</th>
+                            <th>Utilisateur</th>
+                            <th>Crédits</th>
+                            <th>Statut</th>
+                            <th>Dernière activité</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($lowCreditClients as $client): ?>
+                        <tr>
+                            <td>
+                                <strong><?= htmlspecialchars($client['entreprise'] ?? '-') ?></strong>
+                            </td>
+                            <td>
+                                <?= htmlspecialchars($client['prenom'] ?? '') ?> 
+                                <?= htmlspecialchars($client['nom'] ?? '') ?>
+                            </td>
+                            <td>
+                                <span class="credit-warning">
+                                    <i class="fas fa-coins"></i>
+                                    <?= number_format($client['credits_total'] ?? 0, 0, ',', ' ') ?> €
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge-statut <?= ($client['actif'] ?? 1) ? 'actif' : 'inactif' ?>">
+                                    <?= ($client['actif'] ?? 1) ? 'Actif' : 'Suspendu' ?>
+                                </span>
+                            </td>
+                            <td style="color: var(--muted-2); font-size: 13px;">
+                                <?php 
+                                // Utiliser la date de dernière connexion ou de création
+                                $lastActivity = $client['last_login'] ?? $client['date_creation'] ?? 'now';
+                                echo date('d/m/Y H:i', strtotime($lastActivity));
+                                ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+
     <!-- ===== DERNIERS COMPTES ===== -->
     <div class="table-container">
         <div class="table-header">
@@ -559,7 +708,7 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
             </div>
         <?php else: ?>
             <div class="table-wrapper">
-                <table>
+                <table class="table-recent">
                     <thead>
                         <tr>
                             <th>Entreprise</th>

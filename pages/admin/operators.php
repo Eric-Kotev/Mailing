@@ -33,7 +33,7 @@ function getFournisseursDisponibles()
         'Octopush'        => 'Octopush (SMS)',
         'WAHA'            => 'WAHA (WhatsApp)',
         'SMS API Gateway' => 'SMS API Gateway (SMS)',
-        'ListmonK'         => 'Listmon (Email)',
+        'Listmonk'         => 'Listmonk (Email)',
     ];
 }
 

@@ -55,7 +55,7 @@ $isAdmin = isAdminForMenu();
            <?= $currentPage == 'dashboard'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-tachometer-alt w-5 mr-3 text-blue-400"></i>
+            <i class="fas fa-tachometer-alt w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Tableau de bord</span>
         </a>
 
@@ -69,7 +69,7 @@ $isAdmin = isAdminForMenu();
            <?= $currentPage == 'campagnes/index' || $currentPage == 'campagnes/historique'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-history w-5 mr-3 text-cyan-400"></i>
+            <i class="fas fa-history w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Historiques</span>
         </a>
 
@@ -78,7 +78,7 @@ $isAdmin = isAdminForMenu();
            <?= $currentPage == 'campagnes/nouvelle' || $currentPage == 'campagnes/choix'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-plus-circle w-5 mr-3 text-green-400"></i>
+            <i class="fas fa-plus-circle w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Mes campagnes</span>
         </a>
 
@@ -92,7 +92,7 @@ $isAdmin = isAdminForMenu();
            <?= $currentPage == 'contacts/index'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-address-book w-5 mr-3 text-orange-400"></i>
+            <i class="fas fa-address-book w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Mes contacts</span>
         </a>
 
@@ -101,7 +101,7 @@ $isAdmin = isAdminForMenu();
            <?= $currentPage == 'listes/index'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-list w-5 mr-3 text-purple-400"></i>
+            <i class="fas fa-list w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Mes listes</span>
         </a>
 
@@ -110,12 +110,12 @@ $isAdmin = isAdminForMenu();
            <?= $currentPage == 'blacklist/index'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-ban w-5 mr-3 text-red-400"></i>
+            <i class="fas fa-ban w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Blacklist</span>
         </a>
 
         <!-- Configuration -->
-        <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+        <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-gray-400 uppercase">
             <span class="menu-title">Configuration</span>
         </div>
 
@@ -124,7 +124,7 @@ $isAdmin = isAdminForMenu();
            <?= $currentPage == 'parametres/compte'
                 ? 'bg-blue-600 text-white shadow-lg'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-cog w-5 mr-3 text-slate-400"></i>
+            <i class="fas fa-cog w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Paramétrage</span>
         </a>
     </nav>
