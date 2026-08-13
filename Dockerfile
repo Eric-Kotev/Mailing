@@ -42,7 +42,9 @@ RUN chown -R www-data:www-data /var/www/html \
 # Quand on monte un volume en développement, le COPY est écrasé.
 # En production, décommentez la ligne suivante :
 # COPY . /var/www/html/
-
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["entrypoint.sh"]
 # ── Port exposé ──────────────────────────────────────────────────────
 EXPOSE 80
 
