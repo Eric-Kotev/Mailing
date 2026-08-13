@@ -170,10 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_client'
     ini_set('display_errors', 0);
     
     try {
-        // 🔥 Récupérer l'ID comme string (ne pas utiliser intval)
         $clientId = $_POST['id_compte'] ?? '';
         
-        // Log pour debug
         error_log("ID client reçu: " . $clientId . " - Type: " . gettype($clientId));
         
         if (empty($clientId)) {
@@ -181,7 +179,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_client'
             exit;
         }
         
-        // Vérifier que c'est bien un client
         $client = $db->select('compte', ['id_compte' => $clientId, 'role' => 'client']);
         if (empty($client)) {
             echo json_encode(['success' => false, 'error' => 'Ce compte n\'est pas un client']);
@@ -198,6 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_client'
     }
     exit;
 }
+
 // --- SUPPRESSION D'UN CLIENT (GET - fallback) ---
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
     $clientId = intval($_GET['id']);
@@ -223,7 +221,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_client' && isset($_GET['i
         $client = $db->select('compte', ['id_compte' => $clientId, 'role' => 'client']);
         
         if (!empty($client)) {
-            // Ne pas renvoyer le mot de passe
             unset($client[0]['password']);
             echo json_encode(['success' => true, 'client' => $client[0]]);
         } else {
@@ -309,6 +306,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'
 
 // Récupérer tous les clients (role = 'client')
 $clients = $db->select('compte', ['role' => 'client'], '*', 'date_creation DESC');
+
+// ============================================
+// RÉCUPÉRATION DES OPÉRATEURS ASSOCIÉS POUR CHAQUE CLIENT
+// ============================================
+
+// 1. Récupérer toutes les associations client-provider
+$allClientProviders = $db->select('client_provider', [], '*');
+
+// 2. Récupérer tous les providers avec leur canal
+$allProviders = $db->select('provider', [], '*');
+
+// 3. Récupérer tous les canaux
+$allTypeMessages = $db->select('type_message', [], '*');
+
+// Créer un tableau associatif provider_id => provider_data
+$providersById = [];
+foreach ($allProviders as $provider) {
+    $providersById[$provider['id_provider']] = $provider;
+}
+
+// Créer un tableau associatif type_id => type_data
+$typeMessagesById = [];
+foreach ($allTypeMessages as $type) {
+    $typeMessagesById[$type['id_type_message']] = $type;
+}
+
+// Créer un tableau associatif client_id => canaux disponibles
+$clientCanaux = [];
+foreach ($allClientProviders as $assoc) {
+    $clientId = $assoc['id_compte'];
+    $providerId = $assoc['id_provider'];
+    
+    if (!isset($clientCanaux[$clientId])) {
+        $clientCanaux[$clientId] = [
+            'whatsapp' => false,
+            'sms' => false,
+            'email' => false,
+            'providers' => []
+        ];
+    }
+    
+    // Récupérer le provider et son canal
+    if (isset($providersById[$providerId])) {
+        $provider = $providersById[$providerId];
+        $typeId = $provider['id_type_message'];
+        
+        if (isset($typeMessagesById[$typeId])) {
+            $canal = strtolower($typeMessagesById[$typeId]['libelle_type']);
+            
+            if ($canal === 'whatsapp') {
+                $clientCanaux[$clientId]['whatsapp'] = true;
+            } elseif ($canal === 'sms') {
+                $clientCanaux[$clientId]['sms'] = true;
+            } elseif ($canal === 'email') {
+                $clientCanaux[$clientId]['email'] = true;
+            }
+            
+            // Ajouter le nom du provider à la liste
+            $clientCanaux[$clientId]['providers'][] = [
+                'nom' => $provider['nom_providers'],
+                'canal' => $canal,
+                'est_actif' => $assoc['est_actif']
+            ];
+        }
+    }
+}
+
+// Fonction pour obtenir les badges des canaux
+function getCanalBadges($canaux) {
+    $badges = [];
+    $icons = [
+        'whatsapp' => ['icon' => 'fa-whatsapp', 'color' => 'bg-green-100 text-green-700', 'label' => 'WhatsApp'],
+        'sms' => ['icon' => 'fa-sms', 'color' => 'bg-blue-100 text-blue-700', 'label' => 'SMS'],
+        'email' => ['icon' => 'fa-envelope', 'color' => 'bg-purple-100 text-purple-700', 'label' => 'Email']
+    ];
+    
+    foreach ($canaux as $canal => $actif) {
+        if ($actif && isset($icons[$canal])) {
+            $badges[] = $icons[$canal];
+        }
+    }
+    
+    return $badges;
+}
 
 // Recherche
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -434,6 +515,20 @@ function formatDate($date) {
         .btn-delete { background: #fee2e2; color: #991b1b; }
         .btn-delete:hover { background: #fecaca; }
         
+        .canal-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .canal-badge i {
+            font-size: 12px;
+        }
+        
         .password-wrapper {
             position: relative;
         }
@@ -460,6 +555,16 @@ function formatDate($date) {
         .search-input:focus {
             box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
             border-color: #10b981;
+        }
+        
+        .canal-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        
+        .canal-container .canal-badge {
+            margin: 1px 0;
         }
     </style>
 </head>
@@ -685,7 +790,7 @@ function formatDate($date) {
 </div>
 
 <!-- CONTENU PRINCIPAL -->
-<div class="space-y-6">
+<div class="space-y-6 p-6">
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-2xl font-bold text-gray-800">Clients</h1>
@@ -745,17 +850,16 @@ function formatDate($date) {
                         <th class="px-6 py-3 text-left">Client</th>
                         <th class="px-6 py-3 text-left">Entreprise</th>
                         <th class="px-6 py-3 text-left">Email</th>
-                        <th class="px-6 py-3 text-left">Ville</th>
-                        <th class="px-6 py-3 text-left">Crédits</th>
                         <th class="px-6 py-3 text-left">Statut</th>
-                        <th class="px-6 py-3 text-left">Date</th>
-                        <th class="px-6 py-3 text-center">Actions</th>
+                        <th class="px-6 py-3 text-left">Crédits</th>
+                        <th class="px-6 py-3 text-left">Opérateurs</th>
+                        <th class="px-6 py-3 text-center"></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($filteredClients)): ?>
                         <tr>
-                            <td colspan="8" class="text-center py-8 text-gray-500">
+                            <td colspan="7" class="text-center py-8 text-gray-500">
                                 <i class="fas fa-users text-4xl mb-2 block"></i>
                                 <?php if (!empty($search)): ?>
                                     Aucun client ne correspond à votre recherche.
@@ -769,6 +873,9 @@ function formatDate($date) {
                     <?php else: ?>
                         <?php foreach ($filteredClients as $client): 
                             $statut = getStatutBadge($client['actif']);
+                            $clientId = $client['id_compte'];
+                            $canaux = $clientCanaux[$clientId] ?? ['whatsapp' => false, 'sms' => false, 'email' => false, 'providers' => []];
+                            $badges = getCanalBadges($canaux);
                         ?>
                             <tr class="border-b hover:bg-gray-50">
                                 <td class="px-6 py-4">
@@ -786,29 +893,37 @@ function formatDate($date) {
                                 <td class="px-6 py-4 text-sm text-gray-600">
                                     <?= htmlspecialchars($client['user']) ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-600">
-                                    <?= htmlspecialchars($client['ville'] ?? '-') ?>
-                                </td>
-                                <td class="px-6 py-4 text-sm font-semibold text-gray-900">
-                                    <?= number_format($client['credits_total'] ?? 0, 2) ?> €
-                                </td>
                                 <td class="px-6 py-4">
                                     <span class="px-2 py-1 rounded-full text-xs font-medium <?= $statut['class'] ?>">
                                         <?= $statut['label'] ?>
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-gray-500">
-                                    <?= formatDate($client['date_creation']) ?>
+                                <td class="px-6 py-4 text-sm font-semibold text-gray-900">
+                                    <?= number_format($client['credits_total'] ?? 0, 2) ?> €
                                 </td>
+                                <td class="px-6 py-4">
+                                    <?php if (empty($badges)): ?>
+                                        <span class="text-xs text-gray-400 italic">Aucun opérateur</span>
+                                    <?php else: ?>
+                                        <div class="canal-container">
+                                            <?php foreach ($badges as $badge): ?>
+                                                <span class="canal-badge <?= $badge['color'] ?>">
+                                                    <?= $badge['label'] ?>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
+
                                 <td class="px-6 py-4">
                                     <div class="flex items-center justify-center gap-2">
                                         <!-- Bouton Voir -->
                                         <a href="?page=admin/client-detail&id=<?= $client['id_compte'] ?>" 
-                                           class="btn-action btn-view" title="Voir les détails">
-                                            <i class="fas fa-eye"></i> Voir
+                                            title="Voir les détails" class=" text-color: #5b21b6;">
+                                            Voir →
                                         </a>
                                         
-                                        <!-- 🔥 Bouton Supprimer avec data-* attributs (corrigé) -->
+                                        <!-- Bouton Supprimer -->
                                         <button type="button" 
                                                 data-id="<?= $client['id_compte'] ?>" 
                                                 data-name="<?= htmlspecialchars($client['prenom'] . ' ' . $client['nom'], ENT_QUOTES) ?>" 
@@ -850,10 +965,9 @@ function togglePassword(inputId, button) {
 }
 
 // ============================================
-// MODALE DE CONFIRMATION DE SUPPRESSION (CORRIGÉE)
+// MODALE DE CONFIRMATION DE SUPPRESSION
 // ============================================
 function openConfirmDeleteModal(button) {
-    // 🔥 Récupérer l'ID tel quel (sans le convertir en nombre)
     const clientId = button.getAttribute('data-id');
     const clientName = button.getAttribute('data-name');
     
@@ -895,7 +1009,6 @@ document.getElementById('confirmDeleteBtn').addEventListener('click', async func
     try {
         const formData = new FormData();
         formData.append('action_delete_client', '1');
-        // 🔥 S'assurer que l'ID est une string
         formData.append('id_compte', String(deleteClientId));
         
         const response = await fetch(window.location.href, {
