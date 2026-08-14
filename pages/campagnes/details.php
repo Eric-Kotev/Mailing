@@ -66,18 +66,30 @@ function deduireCreditClient($idCompte, $idProvider, $quantite) {
         return;
     }
 
+    // Récupérer l'opérateur
     $provider = $db->select('provider', ['id_provider' => $idProvider]);
     if (empty($provider)) {
         return;
     }
 
-    $tarif = (float)$provider[0]['tarif'];
+    // Récupérer le tarif personnalisé du client pour cet opérateur
+    $tarifPersonnalise = $db->select('tarif', [
+        'id_compte' => $idCompte,
+        'id_provider' => $idProvider
+    ]);
+
+    // Déterminer le tarif à utiliser
+    $tarif = !empty($tarifPersonnalise) 
+        ? (float)$tarifPersonnalise[0]['prix'] 
+        : (float)$provider[0]['tarif'];
+
     if ($tarif <= 0) {
         return;
     }
 
     $montant = $tarif * $quantite;
 
+    // Récupérer et mettre à jour le compte
     $compte = $db->select('compte', ['id_compte' => $idCompte]);
     if (empty($compte)) {
         return;
@@ -89,17 +101,13 @@ function deduireCreditClient($idCompte, $idProvider, $quantite) {
     $db->update('compte', [
         'credits_total' => $nouveauSolde
     ], ['id_compte' => $idCompte]);
+    
 }
 
 // ============================================
 // FONCTION DE RÉSOLUTION DU PROVIDER PAR FOURNISSEUR
 // ============================================
-// Au lieu de se fier à campagne_config.provider_id (qui peut être obsolète
-// ou pointer vers le mauvais opérateur), on va chercher directement, pour
-// le compte client, le provider dont le fournisseur (table provider,
-// colonne description) correspond au nom attendu : "Octopush", "WAHA",
-// "SMS API Gateway" ou "Listmonk". C'est le même principe que
-// resolveFournisseurTable() utilisé dans operators.php / operator_details.php.
+
 function getProviderByFournisseur($fournisseurLabel) {
     global $db;
     
@@ -322,9 +330,11 @@ function formaterNumerosOctopush($destinataires) {
 }
 
 // ============================================
-// FONCTION POUR ENVOYER AVEC OCTOPUSH
+// FONCTION POUR ENVOYER AVEC OCTOPUSH (AVEC DÉDUCTION DE CRÉDIT)
 // ============================================
-function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
+function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte, $idProvider) {
+    global $db;
+    
     $url = 'https://api.octopush.com/v1/public/sms-campaign/send';
     
     $recipients = [];
@@ -338,12 +348,28 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
         return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé.'];
     }
     
+    // Récupérer la configuration Octopush pour obtenir le type et le sender
+    $config = $db->select('octopush_config', [
+        'id_compte' => $idCompte,
+        'est_active' => 1
+    ]);
+    
+    $sender = 'IFB';
+    $type = 'sms_premium';
+    $purpose = 'alert';
+    
+    if (!empty($config)) {
+        $sender = !empty($config[0]['sender_name']) ? $config[0]['sender_name'] : 'IFB';
+        $type = !empty($config[0]['type']) ? $config[0]['type'] : 'sms_premium';
+        $purpose = !empty($config[0]['purpose']) ? $config[0]['purpose'] : 'alert';
+    }
+    
     $data = [
         'text' => $message,
         'recipients' => $recipients,
-        'sender' => 'IFB',
-        'type' => 'sms_premium',
-        'purpose' => 'alert',
+        'sender' => $sender,
+        'type' => $type,
+        'purpose' => $purpose,
     ];
     
     $ch = curl_init($url);
@@ -364,22 +390,34 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
     curl_close($ch);
     
     if ($error) {
+        error_log("Octopush cURL Error: " . $error);
         return ['success' => false, 'error' => 'Erreur cURL: ' . $error];
     }
     
     $responseData = json_decode($response, true);
     
+    // Si l'envoi est réussi, déduire le crédit
     if ($httpCode === 200 || $httpCode === 201) {
+        // Déduire le crédit du client (1 SMS par destinataire)
+        $quantite = count($recipients);
+        if (!empty($idProvider)) {
+            deduireCreditClient($idCompte, $idProvider, $quantite);
+        }
+        
         return [
             'success' => true,
             'data' => $responseData,
-            'http_code' => $httpCode
+            'http_code' => $httpCode,
+            'sms_envoyes' => $quantite
         ];
     } else {
         $errorMsg = isset($responseData['message']) ? $responseData['message'] : $response;
         if (isset($responseData['errors'])) {
             $errorMsg .= ' - Détails: ' . json_encode($responseData['errors']);
         }
+        
+        error_log("Octopush Erreur API: " . $errorMsg);
+        
         return [
             'success' => false,
             'error' => 'Erreur API (HTTP ' . $httpCode . '): ' . $errorMsg,
@@ -387,7 +425,6 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey) {
         ];
     }
 }
-
 // ============================================
 // FONCTION POUR METTRE À JOUR LE STATUT D'UNE CAMPAGNE LISTMONK
 // ============================================
@@ -486,6 +523,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
             $apiKey = $_SESSION['octopush_api_key'] ?? null;
             $sessionName = $_SESSION['octopush_session_name'] ?? 'Octopush API';
             
+            $providerOctopush = getProviderByFournisseur('Octopush');
+            $idProvider = $providerOctopush['id_provider'] ?? null;
+
             if (empty($apiLogin) || empty($apiKey)) {
                 $campagneDb = $db->select('campagne', [
                     'id_campagne' => $id_campagne_historique,
@@ -519,7 +559,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                 exit;
             }
             
-            $resultat = envoyerOctopush($message, $destinataires, $apiLogin, $apiKey);
+            $resultat = envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte, $idProvider);
             
             if ($resultat['success']) {
                 $db->update('campagne', [
@@ -533,9 +573,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                 ], ['id_campagne' => $id_campagne_historique]);
                 
                 // Déduction du crédit client : tarif de l'opérateur Octopush x nombre d'envois réussis
-                // (résolution du provider par fournisseur, pas via campagne_config.provider_id)
-                $providerOctopush = getProviderByFournisseur('Octopush');
-                deduireCreditClient($idCompte, $providerOctopush['id_provider'] ?? null, count($destinataires));
                 
                 $_SESSION['octopush_response'] = $resultat['data'];
                 $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush (Session: " . $sessionName . ")!";
@@ -582,7 +619,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
         if ($resultat['success']) {
             $_SESSION['flash_message'] = "✅ " . $resultat['message'];
         } else {
-            $_SESSION['flash_error'] = "❌ Erreur lors de l'envoi : " . $resultat['error'];
+            $_SESSION['flash_error'] = " Erreur lors de l'envoi : " . $resultat['error'];
         }
         
         mettreAJourStatutCampagne($campagneId, $idCompte);
