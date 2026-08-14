@@ -26,7 +26,7 @@ if (empty($clientData)) {
 $client = $clientData[0];
 
 // ============================================
-// LISTMONK FUNCTIONS - Équivalent PHP de listmonk.functions.ts
+// LISTMONK FUNCTIONS 
 // ============================================
 
 /**
@@ -573,6 +573,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_toggle_provide
             ]);
         } else {
             throw new Exception('Erreur lors de la mise à jour du statut');
+        }
+        
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// ============================================
+// GESTION DES TARIFS PERSONNALISÉS
+// ============================================
+
+// --- Mettre à jour le tarif d'un client pour un opérateur (AJAX) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_client_tarif'])) {
+    ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
+        $providerId = intval($_POST['id_provider'] ?? 0);
+        $nouveauPrix = floatval($_POST['prix'] ?? 0);
+        
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        if ($providerId <= 0) {
+            throw new Exception('ID opérateur invalide');
+        }
+        if ($nouveauPrix < 0) {
+            throw new Exception('Le prix ne peut pas être négatif');
+        }
+        
+        // Vérifier que l'association existe
+        $association = $db->select('client_provider', [
+            'id_compte' => $clientId,
+            'id_provider' => $providerId
+        ]);
+        
+        if (empty($association)) {
+            throw new Exception('Cet opérateur n\'est pas associé à ce client');
+        }
+        
+        // Vérifier si un tarif personnalisé existe déjà
+        $existingTarif = $db->select('tarif', [
+            'id_compte' => $clientId,
+            'id_provider' => $providerId
+        ]);
+        
+        if (!empty($existingTarif)) {
+            // Mettre à jour le tarif existant
+            $result = $db->update('tarif', 
+                ['prix' => $nouveauPrix],
+                ['id_tarif' => $existingTarif[0]['id_tarif']]
+            );
+            $action = 'updated';
+        } else {
+            // Créer un nouveau tarif
+            $data = [
+                'id_compte' => $clientId,
+                'id_provider' => $providerId,
+                'prix' => $nouveauPrix,
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            $result = $db->insert('tarif', $data);
+            $action = 'created';
+        }
+        
+        if ($result !== false) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'Tarif mis à jour avec succès',
+                'action' => $action,
+                'prix' => number_format($nouveauPrix, 2)
+            ]);
+        } else {
+            throw new Exception('Erreur lors de la mise à jour du tarif');
         }
         
     } catch (Exception $e) {
@@ -1776,7 +1857,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_save_octopush_
         if (empty($clientId)) {
             throw new Exception('ID client invalide');
         }
-         // Vérifier le format UUID
+        // Vérifier le format UUID
         if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $clientId)) {
             throw new Exception('ID client invalide (format UUID attendu, reçu: ' . $clientId . ')');
         }
@@ -1833,9 +1914,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_save_octopush_
             $idConfig = $row['id_config'] ?? null;
         }
 
-if (empty($idConfig)) {
-    throw new Exception("Erreur: impossible de récupérer l'ID de la configuration créée");
-}
+        if (empty($idConfig)) {
+            throw new Exception("Erreur: impossible de récupérer l'ID de la configuration créée");
+        }
         
         echo json_encode([
             'success' => true,
@@ -1904,6 +1985,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_octopus
 $providersAssocies = $db->select('client_provider', ['id_compte' => $id]);
 $providerIds = array_column($providersAssocies, 'id_provider');
 
+// Récupérer les tarifs personnalisés pour ce client
+$tarifsClient = [];
+if (!empty($providerIds)) {
+    $tarifsData = $db->select('tarif', ['id_compte' => $id]);
+    foreach ($tarifsData as $t) {
+        $tarifsClient[$t['id_provider']] = $t['prix'];
+    }
+}
+
 // Récupérer les détails des opérateurs associés
 $associations = [];
 if (!empty($providersAssocies)) {
@@ -1912,15 +2002,21 @@ if (!empty($providersAssocies)) {
         if (!empty($provider)) {
             $providerInfo = $provider[0];
             $canal = $db->select('type_message', ['id_type_message' => $providerInfo['id_type_message']]);
+            
+            // Récupérer le tarif personnalisé ou le tarif par défaut
+            $tarif = $tarifsClient[$assoc['id_provider']] ?? $providerInfo['tarif'];
+            
             $associations[] = [
                 'id_client_provider' => $assoc['id_client_provider'],
                 'id_provider' => $providerInfo['id_provider'],
                 'nom_providers' => $providerInfo['nom_providers'],
                 'description' => $providerInfo['description'],
                 'canal' => !empty($canal) ? $canal[0]['libelle_type'] : 'Inconnu',
-                'tarif' => $providerInfo['tarif'],
+                'tarif' => $tarif,
+                'tarif_par_defaut' => $providerInfo['tarif'],
                 'est_actif' => $assoc['est_actif'],
-                'date_association' => $assoc['date_association']
+                'date_association' => $assoc['date_association'],
+                'a_tarif_personnalise' => isset($tarifsClient[$assoc['id_provider']])
             ];
         }
     }
@@ -2151,6 +2247,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
+        /* ... (le CSS reste identique à l'original) ... */
         .statut-badge {
             display: inline-flex;
             align-items: center;
@@ -2982,6 +3079,45 @@ $initials = getInitials($client['prenom'], $client['nom']);
             color: #6b7280;
         }
 
+        .tarif-cell {
+            cursor: pointer;
+            transition: all 0.2s;
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tarif-cell:hover {
+            background: #f3f4f6;
+        }
+
+        .tarif-cell .fa-edit {
+            font-size: 11px;
+            color: #6b7280;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .tarif-cell:hover .fa-edit {
+            opacity: 1;
+        }
+
+        .tarif-cell.personnalise {
+            color: #0f0f0f;
+            font-weight: 600;
+        }
+
+        .tarif-cell.personnalise .fa-edit {
+            color: #7c3aed;
+        }
+
+        .tarif-cell .tarif-indicator {
+            font-size: 12px;
+            color: #1d1c1f;
+        }
+
         /* Responsive pour le tableau sur mobile */
         @media (max-width: 768px) {
             .info-card table {
@@ -2995,6 +3131,12 @@ $initials = getInitials($client['prenom'], $client['nom']);
                 padding: 4px 8px;
                 font-size: 11px;
             }
+        }
+
+        /* Modal tarif personnalisé */
+        .modal-card-tarif {
+            max-width: 420px;
+            width: 90%;
         }
     </style>
 </head>
@@ -3567,6 +3709,58 @@ $initials = getInitials($client['prenom'], $client['nom']);
 </div>
 
 <!-- ============================================ -->
+<!-- MODALE TARIF PERSONNALISÉ -->
+<!-- ============================================ -->
+<div id="tarifModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card modal-card-tarif" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800"> Modifier le tarif</h3>
+                <p class="text-sm text-gray-500" id="tarifModalSubtitle">
+                    <span id="tarifClientName"><?= htmlspecialchars($client['entreprise']) ?></span> x 
+                    <span id="tarifProviderName">Opérateur</span>
+                </p>
+            </div>
+            <button onclick="closeTarifModal()" class="modal-close-btn">&times;</button>
+        </div>
+        
+        <form id="tarifForm">
+            <input type="hidden" id="tarifProviderId" value="">
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Tarif par envoi (€)
+                </label>
+                <p class="text-xs text-gray-400 mt-1">
+                    <span>Pas en dessous de</span>
+                    <span id="tarifDefaultPrice">Tarif par défaut : 0.000 €</span>
+                </p>
+                <div class="flex items-center gap-3">
+                    <div class="relative flex-1">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">€</span>
+                        <input type="number" id="tarifPrice" step="0.001" min="0" 
+                               class="w-full border border-gray-300 rounded-lg pl-8 pr-4 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
+                               placeholder="0.000">
+                    </div>
+                    
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeTarifModal()" 
+                        class="px-5 py-0.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition font-medium">
+                    Annuler
+                </button>
+                <button type="submit" 
+                        class="px-5 py-0.5 bg-purple-900 hover:bg-purple-700 text-white rounded-lg transition font-medium flex items-center gap-2">
+                    <i class="fas fa-check"></i> Valider
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============================================ -->
 <!-- CONTENU PRINCIPAL -->
 <!-- ============================================ -->
 <div class="p-6">
@@ -3637,7 +3831,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
         
         <div class="stat-item">
             <div class="stat-label">Client depuis</div>
-            <div class="stat-number"><?= formatDate($client['date_creation']) ?></div>
+            <div class="stat-number"><?= date('Y', strtotime($client['date_creation'])) ?></div>
         </div>
     </div>
 
@@ -3739,7 +3933,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
 
     <div class="info-card">
         <div class="info-card-header">
-            <span class="title"><i class="fas fa-link mr-2 text-gray-400"></i>Opérateurs associés</span>
+            <span class="title"><i class="fas fa-link mr-2 text-gray-400"></i>Opérateurs & tarifs</span>
             <button onclick="openAssociateModal()" class="btn-action-purple">
                 <i class="fas fa-plus-circle"></i> Associer un opérateur
             </button>
@@ -3759,9 +3953,9 @@ $initials = getInitials($client['prenom'], $client['nom']);
                             <tr class="bg-gray-50 border-b border-gray-200">
                                 <th class="text-left py-3 px-4 font-semibold text-gray-600">Opérateur</th>
                                 <th class="text-left py-3 px-4 font-semibold text-gray-600">Canal</th>
-                                <th class="text-left py-3 px-4 font-semibold text-gray-600">Tarif</th>
+                                <th class="text-left py-3 px-4 font-semibold text-gray-600">Tarif client</th>
                                 <th class="text-left py-3 px-4 font-semibold text-gray-600">Statut</th>
-                                <th class="text-center py-3 px-4 font-semibold text-gray-600">Actions</th>
+                                <th class="text-center py-3 px-4 font-semibold text-gray-600"></th>
                             </tr>
                         </thead>
                         <tbody id="providersList">
@@ -3772,6 +3966,8 @@ $initials = getInitials($client['prenom'], $client['nom']);
                                 if (in_array($canalLower, ['whatsapp', 'sms', 'email'])) {
                                     $iconClass = $canalLower;
                                 }
+                                $tarif = $assoc['tarif'];
+                                $isPersonnalise = $assoc['a_tarif_personnalise'];
                                 ?>
                                 <tr class="border-b border-gray-100 hover:bg-gray-50 transition" id="provider_<?= $assoc['id_client_provider'] ?>">
                                     <td class="py-3 px-4">
@@ -3781,7 +3977,6 @@ $initials = getInitials($client['prenom'], $client['nom']);
                                             </div>
                                             <div>
                                                 <div class="font-medium text-gray-800"><?= htmlspecialchars($assoc['nom_providers']) ?></div>
-                                                <div class="text-xs text-gray-500"><?= htmlspecialchars($assoc['description']) ?></div>
                                             </div>
                                         </div>
                                     </td>
@@ -3790,8 +3985,16 @@ $initials = getInitials($client['prenom'], $client['nom']);
                                             <?= htmlspecialchars($assoc['canal']) ?>
                                         </span>
                                     </td>
-                                    <td class="py-3 px-4 font-medium text-gray-700">
-                                        <?= number_format($assoc['tarif'], 2) ?> €
+                                    <td class="py-3 px-4">
+                                        <span class="tarif-cell <?= $isPersonnalise ? 'personnalise' : '' ?>"
+                                              style="<?= $isPersonnalise ? 'text-decoration: underline dotted; text-underline-offset: 6px;' : '' ?>"
+                                              onclick="openTarifModal(<?= $assoc['id_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>', <?= $assoc['tarif_par_defaut'] ?>, <?= $assoc['tarif'] ?>, <?= $assoc['a_tarif_personnalise'] ? 'true' : 'false' ?>)">
+                                            <?= number_format($tarif, 2) ?>€
+
+                                            <?php if ($isPersonnalise): ?>
+                                                <span class="tarif-indicator">/envoi</span>
+                                            <?php endif; ?>
+                                        </span>
                                     </td>
                                     <td class="py-3 px-4">
                                         <span class="text-xs font-medium px-2 py-1 rounded-full <?= $assoc['est_actif'] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' ?>">
@@ -3831,7 +4034,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
             </div>
 
             <div class="p-4">
-                (Fonctionnalité à implanter)
+                (Fonctionnalité à implémenter)
             </div>
 
         </div>
@@ -3984,19 +4187,16 @@ async function confirmRecharge() {
         if (result.success) {
             showToast('Crédit rechargé avec succès', 'success');
             
-            // Mettre à jour le crédit dans les statistiques
             const creditStatDisplay = document.getElementById('creditStatDisplay');
             if (creditStatDisplay) {
                 creditStatDisplay.textContent = result.credit + ' €';
             }
             
-            // Mettre à jour le crédit dans la modale (solde actuel)
             const modalCreditDisplay = document.querySelector('#rechargeModal strong');
             if (modalCreditDisplay) {
                 modalCreditDisplay.textContent = result.credit + ' €';
             }
             
-            // Mettre à jour le crédit dans l'ancien affichage (si présent)
             document.querySelectorAll('#creditDisplay').forEach(el => {
                 el.textContent = result.credit;
             });
@@ -4088,7 +4288,7 @@ async function saveInfo() {
 }
 
 // ============================================
-// GESTION DES OPÉRATEURS ASSOCIÉS (PARTIE CRITIQUE CORRIGÉE)
+// GESTION DES OPÉRATEURS ASSOCIÉS
 // ============================================
 
 function openAssociateModal() {
@@ -4147,18 +4347,14 @@ async function confirmAssociate() {
             
             const assoc = result.association;
             
-            // 🔥 CORRECTION : S'assurer que l'ID est un nombre
             let clientProviderId = assoc.id_client_provider;
             
-            // Si c'est un tableau, prendre le premier élément
             if (Array.isArray(clientProviderId)) {
                 clientProviderId = clientProviderId[0];
             }
-            // Si c'est un objet, essayer d'extraire l'ID
             if (typeof clientProviderId === 'object' && clientProviderId !== null) {
                 clientProviderId = clientProviderId.id_client_provider || clientProviderId.id || Object.values(clientProviderId)[0];
             }
-            // Convertir en nombre
             clientProviderId = parseInt(clientProviderId);
             
             if (!clientProviderId || isNaN(clientProviderId)) {
@@ -4171,7 +4367,6 @@ async function confirmAssociate() {
             
             let providersList = document.getElementById('providersList');
             
-            // Vérifier si on est en mode tableau ou en mode liste
             const emptyDiv = document.querySelector('.empty-providers');
             if (emptyDiv) {
                 const infoCard = emptyDiv.closest('.info-card');
@@ -4219,7 +4414,8 @@ async function confirmAssociate() {
             const toggleIcon = isActive ? 'fa-pause' : 'fa-play';
             const toggleLabel = isActive ? 'Désactiver' : 'Activer';
             
-            // 🔥 CORRECTION : Utiliser clientProviderId qui est maintenant un nombre valide
+            const tarif = parseFloat(assoc.tarif) || 0;
+            
             const html = `
                 <tr class="border-b border-gray-100 hover:bg-gray-50 transition" id="provider_${clientProviderId}">
                     <td class="py-3 px-4">
@@ -4238,8 +4434,11 @@ async function confirmAssociate() {
                             ${escapeHtml(assoc.canal || 'Inconnu')}
                         </span>
                     </td>
-                    <td class="py-3 px-4 font-medium text-gray-700">
-                        ${(parseFloat(assoc.tarif) || 0).toFixed(2)} €
+                    <td class="py-3 px-4">
+                        <span class="tarif-cell" onclick="openTarifModal(${assoc.id_provider}, '${escapeHtml(assoc.nom_providers || '')}', ${tarif}, ${tarif}, false)">
+                            ${tarif.toFixed(2)} €
+                            <i class="fas fa-edit"></i>
+                        </span>
                     </td>
                     <td class="py-3 px-4">
                         <span class="text-xs font-medium px-2 py-1 rounded-full ${statusClass}">
@@ -4269,17 +4468,8 @@ async function confirmAssociate() {
             if (providersList) {
                 providersList.insertAdjacentHTML('beforeend', html);
                 console.log('✅ Ligne ajoutée avec ID:', clientProviderId);
-                
-                // 🔥 VÉRIFICATION : Tester si l'élément existe bien
-                const newRow = document.getElementById(`provider_${clientProviderId}`);
-                if (newRow) {
-                    console.log('✅ Élément trouvé dans le DOM');
-                } else {
-                    console.error('❌ Élément non trouvé dans le DOM');
-                }
             }
             
-            // Mettre à jour le select des opérateurs disponibles
             const select = document.getElementById('providerSelect');
             if (select) {
                 const option = select.querySelector(`option[value="${providerId}"]`);
@@ -4292,7 +4482,6 @@ async function confirmAssociate() {
                 }
             }
             
-            // Mettre à jour les statistiques
             updateProviderStats();
             
         } else {
@@ -4308,7 +4497,6 @@ async function confirmAssociate() {
 }
 
 function updateProviderStats() {
-    // Récupérer le nombre d'opérateurs dans le tableau
     const providersList = document.getElementById('providersList');
     if (!providersList) {
         const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
@@ -4325,7 +4513,6 @@ function updateProviderStats() {
     const rows = providersList.querySelectorAll('tr');
     const total = rows.length;
     
-    // Compter les opérateurs actifs
     let active = 0;
     rows.forEach(row => {
         const statusSpan = row.querySelector('td:nth-child(4) .text-xs');
@@ -4334,7 +4521,6 @@ function updateProviderStats() {
         }
     });
     
-    // Mettre à jour l'affichage des statistiques
     const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
     if (statOperateurs) {
         statOperateurs.textContent = total;
@@ -4398,7 +4584,6 @@ async function confirmDetach() {
             showToast(result.message, 'success');
             closeDetachConfirmModal();
             
-            // Récupérer les informations de l'opérateur avant de supprimer la ligne
             const row = document.getElementById(`provider_${idClientProvider}`);
             let providerId = null;
             let providerName = '';
@@ -4406,7 +4591,6 @@ async function confirmDetach() {
             let providerDescription = '';
             
             if (row) {
-                // Extraire les informations de la ligne
                 const nameCell = row.querySelector('td:nth-child(1) .font-medium');
                 if (nameCell) {
                     providerName = nameCell.textContent.trim();
@@ -4420,7 +4604,6 @@ async function confirmDetach() {
                     providerCanal = canalCell.textContent.trim();
                 }
                 
-                // Récupérer l'ID du provider depuis l'attribut onclick du bouton "Gérer"
                 const manageBtn = row.querySelector('.btn-sm-info');
                 if (manageBtn) {
                     const onclickAttr = manageBtn.getAttribute('onclick');
@@ -4432,15 +4615,12 @@ async function confirmDetach() {
                     }
                 }
                 
-                // Supprimer la ligne
                 row.remove();
             }
             
-            // Ajouter l'opérateur dans le select des disponibles
             if (providerId && providerName) {
                 const select = document.getElementById('providerSelect');
                 if (select) {
-                    // Vérifier si l'opérateur n'est pas déjà dans la liste
                     const existingOption = select.querySelector(`option[value="${providerId}"]`);
                     if (!existingOption) {
                         const option = document.createElement('option');
@@ -4450,18 +4630,15 @@ async function confirmDetach() {
                         option.textContent = `${canalDisplay} - ${providerName}${descDisplay}`;
                         select.appendChild(option);
                     }
-                    // Réactiver le bouton d'association
                     document.getElementById('associateBtn').disabled = false;
                 }
             }
             
-            // Vérifier s'il reste des lignes dans le tableau
             const providersList = document.getElementById('providersList');
             if (providersList) {
                 const remainingRows = providersList.querySelectorAll('tr');
                 
                 if (remainingRows.length === 0) {
-                    // Si plus d'opérateurs, afficher le message vide
                     const infoCard = providersList.closest('.info-card');
                     const pDiv = infoCard.querySelector('.p-4');
                     pDiv.innerHTML = `
@@ -4474,7 +4651,6 @@ async function confirmDetach() {
                 }
             }
             
-            // Mettre à jour les statistiques
             updateProviderStats();
             
         } else {
@@ -4540,7 +4716,6 @@ async function toggleProviderStatus(idClientProvider, newStatus) {
                     }
                 }
                 
-                // Mettre à jour les statistiques
                 updateProviderStats();
             }
         } else {
@@ -4553,6 +4728,109 @@ async function toggleProviderStatus(idClientProvider, newStatus) {
 }
 
 // ============================================
+// GESTION DES TARIFS PERSONNALISÉS
+// ============================================
+
+function openTarifModal(providerId, providerName, defaultPrice, currentPrice, isPersonnalise) {
+    document.getElementById('tarifProviderId').value = providerId;
+    document.getElementById('tarifProviderName').textContent = providerName;
+    document.getElementById('tarifDefaultPrice').textContent = defaultPrice.toFixed(2) + ' €';
+    
+    // Si le tarif est personnalisé, afficher la valeur actuelle
+    if (isPersonnalise && currentPrice !== defaultPrice) {
+        document.getElementById('tarifPrice').value = currentPrice;
+    } else {
+        document.getElementById('tarifPrice').value = '';
+    }
+    
+    document.getElementById('tarifModal').style.display = 'flex';
+    document.getElementById('tarifPrice').focus();
+}
+
+function closeTarifModal() {
+    document.getElementById('tarifModal').style.display = 'none';
+}
+
+document.getElementById('tarifForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const providerId = document.getElementById('tarifProviderId').value;
+    const priceInput = document.getElementById('tarifPrice');
+    const price = parseFloat(priceInput.value);
+    
+    if (isNaN(price) || price < 0) {
+        showToast('Veuillez entrer un prix valide (0 ou plus)', 'error');
+        return;
+    }
+    
+    const btn = this.querySelector('button[type="submit"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enregistrement...';
+    btn.disabled = true;
+    
+    try {
+        const formData = new FormData();
+        formData.append('action_update_client_tarif', '1');
+        formData.append('id_compte', clientId);
+        formData.append('id_provider', providerId);
+        formData.append('prix', price);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            
+            // Mettre à jour l'affichage du tarif dans le tableau
+            const rows = document.querySelectorAll('#providersList tr');
+            rows.forEach(row => {
+                const cell = row.querySelector(`td:nth-child(3) .tarif-cell`);
+                if (cell) {
+                    const onclickAttr = cell.getAttribute('onclick');
+                    if (onclickAttr && onclickAttr.includes(`openTarifModal(${providerId},`)) {
+                        const currentDefaultPrice = parseFloat(cell.textContent.trim()) || 0;
+                        cell.textContent = price.toFixed(2) + ' € ';
+                        // Réajouter l'icône et l'indicateur
+                        const editIcon = document.createElement('i');
+                        editIcon.className = 'fas fa-edit';
+                        cell.appendChild(editIcon);
+                        
+                        // Ajouter l'indicateur de personnalisation
+                        if (price !== currentDefaultPrice) {
+                            const indicator = document.createElement('span');
+                            indicator.className = 'tarif-indicator';
+                            indicator.textContent = '*';
+                            cell.appendChild(indicator);
+                            cell.classList.add('personnalise');
+                        } else {
+                            cell.classList.remove('personnalise');
+                        }
+                    }
+                }
+            });
+            
+            closeTarifModal();
+        } else {
+            showToast(result.error || 'Erreur lors de la mise à jour du tarif', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showToast('Erreur réseau: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+});
+
+// ============================================
 // FONCTION UNIFIÉE POUR OUVRIR LA MODALE DU FOURNISSEUR
 // ============================================
 
@@ -4562,7 +4840,6 @@ function openProviderModal(providerId, providerName, providerType) {
     if (typeLower === 'whatsapp') {
         openSessionModal(providerId, providerName, providerType);
     } else if (typeLower === 'sms') {
-        // Vérifier si c'est Octopush par le nom du provider
         if (providerName.toLowerCase().includes('octopush')) {
             document.getElementById('octopushModalTitle').textContent = `⚡ Gestion Octopush - ${providerName}`;
             document.getElementById('octopushModalSubtitle').textContent = `Client: <?= htmlspecialchars($client['entreprise']) ?>`;
@@ -5004,7 +5281,6 @@ async function saveSmsAppareil(deviceId, deviceName) {
     }
 }
 
-// --- GESTIONNAIRE DE FORMULAIRE SMS ---
 document.getElementById('smsLoginForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
@@ -5093,7 +5369,6 @@ async function loadEmailAccounts() {
     const footer = document.getElementById('emailFooter');
     
     try {
-        // ÉTAPE 1 : Récupérer les settings Listmonk (GET)
         const settingsFormData = new FormData();
         settingsFormData.append('action_get_listmonk_settings', '1');
         
@@ -5112,7 +5387,6 @@ async function loadEmailAccounts() {
             throw new Error(settingsResult.error || 'Impossible de charger les settings');
         }
         
-        // ÉTAPE 2 : Récupérer les comptes email du client (base de données)
         const accountsFormData = new FormData();
         accountsFormData.append('action_get_email_accounts', '1');
         accountsFormData.append('id_compte', clientId);
@@ -5132,7 +5406,6 @@ async function loadEmailAccounts() {
             throw new Error(accountsResult.error || 'Impossible de charger les comptes');
         }
         
-        // ÉTAPE 3 : Afficher les deux ensembles de données
         let html = `
             <div class="mb-4">
                 <div class="flex items-center justify-between mb-2">
@@ -5408,7 +5681,6 @@ function closeCreateEmailAccountModal() {
     document.getElementById('createEmailAccountModal').style.display = 'none';
 }
 
-// --- Gestionnaire de formulaire de création de compte email ---
 document.getElementById('createEmailForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
@@ -5703,54 +5975,6 @@ function updateSessionStatusOnly(sessionName, isConnected) {
 
 function updateSessionStatusUI(sessionName, status, isConnected, data) {
     updateSessionStatusOnly(sessionName, isConnected);
-}
-
-function updateProviderStats() {
-    const providersList = document.getElementById('providersList');
-    if (!providersList) {
-        const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
-        if (statOperateurs) {
-            statOperateurs.textContent = '0';
-        }
-        const statDetail = document.querySelector('.stat-item:nth-child(2) .stat-detail');
-        if (statDetail) {
-            statDetail.innerHTML = '';
-        }
-        return;
-    }
-    
-    const rows = providersList.querySelectorAll('tr');
-    const total = rows.length;
-    
-    let active = 0;
-    rows.forEach(row => {
-        const statusCell = row.querySelector('td:nth-child(4)');
-        if (statusCell) {
-            const statusSpan = statusCell.querySelector('.text-xs.font-medium');
-            if (statusSpan && statusSpan.textContent.trim() === 'Actif') {
-                active++;
-            }
-        }
-    });
-    
-    const statOperateurs = document.querySelector('.stat-item:nth-child(2) .stat-number');
-    if (statOperateurs) {
-        statOperateurs.textContent = total;
-    }
-    
-    const statDetail = document.querySelector('.stat-item:nth-child(2) .stat-detail');
-    if (statDetail) {
-        const inactive = total - active;
-        if (total > 0) {
-            let html = `<span class="text-green-600">${active} actif${active > 1 ? 's' : ''}</span>`;
-            if (inactive > 0) {
-                html += ` <span class="text-red-500">| ${inactive} inactif${inactive > 1 ? 's' : ''}</span>`;
-            }
-            statDetail.innerHTML = html;
-        } else {
-            statDetail.innerHTML = '';
-        }
-    }
 }
 
 async function updateSessionInDatabase(sessionName, isConnected) {
@@ -6150,9 +6374,9 @@ document.getElementById('confirmActionBtn').addEventListener('click', function()
     closeConfirmModal();
 });
 
-// ============================================
+// ======================
 // FERMETURE DES MODALES
-// ============================================
+// ======================
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeRechargeModal();
@@ -6165,6 +6389,7 @@ document.addEventListener('keydown', function(e) {
         closeSmsDeviceModal();
         closeConfirmModal();
         closeCreateEmailAccountModal();
+        closeTarifModal();
         stopWaitingTimer();
     }
 });
@@ -6182,6 +6407,7 @@ document.querySelectorAll('.modal-overlay').forEach(modal => {
             else if (this.id === 'smsDeviceModal') closeSmsDeviceModal();
             else if (this.id === 'confirmModal') closeConfirmModal();
             else if (this.id === 'createEmailAccountModal') closeCreateEmailAccountModal();
+            else if (this.id === 'tarifModal') closeTarifModal();
         }
     });
 });
@@ -6531,7 +6757,6 @@ async function activateOctopushConfig(configId) {
     }
 }
 
-// --- Gestionnaire de formulaire Octopush ---
 document.getElementById('createOctopushConfigForm')?.addEventListener('submit', async function(e) {
     e.preventDefault();
     
