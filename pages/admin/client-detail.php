@@ -3831,7 +3831,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
             </div>
 
             <div class="p-4">
-                (Fonctionnalité à implanter)
+                (Fonctionnalité à implémenter)
             </div>
 
         </div>
