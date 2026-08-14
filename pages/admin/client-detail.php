@@ -4030,7 +4030,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
     <div>
         <div class="info-card">
             <div class="info-card-header">
-                <span class="title"><i class="fas fa-link mr-2 text-gray-400"></i>Historique des transactions</span>
+                <span class="title"><i class="fas fa-scroll mr-2 text-gray-400"></i>Historique des transactions</span>
             </div>
 
             <div class="p-4">
