@@ -54,12 +54,12 @@ foreach ($envois as $e) {
 }
 
 // ============================================
-// FONCTION DE DÉDUCTION DU CRÉDIT CLIENT
+// FONCTION DE DÉDUCTION DU CRÉDIT CLIENT AVEC TRANSACTION
 // ============================================
 // Soustrait du crédit du compte client (table compte, colonne credits_total)
 // le montant correspondant au tarif de l'opérateur (table provider, colonne tarif)
 // multiplié par le nombre d'envois réellement réussis.
-function deduireCreditClient($idCompte, $idProvider, $quantite) {
+function deduireCreditClient($idCompte, $idProvider, $quantite, $description = null) {
     global $db;
 
     if (empty($idProvider) || $quantite <= 0) {
@@ -98,10 +98,29 @@ function deduireCreditClient($idCompte, $idProvider, $quantite) {
     $creditsActuels = (float)($compte[0]['credits_total'] ?? 0);
     $nouveauSolde = $creditsActuels - $montant;
 
+    // Mettre à jour le crédit
     $db->update('compte', [
         'credits_total' => $nouveauSolde
     ], ['id_compte' => $idCompte]);
-    
+
+    // ============================================
+    // ENREGISTRER LA TRANSACTION DE DÉBIT
+    // ============================================
+    $nomProvider = $provider[0]['nom_providers'] ?? 'Inconnu';
+    $descriptionTransaction = $description ?? "Envoi de {$quantite} message(s) via {$nomProvider}";
+
+    $transactionData = [
+        'id_compte' => $idCompte,
+        'id_provider' => $idProvider,
+        'type_transaction' => 'debit',
+        'montant' => $montant,
+        'description' => $descriptionTransaction,
+        'solde_avant' => $creditsActuels,
+        'solde_apres' => $nouveauSolde,
+        'created_at' => date('Y-m-d H:i:s')
+    ];
+
+    $db->insert('transactions', $transactionData);
 }
 
 // ============================================
@@ -401,7 +420,8 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
         // Déduire le crédit du client (1 SMS par destinataire)
         $quantite = count($recipients);
         if (!empty($idProvider)) {
-            deduireCreditClient($idCompte, $idProvider, $quantite);
+            $description = "Envoi Octopush - {$quantite} SMS";
+            deduireCreditClient($idCompte, $idProvider, $quantite, $description);
         }
         
         return [
@@ -425,6 +445,7 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
         ];
     }
 }
+
 // ============================================
 // FONCTION POUR METTRE À JOUR LE STATUT D'UNE CAMPAGNE LISTMONK
 // ============================================
@@ -572,8 +593,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                     'updated_at' => date('Y-m-d H:i:s')
                 ], ['id_campagne' => $id_campagne_historique]);
                 
-                // Déduction du crédit client : tarif de l'opérateur Octopush x nombre d'envois réussis
-                
                 $_SESSION['octopush_response'] = $resultat['data'];
                 $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush (Session: " . $sessionName . ")!";
             } else {
@@ -619,7 +638,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
         if ($resultat['success']) {
             $_SESSION['flash_message'] = "✅ " . $resultat['message'];
         } else {
-            $_SESSION['flash_error'] = " Erreur lors de l'envoi : " . $resultat['error'];
+            $_SESSION['flash_error'] = "❌ Erreur lors de l'envoi : " . $resultat['error'];
         }
         
         mettreAJourStatutCampagne($campagneId, $idCompte);
@@ -736,7 +755,8 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
         
         if ($httpCode === 200) {
             // Déduction du crédit client : tarif de l'opérateur SMS x nombre d'envois réussis
-            deduireCreditClient($idCompte, $providerId, $nb_succes);
+            $description = "Envoi SMS via {$device_name} - {$nb_succes} message(s)";
+            deduireCreditClient($idCompte, $providerId, $nb_succes, $description);
             
             return ['success' => true, 'message' => count($recipients) . ' SMS envoyés avec succès'];
         } else {
@@ -1008,7 +1028,8 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         
         // Déduction du crédit client : tarif de l'opérateur WhatsApp x nombre d'envois réussis
         if ($succes > 0) {
-            deduireCreditClient($idCompte, $providerId, $succes);
+            $description = "Envoi WhatsApp via {$whatsappSession} - {$succes} message(s)";
+            deduireCreditClient($idCompte, $providerId, $succes, $description);
         }
         
         if ($statut === 'envoye') {
@@ -1082,7 +1103,8 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
             ], ['id_campagne' => $campagneData['id_campagne']]);
             
             // Déduction du crédit client : tarif de l'opérateur Email x nombre d'envois réussis
-            deduireCreditClient($idCompte, $providerId, $nbDestinataires);
+            $description = "Envoi Email via Listmonk - {$nbDestinataires} email(s)";
+            deduireCreditClient($idCompte, $providerId, $nbDestinataires, $description);
             
             return ['success' => true, 'message' => $nbDestinataires . ' emails envoyés avec succès via Listmonk'];
         } else {

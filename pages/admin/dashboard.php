@@ -91,21 +91,100 @@ $recentUsers = $db->select('compte', [], '*', 'date_creation DESC', 5);
 // Récupérer tous les clients avec leurs crédits
 $allClients = $db->select('compte', ['role' => 'client'], '*', 'credits_total ASC');
 
-// Définir un seuil de crédit faible (par exemple 50 €)
-$creditThreshold = 50;
+// Définir un seuil de crédit faible (par exemple 10 €)
+$creditThreshold = 10;
 
 // Filtrer les clients avec un crédit inférieur au seuil
 $lowCreditClients = array_filter($allClients, function($client) use ($creditThreshold) {
     return ($client['credits_total'] ?? 0) < $creditThreshold;
 });
 
-// Si vous voulez limiter l'affichage aux 5 premiers clients avec le plus faible crédit
-$lowCreditClients = array_slice($lowCreditClients, 0, 5);
+// Si vous voulez limiter l'affichage aux 10 premiers clients avec le plus faible crédit
+$lowCreditClients = array_slice($lowCreditClients, 0, 10);
 
 // Calculer le nombre total de clients avec crédit faible
 $totalLowCreditClients = count(array_filter($allClients, function($client) use ($creditThreshold) {
     return ($client['credits_total'] ?? 0) < $creditThreshold;
 }));
+
+// ===============================
+// SOLUTION: Transactions récentes 
+// ===============================
+
+// Récupérer toutes les transactions via la méthode select()
+
+// ÉTAPE 1: Récupérer uniquement les IDs des transactions triées par date
+// On utilise select avec seulement l'ID pour éviter les problèmes de jointure
+$idsResult = $db->select('transactions', [], 'id_transaction', 'created_at DESC', 10);
+
+// Si select ne supporte pas la sélection de colonnes spécifiques, on récupère tout
+if (empty($idsResult) || !isset($idsResult[0]['id_transaction'])) {
+    // Fallback: récupérer toutes les transactions
+    $allTransactions = $db->select('transactions', [], '*', 'created_at DESC');
+    
+    // Dédoublonner par id_transaction
+    $seenIds = [];
+    $recentTransactions = [];
+    foreach ($allTransactions as $t) {
+        $id = $t['id_transaction'] ?? null;
+        if ($id !== null && !in_array($id, $seenIds)) {
+            $seenIds[] = $id;
+            $recentTransactions[] = $t;
+        }
+    }
+    $recentTransactions = array_slice($recentTransactions, 0, 10);
+} else {
+    // Récupérer les IDs
+    $transactionIds = array_column($idsResult, 'id_transaction');
+    
+    // Récupérer chaque transaction individuellement par son ID
+    $recentTransactions = [];
+    foreach ($transactionIds as $id) {
+        $transaction = $db->select('transactions', ['id_transaction' => $id]);
+        if (!empty($transaction)) {
+            $recentTransactions[] = $transaction[0];
+        }
+    }
+}
+
+// Enrichir les transactions avec le nom du client et du provider
+foreach ($recentTransactions as &$transaction) {
+    // Récupérer le nom du client
+    if (!empty($transaction['id_compte'])) {
+        $client = $db->select('compte', ['id_compte' => $transaction['id_compte']]);
+        $transaction['client_entreprise'] = !empty($client) ? ($client[0]['entreprise'] ?? '-') : '-';
+        $transaction['client_prenom'] = !empty($client) ? ($client[0]['prenom'] ?? '') : '';
+        $transaction['client_nom'] = !empty($client) ? ($client[0]['nom'] ?? '') : '';
+    } else {
+        $transaction['client_entreprise'] = '-';
+        $transaction['client_prenom'] = '';
+        $transaction['client_nom'] = '';
+    }
+    
+    // Récupérer le nom du provider
+    if (!empty($transaction['id_provider'])) {
+        $provider = $db->select('provider', ['id_provider' => $transaction['id_provider']]);
+        $transaction['provider_nom'] = !empty($provider) ? $provider[0]['nom_providers'] : 'N/A';
+    } else {
+        $transaction['provider_nom'] = 'N/A';
+    }
+    
+    // Formater le type de transaction
+    $transaction['type_label'] = $transaction['type_transaction'] === 'credit' ? 'Crédit' : 'Débit';
+    $transaction['type_icon'] = $transaction['type_transaction'] === 'credit' ? 'fa-arrow-up' : 'fa-arrow-down';
+    $transaction['type_color'] = $transaction['type_transaction'] === 'credit' ? 'text-green-600' : 'text-red-600';
+}
+
+// Calculer les statistiques des transactions
+$totalCreditsTransactions = 0;
+$totalDebitsTransactions = 0;
+foreach ($recentTransactions as $t) {
+    if ($t['type_transaction'] === 'credit') {
+        $totalCreditsTransactions += $t['montant'];
+    } else {
+        $totalDebitsTransactions += $t['montant'];
+    }
+}
 
 ?>
 <!DOCTYPE html>
@@ -290,6 +369,15 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
             margin-top: 4px;
         }
 
+        /* ===== TWO COLUMNS LAYOUT ===== */
+        .two-col-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 24px;
+            width: 100%;
+        }
+
         /* ===== TABLES ===== */
         .table-container {
             background: white;
@@ -297,21 +385,21 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
             border: 1px solid var(--border);
             overflow: hidden;
             width: 100%;
-            margin-bottom: 24px;
+            height: fit-content;
         }
 
         .table-header {
-            padding: 16px 24px;
+            padding: 16px 20px;
             border-bottom: 1px solid var(--border-light);
             display: flex;
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 8px;
         }
 
         .table-header h3 {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
             display: flex;
             align-items: center;
@@ -325,6 +413,15 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
         .table-header h3 .badge-count {
             background: var(--danger-soft-bg);
             color: var(--danger-soft-fg);
+            font-size: 11px;
+            padding: 2px 10px;
+            border-radius: 100px;
+            margin-left: 6px;
+        }
+
+        .table-header h3 .badge-transactions {
+            background: var(--info-soft-bg);
+            color: var(--info-soft-fg);
             font-size: 11px;
             padding: 2px 10px;
             border-radius: 100px;
@@ -359,7 +456,7 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
         }
 
         th {
-            padding: 12px 20px;
+            padding: 10px 16px;
             text-align: left;
             font-size: 11px;
             font-weight: 700;
@@ -370,26 +467,11 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
         }
 
         td {
-            padding: 14px 20px;
-            font-size: 14px;
+            padding: 10px 16px;
+            font-size: 13px;
             border-bottom: 1px solid var(--border-light);
             word-wrap: break-word;
         }
-
-        /* Colonne widths pour la table des derniers comptes */
-        .table-recent th:nth-child(1), .table-recent td:nth-child(1) { width: 25%; }
-        .table-recent th:nth-child(2), .table-recent td:nth-child(2) { width: 20%; }
-        .table-recent th:nth-child(3), .table-recent td:nth-child(3) { width: 15%; }
-        .table-recent th:nth-child(4), .table-recent td:nth-child(4) { width: 12%; }
-        .table-recent th:nth-child(5), .table-recent td:nth-child(5) { width: 13%; }
-        .table-recent th:nth-child(6), .table-recent td:nth-child(6) { width: 15%; }
-
-        /* Colonne widths pour la table des crédits faibles */
-        .table-low-credit th:nth-child(1), .table-low-credit td:nth-child(1) { width: 30%; }
-        .table-low-credit th:nth-child(2), .table-low-credit td:nth-child(2) { width: 20%; }
-        .table-low-credit th:nth-child(3), .table-low-credit td:nth-child(3) { width: 15%; }
-        .table-low-credit th:nth-child(4), .table-low-credit td:nth-child(4) { width: 15%; }
-        .table-low-credit th:nth-child(5), .table-low-credit td:nth-child(5) { width: 20%; }
 
         tr:last-child td { 
             border-bottom: none; 
@@ -462,16 +544,33 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
             color: var(--success-soft-fg);
         }
 
+        .badge-transaction {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .badge-transaction.credit { 
+            background: var(--success-soft-bg); 
+            color: var(--success-soft-fg); 
+        }
+        .badge-transaction.debit { 
+            background: var(--danger-soft-bg); 
+            color: var(--danger-soft-fg); 
+        }
+
         .empty-state {
             text-align: center;
-            padding: 60px 20px;
+            padding: 40px 20px;
             color: var(--muted-2);
         }
 
         .empty-state i {
-            font-size: 48px;
+            font-size: 40px;
             color: var(--border);
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
 
         .credit-warning {
@@ -481,6 +580,28 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
 
         .credit-warning i {
             margin-right: 4px;
+        }
+
+        .transaction-amount-credit {
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        .transaction-amount-debit {
+            color: var(--danger);
+            font-weight: 700;
+        }
+
+        .transaction-type-icon {
+            margin-right: 4px;
+        }
+
+        .text-truncate {
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
         }
 
         /* ===== RESPONSIVE ===== */
@@ -510,6 +631,10 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
             .stat-card .stat-number { 
                 font-size: 24px; 
             }
+            .two-col-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
         }
 
         @media (max-width: 768px) {
@@ -528,6 +653,10 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
             .stats-grid { 
                 grid-template-columns: 1fr; 
             }
+            .two-col-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
             .table-header { 
                 flex-direction: column; 
                 align-items: flex-start; 
@@ -537,24 +666,8 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
             }
             
             th, td { 
-                padding: 10px 14px; 
-                font-size: 13px; 
-            }
-            
-            /* Reset column widths for mobile */
-            .table-recent th:nth-child(1), .table-recent td:nth-child(1),
-            .table-recent th:nth-child(2), .table-recent td:nth-child(2),
-            .table-recent th:nth-child(3), .table-recent td:nth-child(3),
-            .table-recent th:nth-child(4), .table-recent td:nth-child(4),
-            .table-recent th:nth-child(5), .table-recent td:nth-child(5),
-            .table-recent th:nth-child(6), .table-recent td:nth-child(6),
-            .table-low-credit th:nth-child(1), .table-low-credit td:nth-child(1),
-            .table-low-credit th:nth-child(2), .table-low-credit td:nth-child(2),
-            .table-low-credit th:nth-child(3), .table-low-credit td:nth-child(3),
-            .table-low-credit th:nth-child(4), .table-low-credit td:nth-child(4),
-            .table-low-credit th:nth-child(5), .table-low-credit td:nth-child(5) {
-                width: auto;
-                min-width: 80px;
+                padding: 8px 12px; 
+                font-size: 12px; 
             }
         }
 
@@ -629,69 +742,127 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
         </div>
     </div>
 
-    <!-- ===== NOUVEAU: CLIENTS AVEC CRÉDIT FAIBLE ===== -->
-    <div class="table-container">
-        <div class="table-header">
-            <h3>
-                <i class="fas fa-exclamation-triangle" style="color: var(--danger);"></i>
-                Clients avec crédit faible
-                <span class="badge-count"><?= $totalLowCreditClients ?></span>
-            </h3>
-            <a href="?page=admin/clients">Voir tous →</a>
-        </div>
+    <!-- ===== Crédits faibles + Transactions récentes ===== -->
+    <div class="two-col-grid">
 
-        <?php if (empty($lowCreditClients)): ?>
-            <div class="empty-state">
-                <i class="fas fa-check-circle" style="color: var(--success);"></i>
-                <p>Aucun client avec un crédit faible</p>
-                <p style="font-size: 13px; margin-top: 4px;">Tous les clients ont un crédit suffisant</p>
+        <!-- ===== TRANSACTIONS RÉCENTES ===== -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3>
+                    <i class="fas fa-exchange-alt" style="color: var(--info);"></i>
+                    Transactions récentes
+                    <span class="badge-transactions"><?= count($recentTransactions) ?></span>
+                </h3>
+                <a href="?page=admin/transactions" style="display: none;">Voir toutes →</a>
             </div>
-        <?php else: ?>
-            <div class="table-wrapper">
-                <table class="table-low-credit">
-                    <thead>
-                        <tr>
-                            <th>Entreprise</th>
-                            <th>Utilisateur</th>
-                            <th>Crédits</th>
-                            <th>Statut</th>
-                            <th>Dernière activité</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($lowCreditClients as $client): ?>
-                        <tr>
-                            <td>
-                                <strong><?= htmlspecialchars($client['entreprise'] ?? '-') ?></strong>
-                            </td>
-                            <td>
-                                <?= htmlspecialchars($client['prenom'] ?? '') ?> 
-                                <?= htmlspecialchars($client['nom'] ?? '') ?>
-                            </td>
-                            <td>
-                                <span class="credit-warning">
-                                    <i class="fas fa-coins"></i>
-                                    <?= number_format($client['credits_total'] ?? 0, 0, ',', ' ') ?> €
-                                </span>
-                            </td>
-                            <td>
-                                <span class="badge-statut <?= ($client['actif'] ?? 1) ? 'actif' : 'inactif' ?>">
-                                    <?= ($client['actif'] ?? 1) ? 'Actif' : 'Suspendu' ?>
-                                </span>
-                            </td>
-                            <td style="color: var(--muted-2); font-size: 13px;">
-                                <?php 
-                                // Utiliser la date de dernière connexion ou de création
-                                $lastActivity = $client['last_login'] ?? $client['date_creation'] ?? 'now';
-                                echo date('d/m/Y H:i', strtotime($lastActivity));
-                                ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+
+            <?php if (empty($recentTransactions)): ?>
+                <div class="empty-state">
+                    <i class="fas fa-receipt"></i>
+                    <p>Aucune transaction récente</p>
+                    <p style="font-size: 13px; margin-top: 4px;">Les transactions apparaîtront ici</p>
+                </div>
+            <?php else: ?>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 15%;">Date</th>
+                                <th style="width: 20%;">Client</th>
+                                <th style="width: 12%;">Type</th>
+                                <th style="width: 15%;">Montant</th>
+                                <th style="width: 38%;">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($recentTransactions as $transaction): ?>
+                            <tr>
+                                <td style="font-size: 12px; color: var(--muted-2);">
+                                    <?= date('d/m/Y H:i', strtotime($transaction['created_at'])) ?>
+                                </td>
+                                <td>
+                                    <?= htmlspecialchars($transaction['client_entreprise'] ?? '-') ?>
+                                </td>
+                                <td>
+                                    <span class="badge-transaction <?= $transaction['type_transaction'] ?>">
+                                        <i class="fas <?= $transaction['type_icon'] ?>"></i>
+                                        <?= $transaction['type_label'] ?>
+                                    </span>
+                                </td>
+                                <td class="<?= $transaction['type_transaction'] === 'credit' ? 'transaction-amount-credit' : 'transaction-amount-debit' ?>">
+                                    <?= ($transaction['type_transaction'] === 'credit' ? '+' : '-') ?>
+                                    <?= number_format($transaction['montant'], 2) ?> €
+                                </td>
+                                <td style="font-size: 12px; color: var(--muted);">
+                                    <?= htmlspecialchars($transaction['description'] ?? '-') ?>
+                                    <?php if (!empty($transaction['provider_nom']) && $transaction['provider_nom'] !== 'N/A'): ?>
+                                        <br><span style="font-size: 10px; color: var(--muted-2);">Via: <?= htmlspecialchars($transaction['provider_nom']) ?></span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+        
+        <!-- ===== CLIENTS AVEC CRÉDIT FAIBLE ===== -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3>
+                    <i class="fas fa-exclamation-triangle" style="color: var(--danger);"></i>
+                    Clients avec crédit faible
+                    <span class="badge-count"><?= $totalLowCreditClients ?></span>
+                </h3>
+                <a href="?page=admin/clients">Voir tous →</a>
             </div>
-        <?php endif; ?>
+
+            <?php if (empty($lowCreditClients)): ?>
+                <div class="empty-state">
+                    <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                    <p>Aucun client avec un crédit faible</p>
+                    <p style="font-size: 13px; margin-top: 4px;">Tous les clients ont un crédit suffisant</p>
+                </div>
+            <?php else: ?>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 50%;">Entreprise</th>
+                                <th style="width: 25%;">Crédits</th>
+                                <th style="width: 25%;">Statut</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($lowCreditClients as $client): ?>
+                            <tr>
+                                <td>
+                                    <strong><?= htmlspecialchars($client['entreprise'] ?? '-') ?></strong>
+                                    <br>
+                                    <span style="font-size: 11px; color: var(--muted);">
+                                        <?= htmlspecialchars($client['prenom'] ?? '') ?> <?= htmlspecialchars($client['nom'] ?? '') ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="credit-warning">
+                                        <i class="fas fa-coins"></i>
+                                        <?= number_format($client['credits_total'] ?? 0, 0, ',', ' ') ?> €
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge-statut <?= ($client['actif'] ?? 1) ? 'actif' : 'inactif' ?>">
+                                        <?= ($client['actif'] ?? 1) ? 'Actif' : 'Suspendu' ?>
+                                    </span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+        
     </div>
 
     <!-- ===== DERNIERS COMPTES ===== -->
@@ -708,15 +879,15 @@ $totalLowCreditClients = count(array_filter($allClients, function($client) use (
             </div>
         <?php else: ?>
             <div class="table-wrapper">
-                <table class="table-recent">
+                <table>
                     <thead>
                         <tr>
-                            <th>Entreprise</th>
-                            <th>Utilisateur</th>
-                            <th>Crédits</th>
-                            <th>Rôle</th>
-                            <th>Statut</th>
-                            <th>Date</th>
+                            <th style="width: 22%;">Entreprise</th>
+                            <th style="width: 20%;">Utilisateur</th>
+                            <th style="width: 13%;">Crédits</th>
+                            <th style="width: 12%;">Rôle</th>
+                            <th style="width: 13%;">Statut</th>
+                            <th style="width: 20%;">Date</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -355,7 +355,6 @@ function getDefaultListmonkConn() {
     ];
 }
 
-
 /**
  * 🔥 Fonction utilitaire pour extraire un ID client
  * Gère les tableaux, objets et chaînes
@@ -1618,7 +1617,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_serve
                 'wait_timeout' => '5s',
                 'max_msg_retries' => 2,
                 'msg_retry_delay' => '10ms',
-                'est_actif' => false,
+                'est_actif' => true,
                 'created_at' => date('Y-m-d H:i:s')
             ];
             $accountId = $db->insert('email_accounts', $accountData);
@@ -1978,6 +1977,136 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_delete_octopus
 }
 
 // ============================================
+// GESTION DES TRANSACTIONS (AJOUTÉ)
+// ============================================
+
+// --- Récupérer l'historique des transactions (AJAX) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_transactions'])) {
+    if (ob_get_level()) ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        
+        $transactions = $db->select('transactions', ['id_compte' => $clientId], '*', 'created_at DESC');
+        
+        $transactionList = [];
+        foreach ($transactions as $transaction) {
+            $typeLabel = $transaction['type_transaction'] === 'credit' ? 'Crédit' : 'Débit';
+            $typeColor = $transaction['type_transaction'] === 'credit' ? 'text-green-600' : 'text-red-600';
+            $typeIcon = $transaction['type_transaction'] === 'credit' ? 'fa-arrow-up' : 'fa-arrow-down';
+            
+            // Récupérer le nom du provider si présent
+            $providerName = '';
+            if (!empty($transaction['id_provider'])) {
+                $provider = $db->select('provider', ['id_provider' => $transaction['id_provider']]);
+                if (!empty($provider)) {
+                    $providerName = $provider[0]['nom_providers'];
+                }
+            }
+            
+            $transactionList[] = [
+                'id_transaction' => $transaction['id_transaction'],
+                'type' => $transaction['type_transaction'],
+                'type_label' => $typeLabel,
+                'type_color' => $typeColor,
+                'type_icon' => $typeIcon,
+                'montant' => number_format($transaction['montant'], 2),
+                'description' => $transaction['description'] ?? '',
+                'solde_avant' => number_format($transaction['solde_avant'], 2),
+                'solde_apres' => number_format($transaction['solde_apres'], 2),
+                'provider_name' => $providerName,
+                'created_at' => date('d/m/Y H:i', strtotime($transaction['created_at']))
+            ];
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'transactions' => $transactionList,
+            'total' => count($transactionList)
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR get_transactions: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+// ============================================
+// MISE À JOUR DU CRÉDIT AVEC ENREGISTREMENT DE TRANSACTION
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'])) {
+    ob_clean();
+    header('Content-Type: application/json');
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    
+    try {
+        $clientId = extractClientId($_POST['id_compte'] ?? '');
+        $nouveauCredit = floatval($_POST['credit'] ?? 0);
+        
+        if (empty($clientId)) {
+            throw new Exception('ID client invalide');
+        }
+        
+        if ($nouveauCredit < 0) {
+            throw new Exception('Le crédit ne peut pas être négatif');
+        }
+        
+        // Récupérer l'ancien solde
+        $clientActuel = $db->select('compte', ['id_compte' => $clientId]);
+        if (empty($clientActuel)) {
+            throw new Exception('Client non trouvé');
+        }
+        
+        $ancienSolde = floatval($clientActuel[0]['credits_total'] ?? 0);
+        $montantAjoute = $nouveauCredit - $ancienSolde;
+        
+        if ($montantAjoute <= 0) {
+            throw new Exception('Le nouveau crédit doit être supérieur à l\'ancien');
+        }
+        
+        // Mettre à jour le crédit
+        $db->update('compte', ['credits_total' => $nouveauCredit], ['id_compte' => $clientId]);
+        
+        // Enregistrer la transaction
+        $transactionData = [
+            'id_compte' => $clientId,
+            'id_provider' => null, // Pas de provider pour un rechargement
+            'type_transaction' => 'credit',
+            'montant' => $montantAjoute,
+            'description' => 'Recharge manuelle',
+            'solde_avant' => $ancienSolde,
+            'solde_apres' => $nouveauCredit,
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+        
+        $db->insert('transactions', $transactionData);
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Crédit mis à jour avec succès',
+            'credit' => number_format($nouveauCredit, 2),
+            'montant_ajoute' => number_format($montantAjoute, 2)
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("ERREUR mise à jour crédit: " . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================
 // RÉCUPÉRATION DES DONNÉES
 // ============================================
 
@@ -2039,6 +2168,9 @@ foreach ($allProviders as $provider) {
     }
 }
 
+// Récupérer les transactions du client
+$transactions = $db->select('transactions', ['id_compte' => $id], '*', 'created_at DESC');
+
 // ============================================
 // STATISTIQUES
 // ============================================
@@ -2062,6 +2194,17 @@ foreach ($associations as $assoc) {
         $operateursParCanal[$canal] = 0;
     }
     $operateursParCanal[$canal]++;
+}
+
+// Statistiques des transactions
+$totalCredits = 0;
+$totalDebits = 0;
+foreach ($transactions as $transaction) {
+    if ($transaction['type_transaction'] === 'credit') {
+        $totalCredits += $transaction['montant'];
+    } else {
+        $totalDebits += $transaction['montant'];
+    }
 }
 
 // ============================================
@@ -2095,42 +2238,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_toggle_status'
         
     } catch (Exception $e) {
         error_log("ERREUR changement statut: " . $e->getMessage());
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-    }
-    exit;
-}
-
-// --- Mise à jour du crédit (AJAX) ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'])) {
-    ob_clean();
-    header('Content-Type: application/json');
-    error_reporting(0);
-    ini_set('display_errors', 0);
-    
-    try {
-         $clientId = extractClientId($_POST['id_compte'] ?? '');
-        $nouveauCredit = floatval($_POST['credit'] ?? 0);
-        
-        if (empty($clientId)) {
-            echo json_encode(['success' => false, 'error' => 'ID client invalide']);
-            exit;
-        }
-        
-        if ($nouveauCredit < 0) {
-            echo json_encode(['success' => false, 'error' => 'Le crédit ne peut pas être négatif']);
-            exit;
-        }
-        
-        $db->update('compte', ['credits_total' => $nouveauCredit], ['id_compte' => $clientId]);
-        
-        echo json_encode([
-            'success' => true, 
-            'message' => 'Crédit mis à jour avec succès',
-            'credit' => number_format($nouveauCredit, 2)
-        ]);
-        
-    } catch (Exception $e) {
-        error_log("ERREUR mise à jour crédit: " . $e->getMessage());
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
@@ -3138,6 +3245,98 @@ $initials = getInitials($client['prenom'], $client['nom']);
             max-width: 420px;
             width: 90%;
         }
+
+        /* Styles pour l'historique des transactions */
+        .transaction-row {
+            transition: all 0.2s;
+        }
+        .transaction-row:hover {
+            background: #f8fafc;
+        }
+        .transaction-row .montant-credit {
+            color: #16a34a;
+            font-weight: 600;
+        }
+        .transaction-row .montant-debit {
+            color: #dc2626;
+            font-weight: 600;
+        }
+        .transaction-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .transaction-type-badge.credit {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .transaction-type-badge.debit {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .transaction-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
+        .transaction-summary .summary-item {
+            text-align: center;
+        }
+        .transaction-summary .summary-item .value {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .transaction-summary .summary-item .label {
+            font-size: 11px;
+            color: #6b7280;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .transaction-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .transaction-list table {
+            width: 100%;
+            font-size: 13px;
+        }
+        .transaction-list table th {
+            text-align: left;
+            padding: 8px 10px;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #6b7280;
+            font-weight: 600;
+            background: #f8fafc;
+            position: sticky;
+            top: 0;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .transaction-list table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .transaction-list table tr:last-child td {
+            border-bottom: none;
+        }
+        .empty-transactions {
+            text-align: center;
+            padding: 30px 20px;
+            color: #9ca3af;
+        }
+        .empty-transactions i {
+            font-size: 32px;
+            margin-bottom: 10px;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -3765,7 +3964,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
 <!-- ============================================ -->
 <div class="p-6">
 
-    <div class="mb-6">
+<div class="mb-6">
         <a href="?page=admin/clients" class="btn-back">
             <i class="fas fa-arrow-left"></i> Retour aux clients
         </a>
@@ -3931,7 +4130,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
         </div>
     </div>
 
-    <div class="info-card">
+    <div class="info-card mb-6">
         <div class="info-card-header">
             <span class="title"><i class="fas fa-link mr-2 text-gray-400"></i>Opérateurs & tarifs</span>
             <button onclick="openAssociateModal()" class="btn-action-purple">
@@ -4027,16 +4226,80 @@ $initials = getInitials($client['prenom'], $client['nom']);
         </div>
     </div>
 
-    <div>
-        <div class="info-card">
-            <div class="info-card-header">
-                <span class="title"><i class="fas fa-scroll mr-2 text-gray-400"></i>Historique des transactions</span>
-            </div>
-
-            <div class="p-4">
-                (Fonctionnalité à implémenter)
-            </div>
-
+    <!-- ============================================ -->
+    <!-- HISTORIQUE DES TRANSACTIONS -->
+    <!-- ============================================ -->
+    <div class="info-card">
+        <div class="info-card-header">
+            <span class="title"><i class="fas fa-scroll mr-2 text-gray-400"></i>Historique des transactions</span>
+            <button onclick="refreshTransactions()" class="btn-sm btn-sm-info">
+                <i class="fas fa-sync-alt"></i> Rafraîchir
+            </button>
+        </div>
+        <div class="p-4" id="transactionsContainer">
+            <?php if (empty($transactions)): ?>
+                <div class="empty-transactions">
+                    <i class="fas fa-coins"></i>
+                    <p>Aucune transaction enregistrée</p>
+                    <p class="text-sm mt-1">Les rechargements de crédit apparaîtront ici</p>
+                </div>
+            <?php else: ?>
+                <!-- Résumé des transactions -->
+                <div class="transaction-summary">
+                    <div class="summary-item">
+                        <div class="value text-gray-800"><?= count($transactions) ?></div>
+                        <div class="label">Total transactions</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value text-green-600">+<?= number_format($totalCredits, 2) ?> €</div>
+                        <div class="label">Crédits</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value text-red-600">-<?= number_format($totalDebits, 2) ?> €</div>
+                        <div class="label">Débits</div>
+                    </div>
+                </div>
+                
+                <!-- Liste des transactions -->
+                <div class="transaction-list">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Montant</th>
+                                <th>Solde avant</th>
+                                <th>Solde après</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($transactions as $transaction): ?>
+                                <?php 
+                                $isCredit = $transaction['type_transaction'] === 'credit';
+                                $typeLabel = $isCredit ? 'Crédit' : 'Débit';
+                                $typeClass = $isCredit ? 'credit' : 'debit';
+                                $montantClass = $isCredit ? 'montant-credit' : 'montant-debit';
+                                $montantDisplay = ($isCredit ? '+' : '-') . number_format($transaction['montant'], 2) . ' €';
+                                ?>
+                                <tr class="transaction-row">
+                                    <td class="text-gray-600"><?= date('d/m/Y H:i', strtotime($transaction['created_at'])) ?></td>
+                                    <td>
+                                        <span class="transaction-type-badge <?= $typeClass ?>">
+                                            <i class="fas <?= $isCredit ? 'fa-arrow-up' : 'fa-arrow-down' ?>"></i>
+                                            <?= $typeLabel ?>
+                                        </span>
+                                    </td>
+                                    <td class="<?= $montantClass ?>"><?= $montantDisplay ?></td>
+                                    <td><?= number_format($transaction['solde_avant'], 2) ?> €</td>
+                                    <td><?= number_format($transaction['solde_apres'], 2) ?> €</td>
+                                    <td class="text-gray-600 text-sm"><?= htmlspecialchars($transaction['description'] ?? '') ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -4202,12 +4465,153 @@ async function confirmRecharge() {
             });
             
             closeRechargeModal();
+            
+            // Rafraîchir l'historique des transactions
+            refreshTransactions();
+            
         } else {
             showToast(result.error || 'Erreur lors du rechargement', 'error');
         }
     } catch (error) {
         console.error('Erreur:', error);
         showToast('Erreur réseau: ' + error.message, 'error');
+    }
+}
+
+// ============================================
+// HISTORIQUE DES TRANSACTIONS
+// ============================================
+async function refreshTransactions() {
+    const container = document.getElementById('transactionsContainer');
+    
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
+            <p class="text-gray-500 mt-2">Chargement des transactions...</p>
+        </div>
+    `;
+    
+    try {
+        const formData = new FormData();
+        formData.append('action_get_transactions', '1');
+        formData.append('id_compte', clientId);
+        
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            if (result.transactions.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-transactions">
+                        <i class="fas fa-coins"></i>
+                        <p>Aucune transaction enregistrée</p>
+                        <p class="text-sm mt-1">Les rechargements de crédit apparaîtront ici</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Calculer les totaux
+            let totalCredits = 0;
+            let totalDebits = 0;
+            result.transactions.forEach(t => {
+                if (t.type === 'credit') {
+                    totalCredits += parseFloat(t.montant);
+                } else {
+                    totalDebits += parseFloat(t.montant);
+                }
+            });
+            
+            let html = `
+                <!-- Résumé des transactions -->
+                <div class="transaction-summary">
+                    <div class="summary-item">
+                        <div class="value text-gray-800">${result.transactions.length}</div>
+                        <div class="label">Total transactions</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value text-green-600">+${totalCredits.toFixed(2)} €</div>
+                        <div class="label">Crédits</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="value text-red-600">-${totalDebits.toFixed(2)} €</div>
+                        <div class="label">Débits</div>
+                    </div>
+                </div>
+                
+                <!-- Liste des transactions -->
+                <div class="transaction-list">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Montant</th>
+                                <th>Solde avant</th>
+                                <th>Solde après</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            result.transactions.forEach(t => {
+                const isCredit = t.type === 'credit';
+                const typeClass = isCredit ? 'credit' : 'debit';
+                const montantClass = isCredit ? 'montant-credit' : 'montant-debit';
+                const montantDisplay = (isCredit ? '+' : '-') + t.montant + ' €';
+                
+                html += `
+                    <tr class="transaction-row">
+                        <td class="text-gray-600">${t.created_at}</td>
+                        <td>
+                            <span class="transaction-type-badge ${typeClass}">
+                                <i class="fas ${isCredit ? 'fa-arrow-up' : 'fa-arrow-down'}"></i>
+                                ${t.type_label}
+                            </span>
+                        </td>
+                        <td class="${montantClass}">${montantDisplay}</td>
+                        <td>${t.solde_avant} €</td>
+                        <td>${t.solde_apres} €</td>
+                        <td class="text-gray-600 text-sm">${escapeHtml(t.description)}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            container.innerHTML = html;
+            
+        } else {
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="fas fa-exclamation-circle text-3xl text-red-500"></i>
+                    <p class="text-gray-600 mt-2">Erreur: ${escapeHtml(result.error || 'Impossible de charger les transactions')}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        container.innerHTML = `
+            <div class="text-center py-8">
+                <i class="fas fa-exclamation-circle text-3xl text-red-500"></i>
+                <p class="text-gray-600 mt-2">Erreur réseau: ${escapeHtml(error.message)}</p>
+            </div>
+        `;
     }
 }
 
@@ -4807,7 +5211,7 @@ document.getElementById('tarifForm')?.addEventListener('submit', async function(
                         if (price !== currentDefaultPrice) {
                             const indicator = document.createElement('span');
                             indicator.className = 'tarif-indicator';
-                            indicator.textContent = '*';
+                            indicator.textContent = ' /envoi';
                             cell.appendChild(indicator);
                             cell.classList.add('personnalise');
                         } else {
