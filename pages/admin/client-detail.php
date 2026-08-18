@@ -649,7 +649,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_client_
                 'success' => true,
                 'message' => 'Tarif mis à jour avec succès',
                 'action' => $action,
-                'prix' => number_format($nouveauPrix, 2)
+                'prix' => number_format($nouveauPrix, 3)
             ]);
         } else {
             throw new Exception('Erreur lors de la mise à jour du tarif');
@@ -2016,10 +2016,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_transactio
                 'type_label' => $typeLabel,
                 'type_color' => $typeColor,
                 'type_icon' => $typeIcon,
-                'montant' => number_format($transaction['montant'], 2),
+                'montant' => number_format($transaction['montant'], 3),
                 'description' => $transaction['description'] ?? '',
-                'solde_avant' => number_format($transaction['solde_avant'], 2),
-                'solde_apres' => number_format($transaction['solde_apres'], 2),
+                'solde_avant' => number_format($transaction['solde_avant'], 3),
+                'solde_apres' => number_format($transaction['solde_apres'], 3),
                 'provider_name' => $providerName,
                 'created_at' => date('d/m/Y H:i', strtotime($transaction['created_at']))
             ];
@@ -2095,8 +2095,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'
         echo json_encode([
             'success' => true, 
             'message' => 'Crédit mis à jour avec succès',
-            'credit' => number_format($nouveauCredit, 2),
-            'montant_ajoute' => number_format($montantAjoute, 2)
+            'credit' => number_format($nouveauCredit, 3),
+            'montant_ajoute' => number_format($montantAjoute, 3)
         ]);
         
     } catch (Exception $e) {
@@ -3355,7 +3355,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
         </div>
         
         <div class="mb-4">
-            <p class="text-sm text-gray-600">Solde actuel : <strong><?= number_format($client['credits_total'] ?? 0, 2) ?> €</strong></p>
+            <p class="text-sm text-gray-600">Solde actuel : <strong><?= number_format($client['credits_total'] ?? 0, 3) ?> €</strong></p>
         </div>
         
         <div>
@@ -4013,7 +4013,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
     <div class="stats-grid">
         <div class="stat-item" id="creditStatItem">
             <div class="stat-label">Solde crédit</div>
-            <div class="stat-number" id="creditStatDisplay"><?= number_format($client['credits_total'] ?? 0, 2) ?> €</div>
+            <div class="stat-number" id="creditStatDisplay"><?= number_format($client['credits_total'] ?? 0, 3) ?> €</div>
         </div>
         <div class="stat-item">
             <div class="stat-label">Opérateurs associés</div>
@@ -4188,7 +4188,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
                                         <span class="tarif-cell <?= $isPersonnalise ? 'personnalise' : '' ?>"
                                               style="<?= $isPersonnalise ? 'text-decoration: underline dotted; text-underline-offset: 6px;' : '' ?>"
                                               onclick="openTarifModal(<?= $assoc['id_provider'] ?>, '<?= htmlspecialchars($assoc['nom_providers']) ?>', <?= $assoc['tarif_par_defaut'] ?>, <?= $assoc['tarif'] ?>, <?= $assoc['a_tarif_personnalise'] ? 'true' : 'false' ?>)">
-                                            <?= number_format($tarif, 2) ?>€
+                                            <?= number_format($tarif, 3) ?>€
 
                                             <?php if ($isPersonnalise): ?>
                                                 <span class="tarif-indicator">/envoi</span>
@@ -4251,11 +4251,11 @@ $initials = getInitials($client['prenom'], $client['nom']);
                         <div class="label">Total transactions</div>
                     </div>
                     <div class="summary-item">
-                        <div class="value text-green-600">+<?= number_format($totalCredits, 2) ?> €</div>
+                        <div class="value text-green-600">+<?= number_format($totalCredits, 3) ?> €</div>
                         <div class="label">Crédits</div>
                     </div>
                     <div class="summary-item">
-                        <div class="value text-red-600">-<?= number_format($totalDebits, 2) ?> €</div>
+                        <div class="value text-red-600">-<?= number_format($totalDebits, 3) ?> €</div>
                         <div class="label">Débits</div>
                     </div>
                 </div>
@@ -4280,7 +4280,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
                                 $typeLabel = $isCredit ? 'Crédit' : 'Débit';
                                 $typeClass = $isCredit ? 'credit' : 'debit';
                                 $montantClass = $isCredit ? 'montant-credit' : 'montant-debit';
-                                $montantDisplay = ($isCredit ? '+' : '-') . number_format($transaction['montant'], 2) . ' €';
+                                $montantDisplay = ($isCredit ? '+' : '-') . number_format($transaction['montant'], 3) . ' €';
                                 ?>
                                 <tr class="transaction-row">
                                     <td class="text-gray-600"><?= date('d/m/Y H:i', strtotime($transaction['created_at'])) ?></td>
@@ -4291,8 +4291,8 @@ $initials = getInitials($client['prenom'], $client['nom']);
                                         </span>
                                     </td>
                                     <td class="<?= $montantClass ?>"><?= $montantDisplay ?></td>
-                                    <td><?= number_format($transaction['solde_avant'], 2) ?> €</td>
-                                    <td><?= number_format($transaction['solde_apres'], 2) ?> €</td>
+                                    <td><?= number_format($transaction['solde_avant'], 3) ?> €</td>
+                                    <td><?= number_format($transaction['solde_apres'], 3) ?> €</td>
                                     <td class="text-gray-600 text-sm"><?= htmlspecialchars($transaction['description'] ?? '') ?></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -4540,11 +4540,11 @@ async function refreshTransactions() {
                         <div class="label">Total transactions</div>
                     </div>
                     <div class="summary-item">
-                        <div class="value text-green-600">+${totalCredits.toFixed(2)} €</div>
+                        <div class="value text-green-600">+${totalCredits.toFixed(3)} €</div>
                         <div class="label">Crédits</div>
                     </div>
                     <div class="summary-item">
-                        <div class="value text-red-600">-${totalDebits.toFixed(2)} €</div>
+                        <div class="value text-red-600">-${totalDebits.toFixed(3)} €</div>
                         <div class="label">Débits</div>
                     </div>
                 </div>
@@ -4840,7 +4840,7 @@ async function confirmAssociate() {
                     </td>
                     <td class="py-3 px-4">
                         <span class="tarif-cell" onclick="openTarifModal(${assoc.id_provider}, '${escapeHtml(assoc.nom_providers || '')}', ${tarif}, ${tarif}, false)">
-                            ${tarif.toFixed(2)} €
+                            ${tarif.toFixed(3)} €
                             <i class="fas fa-edit"></i>
                         </span>
                     </td>
@@ -5138,7 +5138,7 @@ async function toggleProviderStatus(idClientProvider, newStatus) {
 function openTarifModal(providerId, providerName, defaultPrice, currentPrice, isPersonnalise) {
     document.getElementById('tarifProviderId').value = providerId;
     document.getElementById('tarifProviderName').textContent = providerName;
-    document.getElementById('tarifDefaultPrice').textContent = defaultPrice.toFixed(2) + ' €';
+    document.getElementById('tarifDefaultPrice').textContent = defaultPrice.toFixed(3) + ' €';
     
     // Si le tarif est personnalisé, afficher la valeur actuelle
     if (isPersonnalise && currentPrice !== defaultPrice) {
@@ -5201,7 +5201,7 @@ document.getElementById('tarifForm')?.addEventListener('submit', async function(
                     const onclickAttr = cell.getAttribute('onclick');
                     if (onclickAttr && onclickAttr.includes(`openTarifModal(${providerId},`)) {
                         const currentDefaultPrice = parseFloat(cell.textContent.trim()) || 0;
-                        cell.textContent = price.toFixed(2) + ' € ';
+                        cell.textContent = price.toFixed(3) + ' € ';
                         // Réajouter l'icône et l'indicateur
                         const editIcon = document.createElement('i');
                         editIcon.className = 'fas fa-edit';

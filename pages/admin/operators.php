@@ -13,31 +13,26 @@ $idCompte = $_SESSION['user_id'];
 // ============================================
 // MAPPING FOURNISSEUR -> TABLE DE SESSIONS
 // ============================================
-// Chaque fournisseur stocke ses sessions/connexions clients dans une table
-// dédiée. La colonne id_compte de cette table indique quel client (compte)
-// utilise cet opérateur. On s'en sert pour compter les clients associés.
 function getFournisseurTableMap()
 {
     return [
         'octopush'         => 'octopush_config',
         'waha'             => 'whatsapp_sessions',
         'sms api gateway'  => 'sms_appareils',
-        'listmonk'          => 'email_accounts',
+        'listmonk'         => 'email_accounts',
     ];
 }
 
-// Liste des fournisseurs proposés dans le formulaire (clé => libellé affiché)
 function getFournisseursDisponibles()
 {
     return [
         'Octopush'        => 'Octopush (SMS)',
         'WAHA'            => 'WAHA (WhatsApp)',
         'SMS API Gateway' => 'SMS API Gateway (SMS)',
-        'Listmonk'         => 'Listmonk (Email)',
+        'Listmonk'        => 'Listmonk (Email)',
     ];
 }
 
-// Résout le nom de table de sessions correspondant à un fournisseur donné
 function resolveFournisseurTable($fournisseur)
 {
     $map = getFournisseurTableMap();
@@ -45,8 +40,6 @@ function resolveFournisseurTable($fournisseur)
     return $map[$key] ?? null;
 }
 
-// Compte le nombre de comptes clients (id_compte) distincts présents
-// dans la table de sessions correspondant au fournisseur de l'opérateur.
 function countClientsForProvider($db, $fournisseur)
 {
     $table = resolveFournisseurTable($fournisseur);
@@ -75,11 +68,10 @@ function countClientsForProvider($db, $fournisseur)
 // TRAITEMENT DES ACTIONS
 // ============================================
 
-// Suppression d'un provider (via GET) - Gardé pour compatibilité
+// Suppression d'un provider (via GET)
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
     $providerId = (int)$_GET['id'];
 
-    // Vérifier que le provider appartient au compte
     $provider = $db->select('provider', [
         'id_provider' => $providerId,
         'id_compte' => $idCompte
@@ -149,7 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $nom = trim($_POST['nom'] ?? '');
         $canal = trim($_POST['canal'] ?? '');
         $fournisseur = trim($_POST['fournisseur'] ?? '');
-        $tarif = floatval($_POST['tarif'] ?? 0);
+        // ===== CORRECTION : Formatage à 3 décimales =====
+        $tarifRaw = $_POST['tarif'] ?? 0;
+        $tarif = number_format((float)$tarifRaw, 3, '.', '');
         $idCompte = $_SESSION['user_id'];
 
         // Validation
@@ -181,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             'description' => $fournisseur,
             'id_type_message' => $canal,
             'id_compte' => $idCompte,
-            'tarif' => $tarif,
+            'tarif' => $tarif, // 3 décimales
             'statut' => 'actif',
             'created_at' => date('Y-m-d H:i:s')
         ];
@@ -221,7 +215,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $nom = trim($_POST['nom'] ?? '');
         $canal = trim($_POST['canal'] ?? '');
         $fournisseur = trim($_POST['fournisseur'] ?? '');
-        $tarif = floatval($_POST['tarif'] ?? 0);
+        // ===== CORRECTION : Formatage à 3 décimales =====
+        $tarifRaw = $_POST['tarif'] ?? 0;
+        $tarif = number_format((float)$tarifRaw, 3, '.', '');
         $idCompte = $_SESSION['user_id'];
 
         // Validation
@@ -262,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             'nom_providers' => $nom,
             'description' => $fournisseur,
             'id_type_message' => $canal,
-            'tarif' => $tarif
+            'tarif' => $tarif // 3 décimales
         ];
 
         $result = $db->update('provider', $providerData, [
@@ -292,14 +288,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // RÉCUPÉRATION DES DONNÉES
 // ============================================
 
-// Récupérer tous les providers du compte
 $providers = $db->select('provider', ['id_compte' => $idCompte], '*', 'created_at DESC');
-
-// Récupérer tous les types de messages (canaux) avec libelle_type
 $typeMessages = $db->select('type_message', [], '*', 'libelle_type ASC');
 
-// Pour chaque provider, calculer le nombre de clients connectés
-// (comptes distincts trouvés dans la table de sessions du fournisseur)
 foreach ($providers as &$provider) {
     $provider['nb_clients'] = countClientsForProvider($db, $provider['description']);
 }
@@ -380,7 +371,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             width: 100%;
         }
 
-        /* ===== TOAST ===== */
         .toast-container {
             position: fixed;
             top: 20px;
@@ -412,7 +402,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         @keyframes slideInRight { from { transform: translateX(110%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes slideOutRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(110%); opacity: 0; } }
 
-        /* ===== HEADER ===== */
         .page-header {
             display: flex;
             align-items: center;
@@ -476,7 +465,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
 
         .btn-primary:hover { background: var(--accent-dark); }
 
-        /* ===== STATS ===== */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -512,7 +500,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             margin-top: 4px;
         }
 
-        /* ===== TABLE (grid) ===== */
         .table-container {
             background: white;
             border-radius: 16px;
@@ -684,7 +671,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-size: 15px;
         }
 
-        /* ===== MODAL ===== */
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -848,11 +834,8 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-danger:hover:not(:disabled) { opacity: 0.9; }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 1400px) {
-            .container { 
-                padding: 20px 24px; 
-            }
+            .container { padding: 20px 24px; }
             .grid-row { 
                 grid-template-columns: 1.6fr 0.9fr 1.2fr 0.9fr 0.7fr 0.7fr 0.5fr 0.5fr; 
                 gap: 10px;
@@ -860,103 +843,44 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         }
 
         @media (max-width: 1200px) {
-            .container { 
-                padding: 20px; 
-            }
+            .container { padding: 20px; }
             .grid-row { 
                 grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 0.6fr 0.6fr 0.4fr 0.4fr; 
                 gap: 8px;
             }
-            .grid-head { 
-                padding: 12px 16px; 
-                font-size: 10px;
-            }
-            .grid-body-row { 
-                padding: 14px 16px; 
-                font-size: 13px;
-            }
-            .op-name { 
-                font-size: 14px; 
-            }
-            .search-input { 
-                width: 260px; 
-            }
+            .grid-head { padding: 12px 16px; font-size: 10px; }
+            .grid-body-row { padding: 14px 16px; font-size: 13px; }
+            .op-name { font-size: 14px; }
+            .search-input { width: 260px; }
         }
 
         @media (max-width: 900px) {
-            .container { 
-                padding: 16px; 
-            }
-            .stats-grid { 
-                grid-template-columns: 1fr 1fr; 
-            }
+            .container { padding: 16px; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
             .grid-row { 
                 grid-template-columns: 1.2fr 0.7fr 0.9fr 0.7fr 0.5fr 0.5fr 0.3fr 0.3fr; 
                 gap: 6px;
                 font-size: 12px;
             }
-            .grid-head { 
-                padding: 10px 12px; 
-                font-size: 9px;
-            }
-            .grid-body-row { 
-                padding: 12px 12px; 
-                font-size: 12px;
-            }
-            .op-name { 
-                font-size: 13px; 
-            }
-            .search-input { 
-                width: 200px; 
-            }
-            .header-actions { 
-                width: 100%; 
-            }
-            .btn-primary { 
-                flex: 1; 
-                justify-content: center;
-            }
-            .badge-canal { 
-                font-size: 10px; 
-                padding: 3px 10px;
-            }
-            .badge-statut { 
-                font-size: 10px; 
-                padding: 3px 10px;
-            }
-            .btn-remove { 
-                font-size: 16px; 
-                width: 28px;
-                height: 28px;
-            }
+            .grid-head { padding: 10px 12px; font-size: 9px; }
+            .grid-body-row { padding: 12px 12px; font-size: 12px; }
+            .op-name { font-size: 13px; }
+            .search-input { width: 200px; }
+            .header-actions { width: 100%; }
+            .btn-primary { flex: 1; justify-content: center; }
+            .badge-canal { font-size: 10px; padding: 3px 10px; }
+            .badge-statut { font-size: 10px; padding: 3px 10px; }
+            .btn-remove { font-size: 16px; width: 28px; height: 28px; }
         }
 
         @media (max-width: 640px) {
-            .container { 
-                padding: 12px; 
-            }
-            .page-header { 
-                flex-direction: column; 
-                align-items: flex-start; 
-            }
-            .header-actions { 
-                flex-direction: column; 
-                width: 100%;
-            }
-            .search-input { 
-                width: 100%; 
-                min-width: 0;
-            }
-            .btn-primary { 
-                width: 100%; 
-                justify-content: center;
-            }
-            .stats-grid { 
-                grid-template-columns: 1fr; 
-            }
-            .stat-card .stat-number { 
-                font-size: 26px; 
-            }
+            .container { padding: 12px; }
+            .page-header { flex-direction: column; align-items: flex-start; }
+            .header-actions { flex-direction: column; width: 100%; }
+            .search-input { width: 100%; min-width: 0; }
+            .btn-primary { width: 100%; justify-content: center; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .stat-card .stat-number { font-size: 26px; }
             .grid-row { 
                 grid-template-columns: repeat(8, minmax(90px, 1fr)); 
                 width: max-content; 
@@ -964,37 +888,19 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                 gap: 8px;
                 font-size: 12px;
             }
-            .grid-head { 
-                padding: 10px 12px; 
-                font-size: 9px;
-            }
-            .grid-body-row { 
-                padding: 10px 12px; 
-                font-size: 11px;
-            }
-            .op-name { 
-                font-size: 12px; 
-            }
-            .btn-voir { 
-                font-size: 11px; 
-            }
-            .modal { 
-                max-width: 100%; 
-                margin: 10px; 
-            }
-            .modal-header, .modal-body, .modal-footer { 
-                padding: 16px 20px; 
-            }
-            .modal-header h3 { 
-                font-size: 17px; 
-            }
+            .grid-head { padding: 10px 12px; font-size: 9px; }
+            .grid-body-row { padding: 10px 12px; font-size: 11px; }
+            .op-name { font-size: 12px; }
+            .btn-voir { font-size: 11px; }
+            .modal { max-width: 100%; margin: 10px; }
+            .modal-header, .modal-body, .modal-footer { padding: 16px 20px; }
+            .modal-header h3 { font-size: 17px; }
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- ===== HEADER ===== -->
     <div class="page-header">
         <div>
             <div class="title"> Opérateurs</div>
@@ -1008,7 +914,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         </div>
     </div>
 
-    <!-- ===== TABLE ===== -->
     <div class="table-container">
         <?php if (empty($providers)): ?>
             <div class="empty-state">
@@ -1042,7 +947,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
 
                     $nbClients = (int)$provider['nb_clients'];
                     
-                    // Récupérer le statut depuis la base, avec fallback 'actif'
                     $statut = isset($provider['statut']) ? $provider['statut'] : 'actif';
                     $isActif = ($statut === 'actif');
 
@@ -1058,7 +962,8 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                         <div class="op-fournisseur" title="<?= htmlspecialchars($provider['description']) ?>">
                             <?= htmlspecialchars($provider['description']) ?>
                         </div>
-                        <div class="tarif-value"><?= number_format($provider['tarif'], 2, ',', ' ') ?> €</div>
+                        <!-- ===== AFFICHAGE À 3 DÉCIMALES ===== -->
+                        <div class="tarif-value"><?= number_format($provider['tarif'], 3, ',', ' ') ?> €</div>
                         <div class="client-count"><?= $nbClients ?></div>
                         <div>
                             <span class="badge-statut <?= $isActif ? 'actif' : 'inactif' ?>">
@@ -1132,6 +1037,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
 
                 <div class="form-group">
                     <label for="tarif">Tarif <span class="required">*</span></label>
+                    <!-- ===== INPUT AVEC 3 DÉCIMALES ===== -->
                     <input type="number" id="tarif" name="tarif" placeholder="0.000" step="0.001" min="0" required>
                     <div class="helper">Coût par message (en euros)</div>
                 </div>
@@ -1182,9 +1088,6 @@ $fournisseursDisponibles = getFournisseursDisponibles();
 <div id="toastContainer" class="toast-container"></div>
 
 <script>
-// ============================================
-// RECHERCHE
-// ============================================
 function filterOperators() {
     const q = document.getElementById('operatorSearch').value.trim().toLowerCase();
     document.querySelectorAll('#operatorsList .grid-body-row').forEach(row => {
@@ -1193,9 +1096,6 @@ function filterOperators() {
     });
 }
 
-// ============================================
-// TOASTS
-// ============================================
 function showToast(message, type = 'success') {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
@@ -1216,9 +1116,6 @@ function showToast(message, type = 'success') {
     }, 4000);
 }
 
-// ============================================
-// MODAL CRÉATION / ÉDITION
-// ============================================
 function openCreateModal() {
     document.getElementById('modalTitle').textContent = 'Nouvel opérateur';
     document.getElementById('submitBtnText').textContent = "Créer l'opérateur";
@@ -1238,7 +1135,8 @@ function editProvider(provider) {
     document.getElementById('nom').value = provider.nom_providers;
     document.getElementById('canal').value = provider.id_type_message;
     document.getElementById('fournisseur').value = provider.description;
-    document.getElementById('tarif').value = provider.tarif;
+    // ===== AFFICHAGE À 3 DÉCIMALES DANS LE FORMULAIRE =====
+    document.getElementById('tarif').value = parseFloat(provider.tarif).toFixed(3);
     document.getElementById('providerModal').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
@@ -1248,9 +1146,6 @@ function closeModal() {
     document.body.style.overflow = '';
 }
 
-// ============================================
-// MODAL SUPPRESSION
-// ============================================
 function openDeleteModal(id, name) {
     document.getElementById('deleteProviderId').value = id;
     document.getElementById('deleteProviderName').textContent = name;
@@ -1306,9 +1201,6 @@ async function confirmDelete() {
     }
 }
 
-// ============================================
-// SOUMISSION DU FORMULAIRE
-// ============================================
 async function submitProvider(event) {
     event.preventDefault();
 
@@ -1351,9 +1243,6 @@ async function submitProvider(event) {
     }
 }
 
-// ============================================
-// FERMETURE DES MODALS
-// ============================================
 document.getElementById('providerModal').addEventListener('click', function (e) {
     if (e.target === this) closeModal();
 });
@@ -1366,9 +1255,6 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { closeModal(); closeDeleteModal(); }
 });
 
-// ============================================
-// FLASH MESSAGES
-// ============================================
 <?php if (isset($_SESSION['flash_success'])): ?>
     showToast('<?= addslashes($_SESSION['flash_success']) ?>', 'success');
     <?php unset($_SESSION['flash_success']); ?>
