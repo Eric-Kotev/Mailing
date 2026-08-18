@@ -295,8 +295,7 @@ function getStatut($user) {
 function getRoleLabel($role) {
     $roles = [
         'admin' => 'Admin',
-        'manager' => 'Manager',
-        'user' => 'Utilisateur'
+        'user' => 'client'
     ];
     return $roles[$role] ?? $role;
 }
@@ -304,7 +303,6 @@ function getRoleLabel($role) {
 function getRoleClass($role) {
     $classes = [
         'admin' => 'role-admin',
-        'manager' => 'role-manager',
         'user' => 'role-user'
     ];
     return $classes[$role] ?? '';
@@ -727,8 +725,7 @@ unset($_SESSION['flash_type']);
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
                         <select name="role" id="add_role" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500">
-                            <option value="user">Utilisateur</option>
-                            <option value="manager">Manager</option>
+                            <option value="client">Client</option>
                             <option value="admin">Admin</option>
                         </select>
                     </div>
@@ -812,8 +809,7 @@ unset($_SESSION['flash_type']);
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
                         <select name="role" id="edit_role" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                            <option value="user">Utilisateur</option>
-                            <option value="manager">Manager</option>
+                            <option value="client">Client</option>
                             <option value="admin">Admin</option>
                         </select>
                     </div>
