@@ -1132,7 +1132,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
 
                 <div class="form-group">
                     <label for="tarif">Tarif <span class="required">*</span></label>
-                    <input type="number" id="tarif" name="tarif" placeholder="0.00" step="0.01" min="0" required>
+                    <input type="number" id="tarif" name="tarif" placeholder="0.000" step="0.001" min="0" required>
                     <div class="helper">Coût par message (en euros)</div>
                 </div>
             </div>
