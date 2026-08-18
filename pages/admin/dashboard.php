@@ -698,7 +698,7 @@ foreach ($recentTransactions as $t) {
         </div>
         <div class="date">
             <i class="fas fa-calendar-alt"></i>
-            <?= date('d/m/Y H:i') ?>
+            <?= date('d/m/Y') ?>
         </div>
     </div>
 
