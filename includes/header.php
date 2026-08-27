@@ -61,7 +61,7 @@ if ($userId) {
         <div class="flex items-center space-x-4">
             <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
                 <i class="fas fa-coins mr-1"></i>
-                <?= number_format($credits, 2) ?> €
+                <?= number_format($credits, 3) ?> €
             </div>
 
             <?php if (!empty($userLogo)): ?>

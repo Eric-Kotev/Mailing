@@ -58,7 +58,6 @@ function getTypeCampagne($type) {
                     <i class="fas fa-address-book text-blue-600 text-xl"></i>
                 </div>
             </div>
-            <a href="index.php?page=contacts/index" class="text-blue-600 text-sm mt-2 inline-block">Gérer →</a>
         </div>
 
         <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
@@ -71,20 +70,18 @@ function getTypeCampagne($type) {
                     <i class="fas fa-list text-green-600 text-xl"></i>
                 </div>
             </div>
-            <a href="index.php?page=listes/index" class="text-green-600 text-sm mt-2 inline-block">Gérer →</a>
         </div>
 
         <div class="bg-white rounded-lg shadow p-6 border-l-4 border-yellow-500">
             <div class="flex justify-between items-start">
                 <div>
                     <p class="text-gray-500 text-sm">Crédits disponibles</p>
-                    <p class="text-3xl font-bold text-gray-800"><?= number_format($credits, 2) ?> €</p>
+                    <p class="text-3xl font-bold text-gray-800"><?= number_format($credits, 3) ?> €</p>
                 </div>
                 <div class="bg-yellow-100 p-3 rounded-full">
                     <i class="fas fa-coins text-yellow-600 text-xl"></i>
                 </div>
             </div>
-            <a href="index.php?page=parametres/credits" class="text-yellow-600 text-sm mt-2 inline-block">Recharger →</a>
         </div>
     </div>
 
@@ -109,7 +106,7 @@ function getTypeCampagne($type) {
                         <tr>
                             <td colspan="5" class="px-4 py-8 text-center text-gray-500">
                                 Aucune campagne pour le moment. 
-                                <a href="index.php?page=campagnes/choix" class="text-blue-600">Créer une campagne →</a>
+                                <a href="index.php?page=campagnes/creer" class="text-blue-600">Créer une campagne →</a>
                             </td>
                         </tr>
                     <?php else: ?>

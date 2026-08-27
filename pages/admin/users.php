@@ -731,7 +731,7 @@ unset($_SESSION['flash_type']);
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Crédits initiaux</label>
-                        <input type="number" name="credits_total" id="add_credits_total" value="0" step="0.01" min="0"
+                        <input type="number" name="credits_total" id="add_credits_total" value="0" step="0.001" min="0"
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500">
                     </div>
                 </div>
@@ -815,7 +815,7 @@ unset($_SESSION['flash_type']);
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Crédits</label>
-                        <input type="number" name="credits_total" id="edit_credits_total" value="0" step="0.01" min="0"
+                        <input type="number" name="credits_total" id="edit_credits_total" value="0" step="0.001" min="0"
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
                     </div>
                 </div>
@@ -955,7 +955,7 @@ unset($_SESSION['flash_type']);
                                     </div>
                                 </td>
                                 <td><?= htmlspecialchars($user['user'] ?? '-') ?></td>
-                                <td class="credits-amount"><?= number_format($user['credits_total'] ?? 0, 2) ?> €</td>
+                                <td class="credits-amount"><?= number_format($user['credits_total'] ?? 0, 3) ?> €</td>
                                 <td>
                                     <span class="role-badge <?= $roleClass ?>"><?= $roleLabel ?></span>
                                 </td>

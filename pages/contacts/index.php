@@ -1392,7 +1392,7 @@ unset($_SESSION['flash_error']);
                             <input type="email" name="email" id="add_email" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone fixe</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Téléphone fixe *</label>
                             <input type="tel" name="telephone" id="add_telephone" placeholder="ex: 0612345678" class="w-full border border-gray-300 rounded-lg px-3 py-2">
                         </div>
                         <div>

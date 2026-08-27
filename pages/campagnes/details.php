@@ -54,22 +54,100 @@ foreach ($envois as $e) {
 }
 
 // ============================================
+// FONCTION DE VÉRIFICATION DU CRÉDIT CLIENT
+// ============================================
+function verifierCreditClient($idCompte, $idProvider, $quantite) {
+    global $db;
+    
+    if (empty($idProvider) || $quantite <= 0) {
+        return [
+            'suffisant' => false,
+            'solde' => 0,
+            'cout_total' => 0,
+            'message' => 'Paramètres invalides pour la vérification du crédit'
+        ];
+    }
+    
+    // Récupérer l'opérateur
+    $provider = $db->select('provider', ['id_provider' => $idProvider]);
+    if (empty($provider)) {
+        return [
+            'suffisant' => false,
+            'solde' => 0,
+            'cout_total' => 0,
+            'message' => 'Opérateur non trouvé'
+        ];
+    }
+    
+    // Récupérer le tarif personnalisé du client pour cet opérateur
+    $tarifPersonnalise = $db->select('tarif', [
+        'id_compte' => $idCompte,
+        'id_provider' => $idProvider
+    ]);
+    
+    // Déterminer le tarif à utiliser
+    $tarif = !empty($tarifPersonnalise) 
+        ? (float)$tarifPersonnalise[0]['prix'] 
+        : (float)$provider[0]['tarif'];
+    
+    if ($tarif <= 0) {
+        return [
+            'suffisant' => false,
+            'solde' => 0,
+            'cout_total' => 0,
+            'message' => 'Tarif invalide pour cet opérateur'
+        ];
+    }
+    
+    $montant = $tarif * $quantite;
+    
+    // Récupérer le compte
+    $compte = $db->select('compte', ['id_compte' => $idCompte]);
+    if (empty($compte)) {
+        return [
+            'suffisant' => false,
+            'solde' => 0,
+            'cout_total' => $montant,
+            'message' => 'Compte client non trouvé'
+        ];
+    }
+    
+    $creditsActuels = (float)($compte[0]['credits_total'] ?? 0);
+    $creditsDisponibles = $creditsActuels;
+    $suffisant = $creditsDisponibles >= $montant;
+    
+    return [
+        'suffisant' => $suffisant,
+        'solde' => $creditsDisponibles,
+        'cout_total' => $montant,
+        'tarif_unitaire' => $tarif,
+        'quantite' => $quantite,
+        'message' => $suffisant 
+            ? "Crédit suffisant : {$creditsDisponibles}€ disponible(s) pour un coût de {$montant}€" 
+            : "Crédit insuffisant : {$creditsDisponibles}€ disponible(s) pour un coût de {$montant}€"
+    ];
+}
+
+// ============================================
 // FONCTION DE DÉDUCTION DU CRÉDIT CLIENT AVEC TRANSACTION
 // ============================================
-// Soustrait du crédit du compte client (table compte, colonne credits_total)
-// le montant correspondant au tarif de l'opérateur (table provider, colonne tarif)
-// multiplié par le nombre d'envois réellement réussis.
 function deduireCreditClient($idCompte, $idProvider, $quantite, $description = null) {
     global $db;
 
     if (empty($idProvider) || $quantite <= 0) {
-        return;
+        return false;
+    }
+
+    // Vérifier d'abord que le crédit est suffisant
+    $verification = verifierCreditClient($idCompte, $idProvider, $quantite);
+    if (!$verification['suffisant']) {
+        return false;
     }
 
     // Récupérer l'opérateur
     $provider = $db->select('provider', ['id_provider' => $idProvider]);
     if (empty($provider)) {
-        return;
+        return false;
     }
 
     // Récupérer le tarif personnalisé du client pour cet opérateur
@@ -78,13 +156,12 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
         'id_provider' => $idProvider
     ]);
 
-    // Déterminer le tarif à utiliser
     $tarif = !empty($tarifPersonnalise) 
         ? (float)$tarifPersonnalise[0]['prix'] 
         : (float)$provider[0]['tarif'];
 
     if ($tarif <= 0) {
-        return;
+        return false;
     }
 
     $montant = $tarif * $quantite;
@@ -92,7 +169,7 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
     // Récupérer et mettre à jour le compte
     $compte = $db->select('compte', ['id_compte' => $idCompte]);
     if (empty($compte)) {
-        return;
+        return false;
     }
 
     $creditsActuels = (float)($compte[0]['credits_total'] ?? 0);
@@ -121,6 +198,8 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
     ];
 
     $db->insert('transactions', $transactionData);
+    
+    return true;
 }
 
 // ============================================
@@ -349,7 +428,7 @@ function formaterNumerosOctopush($destinataires) {
 }
 
 // ============================================
-// FONCTION POUR ENVOYER AVEC OCTOPUSH (AVEC DÉDUCTION DE CRÉDIT)
+// FONCTION POUR ENVOYER AVEC OCTOPUSH (AVEC VÉRIFICATION DE CRÉDIT)
 // ============================================
 function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte, $idProvider) {
     global $db;
@@ -365,6 +444,22 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
     
     if (empty($recipients)) {
         return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé.'];
+    }
+    
+    // ============================================
+    // VÉRIFICATION DU CRÉDIT AVANT ENVOI
+    // ============================================
+    $quantite = count($recipients);
+    $verification = verifierCreditClient($idCompte, $idProvider, $quantite);
+    
+    if (!$verification['suffisant']) {
+        return [
+            'success' => false, 
+            'error' => '❌ Crédit insuffisant pour envoyer ' . $quantite . ' SMS. ' . $verification['message'],
+            'solde' => $verification['solde'],
+            'cout_total' => $verification['cout_total'],
+            'credit_insuffisant' => true
+        ];
     }
     
     // Récupérer la configuration Octopush pour obtenir le type et le sender
@@ -418,17 +513,22 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
     // Si l'envoi est réussi, déduire le crédit
     if ($httpCode === 200 || $httpCode === 201) {
         // Déduire le crédit du client (1 SMS par destinataire)
-        $quantite = count($recipients);
         if (!empty($idProvider)) {
             $description = "Envoi Octopush - {$quantite} SMS";
-            deduireCreditClient($idCompte, $idProvider, $quantite, $description);
+            $deductionOk = deduireCreditClient($idCompte, $idProvider, $quantite, $description);
+            if (!$deductionOk) {
+                // La déduction a échoué, mais l'envoi a réussi - log d'erreur
+                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi Octopush");
+                // Ne pas bloquer le retour, mais logguer l'erreur
+            }
         }
         
         return [
             'success' => true,
             'data' => $responseData,
             'http_code' => $httpCode,
-            'sms_envoyes' => $quantite
+            'sms_envoyes' => $quantite,
+            'credits_utilises' => $verification['cout_total']
         ];
     } else {
         $errorMsg = isset($responseData['message']) ? $responseData['message'] : $response;
@@ -441,7 +541,8 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
         return [
             'success' => false,
             'error' => 'Erreur API (HTTP ' . $httpCode . '): ' . $errorMsg,
-            'http_code' => $httpCode
+            'http_code' => $httpCode,
+            'credit_insuffisant' => false
         ];
     }
 }
@@ -547,6 +648,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
             $providerOctopush = getProviderByFournisseur('Octopush');
             $idProvider = $providerOctopush['id_provider'] ?? null;
 
+            if (empty($idProvider)) {
+                $_SESSION['flash_error'] = "❌ Provider Octopush non configuré dans la base de données.";
+                header('Location: index.php?page=campagnes/details&id=' . $campagneId);
+                exit;
+            }
+
             if (empty($apiLogin) || empty($apiKey)) {
                 $campagneDb = $db->select('campagne', [
                     'id_campagne' => $id_campagne_historique,
@@ -594,16 +701,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                 ], ['id_campagne' => $id_campagne_historique]);
                 
                 $_SESSION['octopush_response'] = $resultat['data'];
-                $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush (Session: " . $sessionName . ")!";
+                $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush (Session: " . $sessionName . ")! Coût: " . number_format($resultat['credits_utilises'], 3) . "€";
             } else {
-                $db->update('campagne', [
-                    'statut' => 'echoue',
-                    'nb_erreurs' => count($destinataires),
-                    'erreur' => $resultat['error'],
-                    'updated_at' => date('Y-m-d H:i:s')
-                ], ['id_campagne' => $id_campagne_historique]);
-                
-                $_SESSION['flash_error'] = "❌ " . $resultat['error'];
+                if (isset($resultat['credit_insuffisant']) && $resultat['credit_insuffisant'] === true) {
+                    $_SESSION['flash_error'] = "❌ " . $resultat['error'];
+                    // Marquer le message comme échoué pour manque de crédit
+                    $db->update('campagne', [
+                        'statut' => 'echoue',
+                        'nb_erreurs' => count($destinataires),
+                        'erreur' => $resultat['error'],
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ], ['id_campagne' => $id_campagne_historique]);
+                } else {
+                    $db->update('campagne', [
+                        'statut' => 'echoue',
+                        'nb_erreurs' => count($destinataires),
+                        'erreur' => $resultat['error'],
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ], ['id_campagne' => $id_campagne_historique]);
+                    
+                    $_SESSION['flash_error'] = "❌ " . $resultat['error'];
+                }
             }
             
             mettreAJourStatutCampagne($campagneId, $idCompte);
@@ -652,7 +770,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
 }
 
 // ============================================
-// FONCTIONS D'ENVOI (SMS, WhatsApp, Email)
+// FONCTIONS D'ENVOI (SMS, WhatsApp, Email) AVEC VÉRIFICATION DE CRÉDIT
 // ============================================
 
 function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires) {
@@ -662,8 +780,6 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
         $device_id = $campagne['device_id'] ?? null;
         $appareilId = $campagne['appareil_id'] ?? null;
         
-        // Résolution du provider par fournisseur (SMS API Gateway) plutôt que
-        // via campagne_config.provider_id, qui peut être obsolète ou incorrect.
         $providerSms = getProviderByFournisseur('SMS API Gateway');
         $providerId = $providerSms['id_provider'] ?? null;
         
@@ -716,6 +832,22 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
             return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé'];
         }
         
+        // ============================================
+        // VÉRIFICATION DU CRÉDIT AVANT ENVOI
+        // ============================================
+        $quantite = count($recipients);
+        $verification = verifierCreditClient($idCompte, $providerId, $quantite);
+        
+        if (!$verification['suffisant']) {
+            return [
+                'success' => false, 
+                'error' => '❌ Crédit insuffisant pour envoyer ' . $quantite . ' SMS. ' . $verification['message'],
+                'solde' => $verification['solde'],
+                'cout_total' => $verification['cout_total'],
+                'credit_insuffisant' => true
+            ];
+        }
+        
         $apiUrl = 'http://164.68.103.147:8085/api.php/sendBulk';
         
         $data = [
@@ -754,11 +886,16 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
         ], ['id_campagne' => $campagneData['id_campagne']]);
         
         if ($httpCode === 200) {
-            // Déduction du crédit client : tarif de l'opérateur SMS x nombre d'envois réussis
             $description = "Envoi SMS via {$device_name} - {$nb_succes} message(s)";
-            deduireCreditClient($idCompte, $providerId, $nb_succes, $description);
+            $deductionOk = deduireCreditClient($idCompte, $providerId, $nb_succes, $description);
+            if (!$deductionOk) {
+                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi SMS");
+            }
             
-            return ['success' => true, 'message' => count($recipients) . ' SMS envoyés avec succès'];
+            return [
+                'success' => true, 
+                'message' => count($recipients) . ' SMS envoyés avec succès. Coût: ' . number_format($verification['cout_total'], 3) . '€'
+            ];
         } else {
             return ['success' => false, 'error' => 'Erreur API (HTTP ' . $httpCode . '): ' . substr($response, 0, 200)];
         }
@@ -772,10 +909,12 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
     global $db;
     
     try {
-        // Résolution du provider par fournisseur (WAHA) plutôt que via
-        // campagne_config.provider_id, qui peut être obsolète ou incorrect.
         $providerWaha = getProviderByFournisseur('WAHA');
         $providerId = $providerWaha['id_provider'] ?? null;
+        
+        if (!$providerId) {
+            return ['success' => false, 'error' => 'Provider WAHA non configuré'];
+        }
         
         $session = $db->select('whatsapp_sessions', [
             'id_compte' => $idCompte,
@@ -795,9 +934,6 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         }
         
         $whatsappSession = $session[0]['nom_session'];
-        
-        $apiUrl = 'http://164.68.103.147:8081/api/controller.php/messages/send-bulk';
-        $apiKey = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
         
         $contacts = [];
         
@@ -838,6 +974,25 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         if (empty($contacts)) {
             return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé.'];
         }
+        
+        // ============================================
+        // VÉRIFICATION DU CRÉDIT AVANT ENVOI
+        // ============================================
+        $quantite = count($contacts);
+        $verification = verifierCreditClient($idCompte, $providerId, $quantite);
+        
+        if (!$verification['suffisant']) {
+            return [
+                'success' => false, 
+                'error' => '❌ Crédit insuffisant pour envoyer ' . $quantite . ' messages WhatsApp. ' . $verification['message'],
+                'solde' => $verification['solde'],
+                'cout_total' => $verification['cout_total'],
+                'credit_insuffisant' => true
+            ];
+        }
+        
+        $apiUrl = 'http://164.68.103.147:8081/api/controller.php/messages/send-bulk';
+        $apiKey = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
         
         $fichierData = null;
         if ($pieceJointe && isset($pieceJointe['url']) && !empty($pieceJointe['url'])) {
@@ -1026,16 +1181,19 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             'updated_at' => date('Y-m-d H:i:s')
         ], ['id_campagne' => $campagneData['id_campagne']]);
         
-        // Déduction du crédit client : tarif de l'opérateur WhatsApp x nombre d'envois réussis
+        // Déduction du crédit client (seulement pour les succès)
         if ($succes > 0) {
             $description = "Envoi WhatsApp via {$whatsappSession} - {$succes} message(s)";
-            deduireCreditClient($idCompte, $providerId, $succes, $description);
+            $deductionOk = deduireCreditClient($idCompte, $providerId, $succes, $description);
+            if (!$deductionOk) {
+                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi WhatsApp");
+            }
         }
         
         if ($statut === 'envoye') {
             return [
                 'success' => true, 
-                'message' => $messageReponse,
+                'message' => $messageReponse . ' Coût: ' . number_format($verification['cout_total'], 3) . '€',
                 'details' => $details,
                 'statut' => $statut
             ];
@@ -1075,10 +1233,12 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
     global $db;
     
     try {
-        // Résolution du provider par fournisseur (Listmonk) plutôt que via
-        // campagne_config.provider_id, qui peut être obsolète ou incorrect.
         $providerListmonk = getProviderByFournisseur('Listmonk');
         $providerId = $providerListmonk['id_provider'] ?? null;
+        
+        if (!$providerId) {
+            return ['success' => false, 'error' => 'Provider Listmonk non configuré'];
+        }
         
         $from_email = $campagneData['from_email'] ?? 'noreply@votre-domaine.com';
         $from_name = $campagneData['from_name'] ?? 'Votre Entreprise';
@@ -1089,11 +1249,26 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
             return ['success' => false, 'error' => 'ID de campagne Listmonk manquant.'];
         }
         
+        $nbDestinataires = (int)$campagneData['nb_destinataires'];
+        
+        // ============================================
+        // VÉRIFICATION DU CRÉDIT AVANT ENVOI
+        // ============================================
+        $verification = verifierCreditClient($idCompte, $providerId, $nbDestinataires);
+        
+        if (!$verification['suffisant']) {
+            return [
+                'success' => false, 
+                'error' => '❌ Crédit insuffisant pour envoyer ' . $nbDestinataires . ' emails. ' . $verification['message'],
+                'solde' => $verification['solde'],
+                'cout_total' => $verification['cout_total'],
+                'credit_insuffisant' => true
+            ];
+        }
+        
         $result = updateListmonkCampaignStatus($listmonkCampaignId, 'running');
         
         if ($result['success']) {
-            $nbDestinataires = (int)$campagneData['nb_destinataires'];
-            
             $db->update('campagne', [
                 'statut' => 'envoye',
                 'nb_envoyes' => $nbDestinataires,
@@ -1102,11 +1277,16 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
                 'appareil_utilise' => 'Listmonk (ID: ' . $listmonkCampaignId . ')'
             ], ['id_campagne' => $campagneData['id_campagne']]);
             
-            // Déduction du crédit client : tarif de l'opérateur Email x nombre d'envois réussis
             $description = "Envoi Email via Listmonk - {$nbDestinataires} email(s)";
-            deduireCreditClient($idCompte, $providerId, $nbDestinataires, $description);
+            $deductionOk = deduireCreditClient($idCompte, $providerId, $nbDestinataires, $description);
+            if (!$deductionOk) {
+                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi Email");
+            }
             
-            return ['success' => true, 'message' => $nbDestinataires . ' emails envoyés avec succès via Listmonk'];
+            return [
+                'success' => true, 
+                'message' => $nbDestinataires . ' emails envoyés avec succès via Listmonk. Coût: ' . number_format($verification['cout_total'], 3) . '€'
+            ];
         } else {
             $errorMsg = 'Erreur Listmonk (HTTP ' . $result['http_code'] . '): ' . substr($result['response'], 0, 200);
             
@@ -2223,7 +2403,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                 </div>
                 <div class="response-item">
                     <span class="label">Coût total</span>
-                    <span class="value"><?= isset($octopushResponse['total_cost']) ? number_format($octopushResponse['total_cost'], 2) . ' €' : '-' ?></span>
+                    <span class="value"><?= isset($octopushResponse['total_cost']) ? number_format($octopushResponse['total_cost'],3) . ' €' : '-' ?></span>
                 </div>
                 <div class="response-item">
                     <span class="label">Nombre de SMS nécessaires</span>
@@ -2231,7 +2411,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                 </div>
                 <div class="response-item">
                     <span class="label">Crédit restant</span>
-                    <span class="value"><?= isset($octopushResponse['residual_credit']) ? number_format($octopushResponse['residual_credit'], 2) . ' €' : '-' ?></span>
+                    <span class="value"><?= isset($octopushResponse['residual_credit']) ? number_format($octopushResponse['residual_credit'],3) . ' €' : '-' ?></span>
                 </div>
                 <div class="response-item">
                     <span class="label">Message</span>
@@ -2596,8 +2776,7 @@ function showDetails(envoi) {
     
     modalContent.innerHTML = `
         <div class="space-y-4">
-            ${sessionInfo}
-            
+            ${sessionInfo}            
             <div class="grid grid-cols-2 gap-3">
                 <div class="bg-gray-50 rounded-lg p-3">
                     <div class="text-xs text-gray-500 font-semibold mb-1">Date d'envoi</div>

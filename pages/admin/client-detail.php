@@ -1523,6 +1523,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_serve
         $from_address = trim($_POST['from_address'] ?? '');
         $replaceExisting = isset($_POST['replace_existing']) && $_POST['replace_existing'] === 'true';
         
+        // ============================================
+        // NOUVEAUX CHAMPS SMTP CONFIGURABLES
+        // ============================================
+        $host = trim($_POST['host'] ?? 'smtp.gmail.com');
+        $port = intval($_POST['port'] ?? 465);
+        $auth_protocol = trim($_POST['auth_protocol'] ?? 'login');
+        $hello_hostname = trim($_POST['hello_hostname'] ?? '');
+        $tls_type = trim($_POST['tls_type'] ?? 'TLS');
+        $tls_skip_verify = isset($_POST['tls_skip_verify']) && $_POST['tls_skip_verify'] === 'true';
+        $max_conns = intval($_POST['max_conns'] ?? 10);
+        $idle_timeout = trim($_POST['idle_timeout'] ?? '15s');
+        $wait_timeout = trim($_POST['wait_timeout'] ?? '5s');
+        $max_msg_retries = intval($_POST['max_msg_retries'] ?? 2);
+        $msg_retry_delay = trim($_POST['msg_retry_delay'] ?? '10ms');
+        
         if (empty($clientId)) {
             throw new Exception('ID client invalide');
         }
@@ -1538,28 +1553,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_serve
         if (empty($from_address)) {
             throw new Exception('Adresse email expéditeur requise');
         }
+        if (empty($host)) {
+            throw new Exception('Hôte SMTP requis');
+        }
+        if ($port <= 0 || $port > 65535) {
+            throw new Exception('Port SMTP invalide (1-65535)');
+        }
         
         // ============================================
         // APPEL À L'API SETTINGS AVEC LA FONCTION addSmtpToListmonk
         // ============================================
         $conn = getDefaultListmonkConn();
         
-        // Créer le nouveau bloc SMTP
+        // Créer le nouveau bloc SMTP avec tous les champs configurables
         $nouveauBloc = [
             'enabled' => true,
-            'host' => 'smtp.gmail.com',
-            'port' => 465,
-            'auth_protocol' => 'login',
+            'host' => $host,
+            'port' => $port,
+            'auth_protocol' => $auth_protocol,
             'username' => $username,
             'password' => $password,
-            'hello_hostname' => '',
-            'tls_type' => 'TLS',
-            'tls_skip_verify' => false,
-            'max_conns' => 10,
-            'idle_timeout' => '15s',
-            'wait_timeout' => '5s',
-            'max_msg_retries' => 2,
-            'msg_retry_delay' => '10ms',
+            'hello_hostname' => $hello_hostname,
+            'tls_type' => $tls_type,
+            'tls_skip_verify' => $tls_skip_verify,
+            'max_conns' => $max_conns,
+            'idle_timeout' => $idle_timeout,
+            'wait_timeout' => $wait_timeout,
+            'max_msg_retries' => $max_msg_retries,
+            'msg_retry_delay' => $msg_retry_delay,
             'name' => $name,
             'email_headers' => [],
             'from_addresses' => [$from_address]
@@ -1583,17 +1604,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_serve
                 'username' => $username,
                 'password' => $password,
                 'from_address' => $from_address,
-                'host' => 'smtp.gmail.com',
-                'port' => 465,
-                'auth_protocol' => 'login',
-                'hello_hostname' => '',
-                'tls_type' => 'TLS',
-                'tls_skip_verify' => false,
-                'max_conns' => 10,
-                'idle_timeout' => '15s',
-                'wait_timeout' => '5s',
-                'max_msg_retries' => 2,
-                'msg_retry_delay' => '10ms',
+                'host' => $host,
+                'port' => $port,
+                'auth_protocol' => $auth_protocol,
+                'hello_hostname' => $hello_hostname,
+                'tls_type' => $tls_type,
+                'tls_skip_verify' => $tls_skip_verify,
+                'max_conns' => $max_conns,
+                'idle_timeout' => $idle_timeout,
+                'wait_timeout' => $wait_timeout,
+                'max_msg_retries' => $max_msg_retries,
+                'msg_retry_delay' => $msg_retry_delay,
                 'updated_at' => date('Y-m-d H:i:s')
             ], ['id_email_account' => $existing[0]['id_email_account']]);
             $accountId = $existing[0]['id_email_account'];
@@ -1605,18 +1626,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_serve
                 'name' => $name,
                 'username' => $username,
                 'password' => $password,
-                'host' => 'smtp.gmail.com',
+                'host' => $host,
                 'from_address' => $from_address,
-                'port' => 465,
-                'auth_protocol' => 'login',
-                'hello_hostname' => '',
-                'tls_type' => 'TLS',
-                'tls_skip_verify' => false,
-                'max_conns' => 10,
-                'idle_timeout' => '15s',
-                'wait_timeout' => '5s',
-                'max_msg_retries' => 2,
-                'msg_retry_delay' => '10ms',
+                'port' => $port,
+                'auth_protocol' => $auth_protocol,
+                'hello_hostname' => $hello_hostname,
+                'tls_type' => $tls_type,
+                'tls_skip_verify' => $tls_skip_verify,
+                'max_conns' => $max_conns,
+                'idle_timeout' => $idle_timeout,
+                'wait_timeout' => $wait_timeout,
+                'max_msg_retries' => $max_msg_retries,
+                'msg_retry_delay' => $msg_retry_delay,
                 'est_actif' => true,
                 'created_at' => date('Y-m-d H:i:s')
             ];
@@ -1635,6 +1656,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_add_smtp_serve
             'name' => $name,
             'username' => $username,
             'from_address' => $from_address,
+            'host' => $host,
+            'port' => $port,
             'action' => $result['action'],
             'smtpCount' => $result['smtpCount']
         ]);
@@ -2345,6 +2368,7 @@ function getInitials($prenom, $nom) {
 $statut = getStatutBadge($client['actif']);
 $initials = getInitials($client['prenom'], $client['nom']);
 ?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -2354,7 +2378,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        /* ... (le CSS reste identique à l'original) ... */
+        /* ... (le CSS reste identique à l'original sauf pour les ajouts SMTP) ... */
         .statut-badge {
             display: inline-flex;
             align-items: center;
@@ -2993,11 +3017,164 @@ $initials = getInitials($client['prenom'], $client['nom']);
             width: 95%;
         }
         
+        /* ========================================== */
+        /* MODAL CARD EMAIL - AGrandi et amélioré */
+        /* ========================================== */
         .modal-card-email {
-            max-width: 800px;
-            width: 95%;
+            max-width: 820px;
+            width: 96%;
+            padding: 32px 36px;
         }
         
+        .modal-card-email .smtp-section {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-top: 14px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .modal-card-email .smtp-section .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .modal-card-email .smtp-section .section-title i {
+            color: #8b5cf6;
+        }
+        
+        .modal-card-email .smtp-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px 20px;
+        }
+        
+        .modal-card-email .smtp-grid .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .modal-card-email .smtp-grid .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .modal-card-email .smtp-grid .form-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+            letter-spacing: 0.02em;
+        }
+        
+        .modal-card-email .smtp-grid .form-group label .required {
+            color: #ef4444;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-input {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: white;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-input:focus {
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-input[type="number"] {
+            width: 100%;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-select {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: white;
+            appearance: auto;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-select:focus {
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-check {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-top: 6px;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-check input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #8b5cf6;
+            cursor: pointer;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .form-check label {
+            font-size: 13px;
+            font-weight: 400;
+            color: #475569;
+            cursor: pointer;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .help-text {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+        
+        .modal-card-email .smtp-grid .form-group .help-text i {
+            margin-right: 4px;
+        }
+        
+        .modal-card-email .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        /* Password container dans la modal email */
+        .modal-card-email .password-container {
+            position: relative;
+        }
+        .modal-card-email .password-container input {
+            padding-right: 45px;
+        }
+        .modal-card-email .toggle-password {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #94a3b8;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+            padding: 4px;
+        }
+        .modal-card-email .toggle-password:hover {
+            color: #8b5cf6;
+        }
+
         .password-container {
             position: relative;
         }
@@ -3237,6 +3414,25 @@ $initials = getInitials($client['prenom'], $client['nom']);
             .info-card table .btn-sm {
                 padding: 4px 8px;
                 font-size: 11px;
+            }
+            
+            .modal-card-email {
+                max-width: 98%;
+                width: 98%;
+                padding: 20px 16px;
+            }
+            
+            .modal-card-email .smtp-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            .modal-card-email .smtp-grid .full-width {
+                grid-column: 1;
+            }
+            
+            .modal-card-email .smtp-section {
+                padding: 14px 16px;
             }
         }
 
@@ -3524,10 +3720,10 @@ $initials = getInitials($client['prenom'], $client['nom']);
 </div>
 
 <!-- ============================================ -->
-<!-- MODALE DE CRÉATION DE COMPTE EMAIL AVEC OPTION DE REMPLACEMENT -->
+<!-- MODALE DE CRÉATION DE COMPTE EMAIL AVEC CHAMPS SMTP TOUJOURS VISIBLES -->
 <!-- ============================================ -->
 <div id="createEmailAccountModal" class="modal-overlay" style="display: none;">
-    <div class="modal-card" style="max-width: 500px;" onclick="event.stopPropagation()">
+    <div class="modal-card modal-card-email" onclick="event.stopPropagation()">
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h3 class="text-lg font-bold text-gray-800">✉️ Créer un compte email</h3>
@@ -3537,7 +3733,8 @@ $initials = getInitials($client['prenom'], $client['nom']);
         </div>
         
         <form id="createEmailForm">
-            <div class="space-y-4">
+            <!-- Informations de base -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">
                         Nom du compte *
@@ -3545,7 +3742,17 @@ $initials = getInitials($client['prenom'], $client['nom']);
                     <input type="text" id="email_name" 
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
                            placeholder="Ex: email-client-1">
-                    <p class="text-xs text-gray-400 mt-1">Identifiant unique pour ce compte</p>
+                    <p class="text-xs text-gray-400 mt-1">Identifiant unique</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Adresse expéditeur *
+                    </label>
+                    <input type="email" id="email_from_address" 
+                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
+                           placeholder="Ex: email@gmail.com">
+                    <p class="text-xs text-gray-400 mt-1">L'adresse qui apparaîtra comme expéditeur</p>
                 </div>
                 
                 <div>
@@ -3569,48 +3776,107 @@ $initials = getInitials($client['prenom'], $client['nom']);
                             <i class="far fa-eye"></i>
                         </button>
                     </div>
-                    <p class="text-xs text-gray-400 mt-1">Utilisez un mot de passe d'application pour Gmail</p>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                        Adresse expéditeur *
-                    </label>
-                    <input type="email" id="email_from_address" 
-                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition"
-                           placeholder="Ex: email@gmail.com">
-                    <p class="text-xs text-gray-400 mt-1">L'adresse qui apparaîtra comme expéditeur</p>
-                </div>
-                
-                <div>
-                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                        <input type="checkbox" id="replace_existing" checked class="w-4 h-4 text-purple-600 rounded">
-                        <span>Remplacer si un bloc porte déjà ce nom</span>
-                    </label>
-                    <p class="text-xs text-gray-400 mt-1">Si coché, le bloc existant sera remplacé. Sinon, une erreur sera levée.</p>
-                </div>
-                
-                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                    <p class="text-xs text-gray-500">
-                        <i class="fas fa-info-circle"></i>
-                        Les paramètres SMTP suivants seront utilisés automatiquement :
-                    </p>
-                    <ul class="text-xs text-gray-500 mt-1 space-y-1">
-                        <li>• Hôte : smtp.gmail.com</li>
-                        <li>• Port : 465</li>
-                        <li>• Protocole : login</li>
-                        <li>• TLS : TLS</li>
-                    </ul>
+                    <p class="text-xs text-gray-400 mt-1">Utilisez un mot de passe d'application</p>
                 </div>
             </div>
             
-            <div class="flex justify-end space-x-2 mt-6">
+            <!-- ========================================== -->
+            <!-- SECTION SMTP - TOUJOURS VISIBLE -->
+            <!-- ========================================== -->
+            <div class="smtp-section mt-4">
+                <div class="section-title">
+                    <i class="fas fa-server"></i> Paramètres SMTP
+                </div>
+                
+                <div class="smtp-grid">
+                    <div class="form-group">
+                        <label>Hôte SMTP <span class="required">*</span></label>
+                        <input type="text" id="smtp_host" class="form-input" value="smtp.gmail.com" placeholder="smtp.gmail.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Port <span class="required">*</span></label>
+                        <input type="number" id="smtp_port" class="form-input" value="465" min="1" max="65535" placeholder="465">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Protocole d'authentification</label>
+                        <select id="smtp_auth_protocol" class="form-select">
+                            <option value="login">login</option>
+                            <option value="plain">plain</option>
+                            <option value="cram-md5">cram-md5</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Type TLS</label>
+                        <select id="smtp_tls_type" class="form-select">
+                            <option value="TLS">TLS</option>
+                            <option value="STARTTLS">STARTTLS</option>
+                            <option value="none">none</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Hello Hostname</label>
+                        <input type="text" id="smtp_hello_hostname" class="form-input" value="" placeholder="(optionnel)">
+                        <span class="help-text"><i class="fas fa-info-circle"></i> Laissez vide pour la valeur par défaut</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Connexions max</label>
+                        <input type="number" id="smtp_max_conns" class="form-input" value="10" min="1" max="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Timeout d'inactivité</label>
+                        <input type="text" id="smtp_idle_timeout" class="form-input" value="15s" placeholder="15s">
+                        <span class="help-text"><i class="fas fa-info-circle"></i> Ex: 15s, 1m</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Timeout d'attente</label>
+                        <input type="text" id="smtp_wait_timeout" class="form-input" value="5s" placeholder="5s">
+                        <span class="help-text"><i class="fas fa-info-circle"></i> Ex: 5s, 10s</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Tentatives max</label>
+                        <input type="number" id="smtp_max_msg_retries" class="form-input" value="2" min="0" max="10">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Délai entre tentatives</label>
+                        <input type="text" id="smtp_msg_retry_delay" class="form-input" value="10ms" placeholder="10ms">
+                        <span class="help-text"><i class="fas fa-info-circle"></i> Ex: 10ms, 100ms, 1s</span>
+                    </div>
+                    
+                    <div class="form-group full-width">
+                        <div class="form-check">
+                            <input type="checkbox" id="smtp_tls_skip_verify">
+                            <label for="smtp_tls_skip_verify">Ignorer la vérification TLS (désactiver pour le test)</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Option de remplacement -->
+            <div class="mt-4">
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="replace_existing" checked class="w-4 h-4 text-purple-600 rounded">
+                    <span>Remplacer si un bloc porte déjà ce nom</span>
+                </label>
+                <p class="text-xs text-gray-400 mt-1">Si coché, le bloc existant sera remplacé. Sinon, une erreur sera levée.</p>
+            </div>
+            
+            <!-- Actions -->
+            <div class="form-actions">
                 <button type="button" onclick="closeCreateEmailAccountModal()" 
-                        class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                        class="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition font-medium">
                     Annuler
                 </button>
                 <button type="submit" 
-                        class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+                        class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg transition font-medium flex items-center gap-2">
                     <i class="fas fa-plus-circle"></i> Créer le compte
                 </button>
             </div>
@@ -5810,43 +6076,8 @@ async function loadEmailAccounts() {
             throw new Error(accountsResult.error || 'Impossible de charger les comptes');
         }
         
+        
         let html = `
-            <div class="mb-4">
-                <div class="flex items-center justify-between mb-2">
-                    <label class="text-sm font-medium text-gray-700">
-                        Serveurs SMTP dans Listmonk (${settingsResult.smtpCount})
-                    </label>
-                    <span class="text-xs text-gray-400">${settingsResult.settingsKeys} clés de configuration</span>
-                </div>
-                <div class="space-y-1 max-h-40 overflow-y-auto">
-        `;
-        
-        if (settingsResult.smtp.length === 0) {
-            html += `
-                <div class="text-center text-gray-500 py-2 text-sm bg-gray-50 rounded-lg">
-                    <i class="fas fa-info-circle"></i>
-                    Aucun serveur SMTP configuré dans Listmonk
-                </div>
-            `;
-        } else {
-            settingsResult.smtp.forEach(smtp => {
-                const isActive = smtp.enabled;
-                html += `
-                    <div class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-200">
-                        <div class="flex items-center gap-2">
-                            <span class="h-2 w-2 rounded-full ${isActive ? 'bg-green-500' : 'bg-gray-400'}"></span>
-                            <span class="font-medium text-sm">${escapeHtml(smtp.name || 'Sans nom')}</span>
-                            <span class="text-xs text-gray-500">${escapeHtml(smtp.host || '')}:${smtp.port || ''}</span>
-                        </div>
-                        <span class="text-xs ${isActive ? 'text-green-600' : 'text-gray-500'}">
-                            ${isActive ? 'Actif' : 'Inactif'}
-                        </span>
-                    </div>
-                `;
-            });
-        }
-        
-        html += `
                 </div>
             </div>
             
@@ -6079,6 +6310,18 @@ async function confirmDeleteEmailAccount(accountId) {
 function openCreateEmailAccountModal() {
     document.getElementById('createEmailAccountModal').style.display = 'flex';
     document.getElementById('createEmailForm').reset();
+    // Réinitialiser les champs SMTP avancés avec les valeurs par défaut
+    document.getElementById('smtp_host').value = 'smtp.gmail.com';
+    document.getElementById('smtp_port').value = 465;
+    document.getElementById('smtp_auth_protocol').value = 'login';
+    document.getElementById('smtp_tls_type').value = 'TLS';
+    document.getElementById('smtp_hello_hostname').value = '';
+    document.getElementById('smtp_max_conns').value = 10;
+    document.getElementById('smtp_idle_timeout').value = '15s';
+    document.getElementById('smtp_wait_timeout').value = '5s';
+    document.getElementById('smtp_max_msg_retries').value = 2;
+    document.getElementById('smtp_msg_retry_delay').value = '10ms';
+    document.getElementById('smtp_tls_skip_verify').checked = false;
 }
 
 function closeCreateEmailAccountModal() {
@@ -6093,6 +6336,19 @@ document.getElementById('createEmailForm')?.addEventListener('submit', async fun
     const password = document.getElementById('email_password').value.trim();
     const from_address = document.getElementById('email_from_address').value.trim();
     const replaceExisting = document.getElementById('replace_existing').checked;
+    
+    // Récupérer les champs SMTP avancés
+    const host = document.getElementById('smtp_host').value.trim();
+    const port = parseInt(document.getElementById('smtp_port').value) || 465;
+    const auth_protocol = document.getElementById('smtp_auth_protocol').value;
+    const hello_hostname = document.getElementById('smtp_hello_hostname').value.trim();
+    const tls_type = document.getElementById('smtp_tls_type').value;
+    const tls_skip_verify = document.getElementById('smtp_tls_skip_verify').checked;
+    const max_conns = parseInt(document.getElementById('smtp_max_conns').value) || 10;
+    const idle_timeout = document.getElementById('smtp_idle_timeout').value.trim() || '15s';
+    const wait_timeout = document.getElementById('smtp_wait_timeout').value.trim() || '5s';
+    const max_msg_retries = parseInt(document.getElementById('smtp_max_msg_retries').value) || 2;
+    const msg_retry_delay = document.getElementById('smtp_msg_retry_delay').value.trim() || '10ms';
     
     if (!name) {
         showToast('Veuillez entrer un nom pour le compte', 'error');
@@ -6110,6 +6366,14 @@ document.getElementById('createEmailForm')?.addEventListener('submit', async fun
         showToast('Veuillez entrer une adresse email expéditeur', 'error');
         return;
     }
+    if (!host) {
+        showToast('Veuillez entrer un hôte SMTP', 'error');
+        return;
+    }
+    if (port <= 0 || port > 65535) {
+        showToast('Port SMTP invalide (1-65535)', 'error');
+        return;
+    }
     
     const submitBtn = this.querySelector('button[type="submit"]');
     const originalText = submitBtn.innerHTML;
@@ -6125,6 +6389,19 @@ document.getElementById('createEmailForm')?.addEventListener('submit', async fun
         formData.append('password', password);
         formData.append('from_address', from_address);
         formData.append('replace_existing', replaceExisting ? 'true' : 'false');
+        
+        // Ajouter les champs SMTP avancés
+        formData.append('host', host);
+        formData.append('port', port);
+        formData.append('auth_protocol', auth_protocol);
+        formData.append('hello_hostname', hello_hostname);
+        formData.append('tls_type', tls_type);
+        formData.append('tls_skip_verify', tls_skip_verify ? 'true' : 'false');
+        formData.append('max_conns', max_conns);
+        formData.append('idle_timeout', idle_timeout);
+        formData.append('wait_timeout', wait_timeout);
+        formData.append('max_msg_retries', max_msg_retries);
+        formData.append('msg_retry_delay', msg_retry_delay);
         
         const response = await fetch(window.location.href, {
             method: 'POST',
