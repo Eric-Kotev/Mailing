@@ -742,7 +742,7 @@ unset($_SESSION['flash_error']);
                     <?php if (!empty($contacts) && !empty($liste['listmonk_id'])): ?>
                         <button id="syncListmonkBtn" 
                                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
-                            <i class="fas fa-sync mr-2"></i>Synchroniser vers Listmonk
+                            <i class="fas fa-sync mr-2"></i>Synchroniser vers Listmonk pour pouvoir envoyer un mail à la liste
                         </button>
                     <?php endif; ?>
                     <div class="relative">
