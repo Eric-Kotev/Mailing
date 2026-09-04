@@ -182,13 +182,25 @@ if ($export === 'csv' && $campagneId && !empty($envoisListe)) {
     foreach ($envoisListe as $envoi) {
         $destinataires = json_decode($envoi['destinataires'], true);
         $destinatairesTexte = is_array($destinataires) ? implode('; ', $destinataires) : $envoi['destinataires'];
-        $typeTexte = $envoi['type_campagne'] == 'whatsapp' ? 'WhatsApp' : 'SMS';
+        
+        // Correction : prise en charge du type email
+        if ($envoi['type_campagne'] == 'whatsapp') {
+            $typeTexte = 'WhatsApp';
+        } elseif ($envoi['type_campagne'] == 'email') {
+            $typeTexte = 'Email';
+        } else {
+            $typeTexte = 'SMS';
+        }
+        
         $statutTexte = $envoi['statut'] == 'envoye' ? 'Envoyé' : 'Échoué';
+        
+        // Nettoyer le message pour le CSV (enlever le HTML)
+        $messageClean = strip_tags($envoi['message']);
         
         fputcsv($output, [
             date('d/m/Y H:i', strtotime($envoi['created_at'])),
             $typeTexte,
-            $envoi['message'],
+            $messageClean,
             $envoi['nb_destinataires'],
             $envoi['nb_succes'],
             $envoi['nb_erreurs'],
@@ -322,6 +334,65 @@ if ($export === 'all_csv' && empty($campagneId)) {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
+        }
+        
+        /* ============================================
+           MESSAGE CONTENT - RENDU HTML
+           ============================================ */
+        .message-content {
+            max-width: 300px;
+            max-height: 80px;
+            overflow: hidden;
+            position: relative;
+            word-break: break-word;
+        }
+        .message-content p {
+            margin: 0 0 4px 0;
+        }
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+        .message-content strong, 
+        .message-content b {
+            font-weight: 600;
+        }
+        .message-content em,
+        .message-content i {
+            font-style: italic;
+        }
+        .message-content ul,
+        .message-content ol {
+            margin: 4px 0;
+            padding-left: 20px;
+        }
+        .message-content a {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+        .message-content a:hover {
+            color: #1d4ed8;
+        }
+        .message-content br {
+            display: block;
+            content: "";
+            margin: 2px 0;
+        }
+        .message-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+        .message-content .truncate-fade {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            background: linear-gradient(to bottom, transparent, white);
+            pointer-events: none;
+        }
+        .message-cell {
+            max-width: 300px;
         }
         
         /* ============================================
@@ -536,6 +607,14 @@ if ($export === 'all_csv' && empty($campagneId)) {
         .filter-badge-sms i {
             color: #3b82f6 !important;
         }
+        .filter-badge-email {
+            background: #fef3c7 !important;
+            color: #92400e !important;
+            border-color: #fcd34d !important;
+        }
+        .filter-badge-email i {
+            color: #d97706 !important;
+        }
         .filter-badge-planifiee {
             background: #fef3c7 !important;
             color: #92400e !important;
@@ -679,6 +758,7 @@ if ($export === 'all_csv' && empty($campagneId)) {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        
     </style>
 </head>
 <body>
@@ -774,12 +854,13 @@ if ($export === 'all_csv' && empty($campagneId)) {
                             <option value="">Tous les types</option>
                             <option value="whatsapp" <?= $typeFiltre === 'whatsapp' ? 'selected' : '' ?>>WhatsApp</option>
                             <option value="sms" <?= $typeFiltre === 'sms' ? 'selected' : '' ?>>SMS</option>
+                            <option value="email" <?= $typeFiltre === 'email' ? 'selected' : '' ?>>Email</option>
                         </select>
                         
                         <?php if (!empty($typeFiltre)): ?>
                             <span class="filter-badge filter-badge-<?= $typeFiltre ?>">
-                                <i class="<?= $typeFiltre === 'whatsapp' ? 'fab fa-whatsapp' : 'fas fa-sms' ?>"></i>
-                                <?= $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS' ?>
+                                <i class="<?= $typeFiltre === 'whatsapp' ? 'fab fa-whatsapp' : ($typeFiltre === 'email' ? 'fas fa-envelope' : 'fas fa-sms') ?>"></i>
+                                <?= $typeFiltre === 'whatsapp' ? 'WhatsApp' : ($typeFiltre === 'email' ? 'Email' : 'SMS') ?>
                             </span>
                         <?php endif; ?>
                         
@@ -803,8 +884,16 @@ if ($export === 'all_csv' && empty($campagneId)) {
                             <?php
                             $filtresActifs = [];
                             if (!empty($typeFiltre)) {
-                                $typeLabel = $typeFiltre === 'whatsapp' ? 'WhatsApp' : 'SMS';
-                                $typeIcon = $typeFiltre === 'whatsapp' ? 'fab fa-whatsapp' : 'fas fa-sms';
+                                if ($typeFiltre === 'whatsapp') {
+                                    $typeLabel = 'WhatsApp';
+                                    $typeIcon = 'fab fa-whatsapp';
+                                } elseif ($typeFiltre === 'email') {
+                                    $typeLabel = 'Email';
+                                    $typeIcon = 'fas fa-envelope';
+                                } else {
+                                    $typeLabel = 'SMS';
+                                    $typeIcon = 'fas fa-sms';
+                                }
                                 $filtresActifs[] = 'type <strong><i class="' . $typeIcon . '"></i> ' . $typeLabel . '</strong>';
                             }
                             if (!empty($dateDebutEnvoi) && !empty($dateFinEnvoi)) {
@@ -844,7 +933,6 @@ if ($export === 'all_csv' && empty($campagneId)) {
                                     <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Destinataires</th>
                                     <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Succès</th>
                                     <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Échecs</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Appareil</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
@@ -858,23 +946,25 @@ if ($export === 'all_csv' && empty($campagneId)) {
                                                 <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">
                                                     <i class="fab fa-whatsapp mr-1"></i> WhatsApp
                                                 </span>
+                                            <?php elseif ($envoi['type_campagne'] == 'email'): ?>
+                                                <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs">
+                                                    <i class="fas fa-envelope mr-1"></i> Email
+                                                </span>
                                             <?php else: ?>
                                                 <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">
                                                     <i class="fas fa-sms mr-1"></i> SMS
                                                 </span>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="px-4 py-2">
-                                            <div class="text-sm text-gray-800 max-w-xs truncate" title="<?= htmlspecialchars($envoi['message']) ?>">
-                                                <?= htmlspecialchars(substr($envoi['message'], 0, 50)) ?>...
-                                            </div>
+                                        <td class="px-4 py-2 message-cell">
+                                            <div class="message-content">
+                                                <?= $envoi['message'] ?>
+                                                <div class="truncate-fade"></div>
+                                            </div>                                            
                                         </td>
                                         <td class="px-4 py-2 text-center text-sm"><?= $envoi['nb_destinataires'] ?></td>
                                         <td class="px-4 py-2 text-center text-sm text-green-600"><?= $envoi['nb_succes'] ?></td>
                                         <td class="px-4 py-2 text-center text-sm text-red-600"><?= $envoi['nb_erreurs'] ?></td>
-                                        <td class="px-4 py-2 text-sm text-gray-500">
-                                            <?= htmlspecialchars(substr($envoi['appareil_utilise'] ?? '-', 0, 25)) ?>
-                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -888,18 +978,21 @@ if ($export === 'all_csv' && empty($campagneId)) {
                     $totalDestinataires = 0;
                     $totalWhatsApp = 0;
                     $totalSMS = 0;
+                    $totalEmail = 0;
                     foreach ($envoisListe as $e) {
                         $totalSucces += $e['nb_succes'];
                         $totalErreurs += $e['nb_erreurs'];
                         $totalDestinataires += $e['nb_destinataires'];
                         if ($e['type_campagne'] == 'whatsapp') {
                             $totalWhatsApp++;
+                        } elseif ($e['type_campagne'] == 'email') {
+                            $totalEmail++;
                         } else {
                             $totalSMS++;
                         }
                     }
                     ?>
-                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4 pt-3 border-t">
+                    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mt-4 pt-3 border-t">
                         <div class="bg-blue-50 rounded-lg p-2 text-center">
                             <div class="text-lg font-bold text-blue-600"><?= $totalDestinataires ?></div>
                             <div class="text-xs text-gray-500">Destinataires</div>
@@ -919,6 +1012,10 @@ if ($export === 'all_csv' && empty($campagneId)) {
                         <div class="bg-blue-100 rounded-lg p-2 text-center">
                             <div class="text-lg font-bold text-blue-700"><?= $totalSMS ?></div>
                             <div class="text-xs text-gray-500">SMS</div>
+                        </div>
+                        <div class="bg-yellow-100 rounded-lg p-2 text-center">
+                            <div class="text-lg font-bold text-yellow-700"><?= $totalEmail ?></div>
+                            <div class="text-xs text-gray-500">Email</div>
                         </div>
                     </div>
                 <?php endif; ?>
