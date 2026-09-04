@@ -1868,11 +1868,8 @@ unset($_SESSION['flash_error']);
                 <a href="index.php?page=campagnes/choix_type&campagne_id=<?= $campagneConfigId ?>" class="btn-outline">
                     <i class="fas fa-times"></i> Annuler
                 </a>
-                <button type="submit" name="action_enregistrer" value="1" class="btn-primary">
-                    <i class="fas fa-save"></i> Enregistrer &amp; préparer
-                </button>
                 <button type="submit" name="action_enregistrer" value="1" onclick="document.querySelector('input[name=envoyer_maintenant][value=1]').checked = true; document.getElementById('date_planification').value = ''; this.form.submit();" class="btn-secondary">
-                    <i class="fas fa-paper-plane"></i> Envoyer immédiatement
+                    <i class="fas fa-paper-plane"></i> Enregistrer la campagne
                 </button>
             </div>
         </form>
