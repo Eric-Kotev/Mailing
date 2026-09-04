@@ -88,7 +88,7 @@ function getTypeCampagne($type) {
     <!-- Dernières campagnes -->
     <div class="bg-white rounded-lg shadow">
         <div class="p-6 border-b border-gray-200">
-            <h2 class="text-lg font-bold">📊 Dernières campagnes</h2>
+            <h2 class="text-lg font-bold"><i class="fas fa-bullhorn text-purple-600 text-sm"></i> Dernières campagnes</h2>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full">
