@@ -779,7 +779,7 @@ if ($table) {
         <div class="info-card">
             <div class="label">Tarif par défaut</div>
             <div class="value" style="color: var(--accent);">
-                <?= number_format($provider['tarif'], 2, ',', ' ') ?> €
+                <?= number_format($provider['tarif'], 3, ',', ' ') ?> €
                 <span style="font-size: 14px; font-weight: 500; color: var(--muted-2);">/envoi</span>
             </div>
         </div>
@@ -825,7 +825,7 @@ if ($table) {
                         <div class="client-name" title="<?= htmlspecialchars($client['nom']) ?>">
                             <?= htmlspecialchars($client['nom']) ?>
                         </div>
-                        <div class="client-tarif"><?= number_format($client['tarif'], 2, ',', ' ') ?> €</div>
+                        <div class="client-tarif"><?= number_format($client['tarif'], 3, ',', ' ') ?> €</div>
                         <div>
                             <span class="badge-statut <?= $client['actif'] ? 'actif' : 'inactif' ?>">
                                 <?= $client['actif'] ? 'Actif' : 'Inactif' ?>
