@@ -171,20 +171,34 @@ if (!$appareilActif && !empty($smsAppareils)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Choisir l'appareil SMS - <?= APP_NAME ?></title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        * { box-sizing: border-box; }
+        /* ============================================
+           STYLES PRINCIPAUX - FULL WIDTH
+        ============================================ */
+        * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+        }
+        
         body { 
             margin: 0; 
             background: #f3f4f6;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
         }
         
         .container {
-            max-width: 1000px;
+            max-width: 100%;
             margin: 0 auto;
-            padding: 16px 20px;
+            padding: 16px 32px;
+            width: 100%;
         }
         
+        /* ============================================
+           TOAST
+        ============================================ */
         .toast-notification {
             position: fixed;
             top: 20px;
@@ -207,17 +221,23 @@ if (!$appareilActif && !empty($smsAppareils)) {
         .toast-notification.success .toast-content { background: #10b981; }
         .toast-notification.error .toast-content { background: #ef4444; }
         .toast-notification.info .toast-content { background: #3b82f6; }
+        .toast-notification.warning .toast-content { background: #f59e0b; }
         
+        /* ============================================
+           STEP INDICATOR
+        ============================================ */
         .step-indicator {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 12px;
             margin-bottom: 24px;
-            padding: 12px 20px;
+            padding: 12px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            flex-wrap: wrap;
+            width: 100%;
         }
         .step {
             display: flex;
@@ -238,6 +258,7 @@ if (!$appareilActif && !empty($smsAppareils)) {
             font-weight: 700;
             font-size: 12px;
             transition: all 0.3s ease;
+            flex-shrink: 0;
         }
         .step.active .number {
             background: #3b82f6;
@@ -260,39 +281,57 @@ if (!$appareilActif && !empty($smsAppareils)) {
             height: 2px;
             background: #e5e7eb;
             border-radius: 2px;
+            flex-shrink: 0;
         }
         .step-line.done {
             background: #10b981;
         }
         
+        /* ============================================
+           EN-TÊTE
+        ============================================ */
         .header-section {
             display: flex;
             align-items: center;
             margin-bottom: 20px;
-            padding: 16px 20px;
+            padding: 16px 24px;
             background: white;
             border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 12px;
         }
         .header-section .back-link {
             color: #6b7280;
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
-            margin-right: 16px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            flex-shrink: 0;
         }
         .header-section .back-link:hover {
             color: #374151;
+            background: #f3f4f6;
         }
         .header-section .icon-wrapper {
             background: #dbeafe;
-            padding: 10px;
+            padding: 10px 12px;
             border-radius: 12px;
-            margin-right: 14px;
+            flex-shrink: 0;
         }
         .header-section .icon-wrapper i {
             color: #2563eb;
             font-size: 22px;
+        }
+        .header-section .header-text {
+            flex: 1;
+            min-width: 150px;
         }
         .header-section .title {
             font-size: 22px;
@@ -305,13 +344,20 @@ if (!$appareilActif && !empty($smsAppareils)) {
             margin-top: 2px;
         }
         
+        /* ============================================
+           CARD PRINCIPALE
+        ============================================ */
         .main-card {
             background: white;
             border-radius: 14px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
             padding: 24px 28px;
+            width: 100%;
         }
         
+        /* ============================================
+           INFO CAMPAGNE
+        ============================================ */
         .campagne-info {
             background: #f3e8ff;
             border: 2px solid #d8b4fe;
@@ -322,6 +368,8 @@ if (!$appareilActif && !empty($smsAppareils)) {
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
+            width: 100%;
         }
         .campagne-info .info-left {
             display: flex;
@@ -341,10 +389,55 @@ if (!$appareilActif && !empty($smsAppareils)) {
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
         .campagne-info .info-right {
             font-size: 14px;
             color: #6b21a8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .campagne-info .info-right i {
+            font-size: 16px;
+        }
+        
+        /* ============================================
+           ERROR BOX
+        ============================================ */
+        .error-box {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+        .error-box i {
+            color: #ef4444;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .error-box span {
+            color: #991b1b;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        /* ============================================
+           APPAREILS GRID
+        ============================================ */
+        .appareils-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 0;
+            width: 100%;
         }
         
         .appareil-option {
@@ -353,12 +446,18 @@ if (!$appareilActif && !empty($smsAppareils)) {
             border: 2px solid #e5e7eb;
             background: white;
             border-radius: 12px;
-            padding: 20px 16px;
+            padding: 24px 18px;
             text-align: center;
+            position: relative;
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
         .appareil-option:hover {
             transform: translateY(-4px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
         }
         .appareil-option.selected {
             border-color: #3b82f6;
@@ -373,25 +472,26 @@ if (!$appareilActif && !empty($smsAppareils)) {
             align-items: center;
             justify-content: center;
             margin: 0 auto 10px;
-            font-size: 26px;
+            font-size: 28px;
             background: #dbeafe;
             color: #2563eb;
+            flex-shrink: 0;
         }
         .appareil-option .appareil-name {
             font-size: 16px;
             font-weight: 700;
             color: #1f2937;
-            margin-bottom: 2px;
+            margin-bottom: 4px;
         }
         .appareil-option .device-id {
             font-size: 11px;
             color: #6b7280;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
             word-break: break-all;
         }
         .appareil-option .badge-actif {
             display: inline-block;
-            padding: 3px 12px;
+            padding: 4px 14px;
             border-radius: 14px;
             font-size: 12px;
             font-weight: 600;
@@ -400,94 +500,38 @@ if (!$appareilActif && !empty($smsAppareils)) {
         }
         .appareil-option .badge-incomplet {
             display: inline-block;
-            padding: 3px 12px;
+            padding: 4px 14px;
             border-radius: 14px;
             font-size: 12px;
             font-weight: 600;
             background: #fef3c7;
             color: #92400e;
         }
-        
-        .action-buttons {
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-            margin-top: 24px;
-            padding-top: 16px;
-            border-top: 2px solid #f3f4f6;
-        }
-        .btn-primary {
+        .appareil-option .badge-selected {
+            position: absolute;
+            top: 12px;
+            right: 12px;
             background: #3b82f6;
             color: white;
-            padding: 11px 28px;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 700;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-primary:hover:not(:disabled) {
-            background: #2563eb;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
-        }
-        .btn-primary:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        .btn-outline {
-            background: transparent;
-            color: #6b7280;
-            padding: 11px 22px;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
             font-weight: 600;
-            border: 2px solid #e5e7eb;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .btn-outline:hover {
-            background: #f9fafb;
-            border-color: #d1d5db;
-        }
-        
-        .error-box {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 14px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 4px;
         }
-        .error-box i {
-            color: #ef4444;
-            font-size: 18px;
-        }
-        .error-box span {
-            color: #991b1b;
-            font-size: 14px;
-            font-weight: 500;
+        .appareil-option .badge-selected i {
+            font-size: 12px;
         }
         
-        .appareils-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            margin-bottom: 0;
-        }
-        
+        /* ============================================
+           EMPTY STATE
+        ============================================ */
         .empty-state {
             text-align: center;
             padding: 48px 20px;
+            width: 100%;
         }
         .empty-state i {
             font-size: 56px;
@@ -509,29 +553,75 @@ if (!$appareilActif && !empty($smsAppareils)) {
             color: #9ca3af;
             margin-top: 6px;
         }
-        .empty-state .btn-config {
-            display: inline-block;
-            margin-top: 16px;
+        
+        /* ============================================
+           ACTION BUTTONS
+        ============================================ */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 2px solid #f3f4f6;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        
+        .btn-primary {
             background: #3b82f6;
             color: white;
             padding: 11px 28px;
             border-radius: 8px;
             font-size: 15px;
-            font-weight: 600;
-            text-decoration: none;
+            font-weight: 700;
             transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 200px;
+            justify-content: center;
         }
-        .empty-state .btn-config:hover {
+        .btn-primary:hover:not(:disabled) {
             background: #2563eb;
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
         }
-        .empty-state .btn-config i {
-            font-size: 14px;
-            color: white;
-            margin-right: 6px;
+        .btn-primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
         }
         
+        .btn-outline {
+            background: transparent;
+            color: #6b7280;
+            padding: 11px 22px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 2px solid #e5e7eb;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            min-width: 120px;
+            justify-content: center;
+        }
+        .btn-outline:hover {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            color: #374151;
+        }
+        
+        /* ============================================
+           CONFIRM MODAL
+        ============================================ */
         .confirm-modal {
             position: fixed;
             inset: 0;
@@ -548,7 +638,7 @@ if (!$appareilActif && !empty($smsAppareils)) {
         .confirm-modal .confirm-box {
             background: white;
             border-radius: 16px;
-            padding: 28px 36px;
+            padding: 32px 40px;
             max-width: 420px;
             width: 90%;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
@@ -560,22 +650,22 @@ if (!$appareilActif && !empty($smsAppareils)) {
         }
         .confirm-modal .confirm-icon {
             text-align: center;
-            font-size: 44px;
+            font-size: 48px;
             margin-bottom: 10px;
         }
         .confirm-modal .confirm-title {
             text-align: center;
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 700;
             color: #1f2937;
             margin-bottom: 6px;
         }
         .confirm-modal .confirm-message {
             text-align: center;
-            font-size: 14px;
+            font-size: 15px;
             color: #6b7280;
-            margin-bottom: 20px;
-            line-height: 1.5;
+            margin-bottom: 24px;
+            line-height: 1.6;
         }
         .confirm-modal .confirm-actions {
             display: flex;
@@ -583,7 +673,7 @@ if (!$appareilActif && !empty($smsAppareils)) {
             justify-content: center;
         }
         .confirm-modal .confirm-actions button {
-            padding: 8px 24px;
+            padding: 10px 28px;
             border-radius: 8px;
             font-size: 14px;
             font-weight: 600;
@@ -606,38 +696,186 @@ if (!$appareilActif && !empty($smsAppareils)) {
             background: #2563eb;
         }
         
-        @media (max-width: 768px) {
-            .container { padding: 12px; }
-            .header-section { flex-wrap: wrap; padding: 14px; }
-            .header-section .title { font-size: 18px; }
-            .header-section .subtitle { font-size: 13px; }
-            .main-card { padding: 16px; }
-            .campagne-info { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .step-indicator { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+        /* ============================================
+           UTILITIES
+        ============================================ */
+        .mb-2 { margin-bottom: 8px; }
+        .mb-3 { margin-bottom: 12px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-5 { margin-bottom: 20px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mr-1 { margin-right: 4px; }
+        .text-xs { font-size: 12px; }
+        .text-sm { font-size: 14px; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-400 { color: #9ca3af; }
+        .w-full { width: 100%; }
+        .hidden { display: none !important; }
+        
+        /* ============================================
+           RESPONSIVE
+        ============================================ */
+        @media (max-width: 1200px) {
+            .container { padding: 16px 24px; }
+            .appareils-grid {
+                grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .container { padding: 14px 20px; }
+            .main-card { padding: 20px; }
+            .step-indicator { padding: 10px 16px; gap: 8px; }
             .step { font-size: 12px; }
             .step .number { width: 24px; height: 24px; font-size: 10px; }
-            .step-line { width: 24px; }
-            .appareils-grid { grid-template-columns: 1fr; gap: 12px; }
-            .appareil-option { padding: 16px 12px; }
-            .appareil-option .icon-wrapper { width: 56px; height: 56px; font-size: 22px; }
-            .appareil-option .appareil-name { font-size: 15px; }
-            .action-buttons { flex-direction: column; }
+            .step-line { width: 28px; }
+            .appareils-grid {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 14px;
+            }
+            .appareil-option { min-height: 160px; padding: 20px 14px; }
+            .appareil-option .icon-wrapper { width: 56px; height: 56px; font-size: 24px; }
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 12px 16px; }
+            
+            .header-section {
+                padding: 14px 16px;
+                gap: 8px;
+            }
+            .header-section .title { font-size: 19px; }
+            .header-section .subtitle { font-size: 13px; }
+            .header-section .icon-wrapper { padding: 8px 10px; }
+            .header-section .icon-wrapper i { font-size: 18px; }
+            
+            .main-card { padding: 16px; }
+            
+            .campagne-info {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px 16px;
+                gap: 6px;
+            }
+            .campagne-info .info-left .campagne-name { font-size: 14px; }
+            .campagne-info .info-right { font-size: 13px; }
+            
+            .appareils-grid {
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+                gap: 12px;
+            }
+            .appareil-option {
+                padding: 16px 12px;
+                min-height: 140px;
+            }
+            .appareil-option .icon-wrapper {
+                width: 48px;
+                height: 48px;
+                font-size: 20px;
+                margin-bottom: 8px;
+            }
+            .appareil-option .appareil-name { font-size: 14px; }
+            .appareil-option .badge-selected {
+                top: 8px;
+                right: 8px;
+                font-size: 10px;
+                padding: 3px 10px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
             .action-buttons .btn-primary,
-            .action-buttons .btn-outline { width: 100%; justify-content: center; }
+            .action-buttons .btn-outline {
+                width: 100%;
+                justify-content: center;
+                min-width: unset;
+            }
+            
+            .step-indicator {
+                gap: 6px;
+                padding: 8px 12px;
+            }
+            .step { font-size: 11px; gap: 4px; }
+            .step .number { width: 20px; height: 20px; font-size: 9px; }
+            .step-line { width: 16px; }
+            .step span:last-child { display: none; }
+            
             .empty-state { padding: 32px 16px; }
             .empty-state i { font-size: 44px; }
             .empty-state h3 { font-size: 18px; }
-            .empty-state .btn-config { width: 100%; text-align: center; }
-            .confirm-modal .confirm-box { padding: 24px 20px; }
-            .confirm-modal .confirm-actions { flex-direction: column; }
-            .confirm-modal .confirm-actions button { width: 100%; }
+            
+            .confirm-modal .confirm-box {
+                padding: 24px 20px;
+                max-width: 95%;
+            }
+            .confirm-modal .confirm-actions {
+                flex-direction: column;
+            }
+            .confirm-modal .confirm-actions button {
+                width: 100%;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .container { padding: 8px 10px; }
+            .header-section { padding: 10px 12px; }
+            .header-section .title { font-size: 17px; }
+            .header-section .subtitle { font-size: 12px; }
+            .header-section .back-link { font-size: 12px; padding: 3px 8px; }
+            
+            .main-card { padding: 12px; }
+            
+            .campagne-info { padding: 10px 12px; }
+            .campagne-info .info-left .campagne-name { font-size: 13px; }
+            .campagne-info .info-left .sms-badge { font-size: 10px; padding: 2px 10px; }
+            .campagne-info .info-right { font-size: 12px; }
+            
+            .appareils-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            .appareil-option {
+                padding: 12px 8px;
+                min-height: 120px;
+            }
+            .appareil-option .icon-wrapper {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+                margin-bottom: 4px;
+            }
+            .appareil-option .appareil-name { font-size: 12px; }
+            .appareil-option .device-id { font-size: 9px; }
+            .appareil-option .badge-actif,
+            .appareil-option .badge-incomplet {
+                font-size: 9px;
+                padding: 2px 10px;
+            }
+            .appareil-option .badge-selected {
+                font-size: 9px;
+                padding: 2px 8px;
+                top: 4px;
+                right: 4px;
+            }
+            
+            .btn-primary {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            .btn-outline {
+                padding: 10px 18px;
+                font-size: 13px;
+            }
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- Step indicator -->
+    <!-- ===== STEP INDICATOR ===== -->
     <div class="step-indicator">
         <div class="step done">
             <span class="number"><i class="fas fa-check"></i></span>
@@ -665,7 +903,7 @@ if (!$appareilActif && !empty($smsAppareils)) {
         </div>
     </div>
 
-    <!-- En-tête -->
+    <!-- ===== EN-TÊTE ===== -->
     <div class="header-section">
         <a href="javascript:history.back()" class="back-link">
             <i class="fas fa-arrow-left"></i> Retour
@@ -673,20 +911,20 @@ if (!$appareilActif && !empty($smsAppareils)) {
         <div class="icon-wrapper">
             <i class="fas fa-mobile-alt"></i>
         </div>
-        <div>
+        <div class="header-text">
             <div class="title">Choisir l'appareil SMS</div>
             <div class="subtitle">Sélectionnez l'appareil pour l'envoi de vos SMS</div>
         </div>
     </div>
 
-    <!-- Card principale -->
+    <!-- ===== CARD PRINCIPALE ===== -->
     <div class="main-card">
         <!-- Info campagne -->
         <div class="campagne-info">
             <div class="info-left">
                 <i class="fas fa-bullhorn" style="color: #7c3aed; font-size: 16px;"></i>
                 <span class="campagne-name"><?= htmlspecialchars($campagne['nom_campagne']) ?></span>
-                <span class="sms-badge"><i class="fas fa-comment-dots mr-1"></i>SMS</span>
+                <span class="sms-badge"><i class="fas fa-comment-dots"></i> SMS</span>
             </div>
             <div class="info-right">
                 <i class="fas fa-arrow-right"></i> Étape 4 sur 5
@@ -714,29 +952,37 @@ if (!$appareilActif && !empty($smsAppareils)) {
                 <input type="hidden" name="action_choisir_appareil" value="1">
                 <input type="hidden" name="id_appareil" id="id_appareil" value="<?= $appareilActif ?>">
                 
-                <!-- Appareils cards -->
+                <!-- ===== APPAREILS CARDS ===== -->
                 <div class="appareils-grid">
                     <?php foreach ($smsAppareils as $appareil): 
                         $estComplet = !empty($appareil['device_id']) && !empty($appareil['api_username']) && !empty($appareil['api_password']);
                     ?>
                         <div class="appareil-option <?= ($appareilActif == $appareil['id_appareil']) ? 'selected' : '' ?>" 
                              data-appareil-id="<?= $appareil['id_appareil'] ?>"
-                             onclick="selectAppareil('<?= $appareil['id_appareil'] ?>')">
+                             onclick="selectAppareil('<?= $appareil['id_appareil'] ?>')"
+                             role="button"
+                             tabindex="0"
+                             aria-label="Sélectionner <?= htmlspecialchars($appareil['device_name'] ?: 'Appareil SMS') ?>">
+                            
+                            <?php if ($appareilActif == $appareil['id_appareil']): ?>
+                                <div class="badge-selected"><i class="fas fa-check"></i> Sélectionné</div>
+                            <?php endif; ?>
+                            
                             <div class="icon-wrapper">
                                 <i class="fas fa-mobile-alt"></i>
                             </div>
                             <div class="appareil-name"><?= htmlspecialchars($appareil['device_name'] ?: 'Appareil SMS') ?></div>
                             <div class="device-id">Device ID: <?= htmlspecialchars(substr($appareil['device_id'] ?? '', 0, 20)) ?>...</div>
                             <?php if ($appareilActif == $appareil['id_appareil']): ?>
-                                <span class="badge-actif"><i class="fas fa-check-circle"></i>Actif</span>
+                                <span class="badge-actif"><i class="fas fa-check-circle"></i> Actif</span>
                             <?php elseif (!$estComplet): ?>
-                                <span class="badge-incomplet"><i class="fas fa-exclamation-triangle"></i>Incomplet</span>
+                                <span class="badge-incomplet"><i class="fas fa-exclamation-triangle"></i> Incomplet</span>
                             <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
                 
-                <!-- Boutons action -->
+                <!-- ===== BOUTONS ACTION ===== -->
                 <div class="action-buttons">
                     <a href="index.php?page=campagnes/choix_provider_sms&campagne_id=<?= $campagneConfigId ?>" class="btn-outline">
                         <i class="fas fa-times"></i> Annuler
@@ -751,7 +997,7 @@ if (!$appareilActif && !empty($smsAppareils)) {
     </div>
 </div>
 
-<!-- Modal de confirmation -->
+<!-- ===== MODAL DE CONFIRMATION ===== -->
 <div id="confirmModal" class="confirm-modal">
     <div class="confirm-box">
         <div class="confirm-icon">📱</div>
@@ -768,6 +1014,9 @@ if (!$appareilActif && !empty($smsAppareils)) {
 </div>
 
 <script>
+// ============================================
+// SÉLECTION DE L'APPAREIL
+// ============================================
 let selectedAppareil = <?= json_encode($appareilActif) ?>;
 
 function selectAppareil(appareilId) {
@@ -775,8 +1024,13 @@ function selectAppareil(appareilId) {
     
     document.querySelectorAll('.appareil-option').forEach(el => {
         el.classList.remove('selected');
-        const badge = el.querySelector('.badge-actif');
+        // Supprimer le badge sélectionné
+        const badge = el.querySelector('.badge-selected');
         if (badge) badge.remove();
+        
+        // Mettre à jour le badge actif
+        const badgeActif = el.querySelector('.badge-actif');
+        if (badgeActif) badgeActif.remove();
         const badgeIncomplet = el.querySelector('.badge-incomplet');
         if (badgeIncomplet) badgeIncomplet.remove();
     });
@@ -784,22 +1038,57 @@ function selectAppareil(appareilId) {
     const selectedEl = document.querySelector(`.appareil-option[data-appareil-id="${appareilId}"]`);
     if (selectedEl) {
         selectedEl.classList.add('selected');
-        const badge = document.createElement('span');
-        badge.className = 'badge-actif';
-        badge.innerHTML = '<i class="fas fa-check-circle"></i>Actif';
+        
+        // Ajouter le badge sélectionné
+        const badge = document.createElement('div');
+        badge.className = 'badge-selected';
+        badge.innerHTML = '<i class="fas fa-check"></i> Sélectionné';
         selectedEl.appendChild(badge);
+        
+        // Ajouter le badge actif
+        const badgeActif = document.createElement('span');
+        badgeActif.className = 'badge-actif';
+        badgeActif.innerHTML = '<i class="fas fa-check-circle"></i> Actif';
+        selectedEl.appendChild(badgeActif);
     }
     
     document.getElementById('id_appareil').value = appareilId;
     document.getElementById('btnContinuer').disabled = false;
 }
 
+// ============================================
+// CLAVIER (Entrée/Espace)
+// ============================================
+document.querySelectorAll('.appareil-option').forEach(el => {
+    el.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            const appareilId = this.dataset.appareilId;
+            selectAppareil(appareilId);
+        }
+    });
+});
+
+// ============================================
+// INITIALISATION
+// ============================================
 document.addEventListener('DOMContentLoaded', function() {
     if (selectedAppareil) {
         document.getElementById('btnContinuer').disabled = false;
+        // Ajouter le badge sélectionné sur l'élément actif
+        const selectedEl = document.querySelector(`.appareil-option[data-appareil-id="${selectedAppareil}"]`);
+        if (selectedEl) {
+            const badge = document.createElement('div');
+            badge.className = 'badge-selected';
+            badge.innerHTML = '<i class="fas fa-check"></i> Sélectionné';
+            selectedEl.appendChild(badge);
+        }
     }
 });
 
+// ============================================
+// MODAL
+// ============================================
 function openConfirm() {
     const selected = document.getElementById('id_appareil').value;
     if (!selected) {
@@ -825,6 +1114,9 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeConfirm();
 });
 
+// ============================================
+// TOAST NOTIFICATION
+// ============================================
 function showToast(message, type = 'success') {
     const existingToasts = document.querySelectorAll('.toast-notification');
     existingToasts.forEach(toast => toast.remove());
@@ -834,7 +1126,7 @@ function showToast(message, type = 'success') {
     const colors = { success: '#10b981', error: '#ef4444', info: '#3b82f6', warning: '#f59e0b' };
     toast.innerHTML = `<div class="toast-content" style="background: ${colors[type] || colors.success};">${message}</div>`;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+    setTimeout(() => toast.remove(), 5000);
 }
 </script>
 
