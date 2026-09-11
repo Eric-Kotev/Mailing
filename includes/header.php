@@ -30,6 +30,9 @@ if ($userId) {
         $userLogo = $userInfo[0]['logo_url'];
     }
 }
+
+$userEntreprise = $_SESSION['user_entreprise'] ?? 'Aucune entreprise';
+$userInitiale = strtoupper(substr($displayName ?: 'U', 0, 1));
 ?>
 
 <header class="bg-white shadow-sm">
@@ -45,11 +48,10 @@ if ($userId) {
                 <div class="text-2xl font-bold text-gray-800 flex items-center gap-2">
                     <span>Bonjour</span>
                     <span><?= htmlspecialchars($displayName) ?></span>
-                    <span class="text-xl"></span>
                 </div>
                 <div class="text-xs text-gray-500 flex items-center gap-2">
                     <i class="fas fa-building text-gray-400"></i>
-                    <?= htmlspecialchars($_SESSION['user_entreprise'] ?? 'Aucune entreprise') ?>
+                    <?= htmlspecialchars($userEntreprise) ?>
                     <?php if ($isAdmin): ?>
                         <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-[10px] font-medium">Admin</span>
                     <?php endif; ?>
@@ -57,30 +59,99 @@ if ($userId) {
             </div>
         </div>
         
-        <!-- GROUPE DROITE : Crédits + Logo + Déconnexion -->
+        <!-- GROUPE DROITE : Crédits (si non-admin) + Logo & Nom avec menu flottant -->
         <div class="flex items-center space-x-4">
-            <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                <i class="fas fa-coins mr-1"></i>
-                <?= number_format($credits, 3) ?> €
-            </div>
-
-            <?php if (!empty($userLogo)): ?>
-                <img src="<?= htmlspecialchars($userLogo) . '?t=' . time() ?>" 
-                     alt="Logo <?= htmlspecialchars($displayName) ?>"
-                     class="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm"
-                     onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-sm" style="display: none;">
-                    <?= strtoupper(substr($displayName, 0, 1)) ?>
-                </div>
-            <?php else: ?>
-                <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-sm">
-                    <?= strtoupper(substr($displayName, 0, 1)) ?>
+            <?php if (!$isAdmin): ?>
+                <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                    <i class="fas fa-coins mr-1"></i>
+                    <?= number_format($credits, 3) ?> €
                 </div>
             <?php endif; ?>
-            
-            <a href="logout.php" class="text-gray-500 hover:text-red-600 transition" title="Déconnexion">
-                <i class="fas fa-sign-out-alt text-xl"></i>
-            </a>
+
+            <!-- Logo + Nom + Menu flottant -->
+            <div class="relative" id="userMenuWrapper">
+                <button type="button"
+                        id="userMenuBtn"
+                        class="header-user-btn flex items-center gap-3 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        title="Mon compte"
+                        aria-label="Ouvrir le menu utilisateur"
+                        aria-haspopup="true"
+                        aria-expanded="false">
+                    <!-- Logo / Avatar -->
+                    <span class="header-user-avatar">
+                        <?php if (!empty($userLogo)): ?>
+                            <img src="<?= htmlspecialchars($userLogo) . '?t=' . time() ?>" 
+                                 alt="Logo <?= htmlspecialchars($displayName) ?>"
+                                 class="header-logo w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm"
+                                 onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <span class="header-logo-fallback w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-sm" style="display: none;">
+                                <?= $userInitiale ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="header-logo-fallback w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-sm">
+                                <?= $userInitiale ?>
+                            </span>
+                        <?php endif; ?>
+                    </span>
+
+                    <!-- Nom de l'utilisateur -->
+                    <span class="header-user-name hidden sm:block"><?= htmlspecialchars($displayName) ?></span>
+
+                    <!-- Chevron -->
+                    <i class="fas fa-chevron-down header-user-chevron hidden sm:block"></i>
+                </button>
+
+                <!-- Menu flottant -->
+                <div id="userDropdown"
+                     class="user-dropdown"
+                     role="menu"
+                     aria-labelledby="userMenuBtn">
+                    
+                    <!-- En-tête du menu : avatar + nom + entreprise -->
+                    <div class="user-dropdown-header">
+                        <div class="user-dropdown-avatar">
+                            <?php if (!empty($userLogo)): ?>
+                                <img src="<?= htmlspecialchars($userLogo) . '?t=' . time() ?>" 
+                                     alt="Logo <?= htmlspecialchars($displayName) ?>"
+                                     class="user-dropdown-avatar-img"
+                                     onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                <div class="user-dropdown-avatar-fallback" style="display: none;">
+                                    <?= $userInitiale ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="user-dropdown-avatar-fallback">
+                                    <?= $userInitiale ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="user-dropdown-info">
+                            <div class="user-dropdown-name truncate"><?= htmlspecialchars($displayName) ?></div>
+                            <div class="user-dropdown-company truncate"><?= htmlspecialchars($userEntreprise) ?></div>
+                            <?php if ($isAdmin): ?>
+                                <span class="user-dropdown-badge">Admin</span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div class="user-dropdown-divider"></div>
+
+                    <!-- Option Profil -->
+                    <a href="index.php?page=parametres/compte"
+                       class="user-dropdown-item"
+                       role="menuitem">
+                        <i class="fas fa-user-cog user-dropdown-item-icon"></i>
+                        <span>Profil</span>
+                    </a>
+
+                    <!-- Option Déconnexion -->
+                    <a href="logout.php"
+                       class="user-dropdown-item user-dropdown-item-danger"
+                       role="menuitem">
+                        <i class="fas fa-sign-out-alt user-dropdown-item-icon"></i>
+                        <span>Se déconnecter</span>
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 </header>
@@ -94,22 +165,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebarToggle');
     
-    // Fonction pour basculer le sidebar
     function toggleSidebar() {
         if (!sidebar) return;
         
         const isCollapsed = sidebar.classList.contains('w-20');
         
         if (isCollapsed) {
-            // Agrandir
             sidebar.classList.remove('w-20');
             sidebar.classList.add('w-64');
             
-            // Afficher les textes
             const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
             allTexts.forEach(text => text.classList.remove('hidden'));
             
-            // Restaurer les paddings
             const header = sidebar.querySelector('.p-2');
             if (header) {
                 header.classList.add('p-4');
@@ -121,22 +188,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 footer.classList.remove('p-2');
             }
             
-            // Mettre à jour l'icône du bouton du sidebar
             if (sidebarToggle) {
                 sidebarToggle.querySelector('i').className = 'fas fa-chevron-left text-sm';
             }
             
             localStorage.setItem('admin_sidebar_collapsed', 'false');
         } else {
-            // Rétrécir
             sidebar.classList.add('w-20');
             sidebar.classList.remove('w-64');
             
-            // Cacher les textes
             const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
             allTexts.forEach(text => text.classList.add('hidden'));
             
-            // Réduire les paddings
             const header = sidebar.querySelector('.p-4');
             if (header) {
                 header.classList.add('p-2');
@@ -148,7 +211,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 footer.classList.remove('p-4');
             }
             
-            // Mettre à jour l'icône du bouton du sidebar
             if (sidebarToggle) {
                 sidebarToggle.querySelector('i').className = 'fas fa-chevron-right text-sm';
             }
@@ -157,15 +219,61 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
     
-    // Événement sur le bouton du header
     if (headerToggleBtn) {
         headerToggleBtn.addEventListener('click', toggleSidebar);
     }
     
-    // Événement sur le bouton du sidebar (si existant)
     if (sidebarToggle) {
         sidebarToggle.addEventListener('click', toggleSidebar);
     }
+
+    // ============================================
+    // MENU FLOTTANT UTILISATEUR (logo + nom cliquables)
+    // ============================================
+    const userMenuBtn = document.getElementById('userMenuBtn');
+    const userMenuWrapper = document.getElementById('userMenuWrapper');
+    const userDropdown = document.getElementById('userDropdown');
+
+    function openUserMenu() {
+        if (!userDropdown) return;
+        userDropdown.classList.add('show');
+        if (userMenuBtn) userMenuBtn.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeUserMenu() {
+        if (!userDropdown) return;
+        userDropdown.classList.remove('show');
+        if (userMenuBtn) userMenuBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleUserMenu(e) {
+        e.stopPropagation();
+        if (!userDropdown) return;
+        if (userDropdown.classList.contains('show')) {
+            closeUserMenu();
+        } else {
+            openUserMenu();
+        }
+    }
+
+    if (userMenuBtn) {
+        userMenuBtn.addEventListener('click', toggleUserMenu);
+    }
+
+    // Fermer au clic en dehors du menu
+    document.addEventListener('click', function (e) {
+        if (!userMenuWrapper) return;
+        if (!userMenuWrapper.contains(e.target)) {
+            closeUserMenu();
+        }
+    });
+
+    // Fermer avec la touche Échap
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            closeUserMenu();
+        }
+    });
 });
 
 // ============================================
@@ -260,8 +368,8 @@ function escapeHtml(text) {
         }
     }
 
-    setInterval(verifierNotifications, 15000); // toutes les 15 secondes
-    verifierNotifications(); // vérification immédiate au chargement
+    setInterval(verifierNotifications, 15000);
+    verifierNotifications();
 })();
 </script>
 
@@ -270,6 +378,236 @@ function escapeHtml(text) {
     object-fit: cover;
 }
 
+/* ============================================
+   BOUTON UTILISATEUR (logo + nom) DANS LE HEADER
+   ============================================ */
+.header-user-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 4px 10px 4px 4px;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.header-user-btn:hover {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+.header-user-btn:hover .header-logo,
+.header-user-btn:hover .header-logo-fallback {
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+    border-color: #3b82f6;
+}
+
+.header-user-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.header-user-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #374151;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.header-user-chevron {
+    font-size: 0.7rem;
+    color: #9ca3af;
+    transition: transform 0.18s ease, color 0.18s ease;
+}
+
+.header-user-btn[aria-expanded="true"] .header-user-chevron {
+    transform: rotate(180deg);
+    color: #3b82f6;
+}
+
+.header-logo {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.header-logo-fallback {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* ============================================
+   MENU FLOTTANT UTILISATEUR
+   ============================================ */
+.user-dropdown {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    min-width: 300px;
+    max-width: 340px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12), 0 5px 15px rgba(0, 0, 0, 0.06);
+    padding: 8px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+    z-index: 1000;
+}
+
+.user-dropdown.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* Petite flèche au-dessus du menu */
+.user-dropdown::before {
+    content: "";
+    position: absolute;
+    top: -7px;
+    right: 22px;
+    width: 14px;
+    height: 14px;
+    background: #ffffff;
+    border-left: 1px solid #e5e7eb;
+    border-top: 1px solid #e5e7eb;
+    transform: rotate(45deg);
+}
+
+/* ---------- En-tête du menu : avatar + infos ---------- */
+.user-dropdown-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 14px 12px;
+}
+
+.user-dropdown-avatar {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-dropdown-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 1px solid #e5e7eb;
+}
+
+.user-dropdown-avatar-fallback {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.user-dropdown-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.user-dropdown-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #111827;
+    line-height: 1.2;
+}
+
+.user-dropdown-company {
+    font-size: 0.8rem;
+    color: #6b7280;
+    line-height: 1.2;
+}
+
+.user-dropdown-badge {
+    display: inline-block;
+    align-self: flex-start;
+    margin-top: 4px;
+    background: #ede9fe;
+    color: #6d28d9;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* ---------- Séparateur ---------- */
+.user-dropdown-divider {
+    height: 1px;
+    background: #f3f4f6;
+    margin: 6px 4px;
+}
+
+/* ---------- Items ---------- */
+.user-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #374151;
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.user-dropdown-item:hover {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+.user-dropdown-item-icon {
+    width: 18px;
+    text-align: center;
+    font-size: 0.95rem;
+    color: #9ca3af;
+    transition: color 0.15s ease;
+}
+
+.user-dropdown-item:hover .user-dropdown-item-icon {
+    color: #3b82f6;
+}
+
+.user-dropdown-item-danger {
+    color: #dc2626;
+}
+
+.user-dropdown-item-danger .user-dropdown-item-icon {
+    color: #f87171;
+}
+
+.user-dropdown-item-danger:hover {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.user-dropdown-item-danger:hover .user-dropdown-item-icon {
+    color: #dc2626;
+}
+
+/* ============================================
+   TOAST NOTIFICATIONS
+   ============================================ */
 .toast-container {
     position: fixed;
     top: 80px;

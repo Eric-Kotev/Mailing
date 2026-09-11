@@ -18,8 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_user'])
         $nom = trim($_POST['nom'] ?? '');
         $user = trim($_POST['user'] ?? '');
         $password = $_POST['password'] ?? '';
-        $credits_total = floatval($_POST['credits_total'] ?? 0);
         $role = $_POST['role'] ?? 'user';
+        
+        // Le crédit est toujours forcé à 0 à la création
+        $credits_total = 0;
         
         $errors = [];
         if (empty($entreprise)) $errors[] = "Le nom de l'entreprise est requis";
@@ -83,7 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_user'])) 
         $nom = trim($_POST['nom'] ?? '');
         $user = trim($_POST['user'] ?? '');
         $password = $_POST['password'] ?? '';
-        $credits_total = floatval($_POST['credits_total'] ?? 0);
         $role = $_POST['role'] ?? 'user';
         
         $errors = [];
@@ -108,7 +109,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_edit_user'])) 
             'prenom' => $prenom,
             'nom' => $nom,
             'user' => $user,
-            'credits_total' => $credits_total,
             'role' => $role
         ];
         
@@ -249,7 +249,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'supprimer' && isset($_GET['id
 $search_query = $_GET['search'] ?? '';
 
 // Récupérer tous les utilisateurs
-$users = $db->select('compte', [], '*', 'date_creation.desc');
+$users = $db->select('compte', ['role' => 'admin'], '*', 'date_creation.desc');
 
 // Vérifier que $users est bien un tableau
 if (!is_array($users)) {
@@ -364,10 +364,6 @@ unset($_SESSION['flash_type']);
         }
         .user-table tr:hover {
             background-color: #f9fafb;
-        }
-        .credits-amount {
-            font-weight: 600;
-            color: #1f2937;
         }
         .btn-action {
             padding: 6px 12px;
@@ -724,14 +720,7 @@ unset($_SESSION['flash_type']);
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
-                        <select name="role" id="add_role" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500">
-                            <option value="client">Client</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Crédits initiaux</label>
-                        <input type="number" name="credits_total" id="add_credits_total" value="0" step="0.001" min="0"
+                        <input type="text" name="role" id="add_role" value="admin" 
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500">
                     </div>
                 </div>
@@ -808,14 +797,7 @@ unset($_SESSION['flash_type']);
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
-                        <select name="role" id="edit_role" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                            <option value="client">Client</option>
-                            <option value="admin">Admin</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Crédits</label>
-                        <input type="number" name="credits_total" id="edit_credits_total" value="0" step="0.001" min="0"
+                        <input type="text" name="role" id="edit_role" value="admin"
                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
                     </div>
                 </div>
@@ -888,7 +870,6 @@ unset($_SESSION['flash_type']);
                         <th>Compte</th>
                         <th>Entreprise</th>
                         <th>Nom d'utilisateur</th>
-                        <th>Crédits</th>
                         <th>Rôle</th>
                         <th>Statut</th>
                         <th>Date d'inscription</th>
@@ -898,7 +879,7 @@ unset($_SESSION['flash_type']);
                 <tbody id="usersTableBody">
                     <?php if (empty($users) || !is_array($users)): ?>
                         <tr>
-                            <td colspan="8">
+                            <td colspan="7">
                                 <div class="no-results">
                                     <i class="fas fa-users"></i>
                                     <h3>Aucun utilisateur trouvé</h3>
@@ -955,7 +936,6 @@ unset($_SESSION['flash_type']);
                                     </div>
                                 </td>
                                 <td><?= htmlspecialchars($user['user'] ?? '-') ?></td>
-                                <td class="credits-amount"><?= number_format($user['credits_total'] ?? 0, 3) ?> €</td>
                                 <td>
                                     <span class="role-badge <?= $roleClass ?>"><?= $roleLabel ?></span>
                                 </td>
@@ -1124,7 +1104,6 @@ function openAddUserModal() {
     const modal = document.getElementById('addUserModal');
     const modalContent = modal.querySelector('.modal-add-user');
     document.getElementById('addUserForm').reset();
-    document.getElementById('add_credits_total').value = '0';
     const pwdInput = document.getElementById('add_password');
     pwdInput.type = 'password';
     const toggleBtn = pwdInput.parentElement.querySelector('.password-toggle');
@@ -1161,7 +1140,6 @@ function openEditUserModal(userId) {
                 document.getElementById('edit_nom').value = user.nom || '';
                 document.getElementById('edit_user').value = user.user || '';
                 document.getElementById('edit_role').value = user.role || 'user';
-                document.getElementById('edit_credits_total').value = user.credits_total || 0;
                 
                 const pwdInput = document.getElementById('edit_password');
                 pwdInput.type = 'password';

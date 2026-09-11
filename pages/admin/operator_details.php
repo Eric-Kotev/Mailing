@@ -105,6 +105,11 @@ if (empty($provider)) {
 
 $provider = $provider[0];
 
+// Fallback si la colonne min_tarif n'existe pas encore ou est NULL
+if (!isset($provider['min_tarif']) || $provider['min_tarif'] === null) {
+    $provider['min_tarif'] = '0.000';
+}
+
 // Canal (libelle)
 $typeMessage = $db->select('type_message', ['id_type_message' => $provider['id_type_message']]);
 $canalName = !empty($typeMessage) ? $typeMessage[0]['libelle_type'] : 'Inconnu';
@@ -136,15 +141,16 @@ if ($table) {
     // Jointure manuelle avec la table compte pour récupérer nom + statut actif
     foreach ($ids as $clientId) {
         $compte = $db->select('compte', ['id_compte' => $clientId]);
-        $isActif = !empty($compte) ? (bool)$compte[0]['actif'] : false;
+        $isActifClient = !empty($compte) ? (bool)$compte[0]['actif'] : false;
 
         $clients[] = [
             'id_compte' => $clientId,
             'nom' => !empty($compte) ? $compte[0]['nom'] : 'Client inconnu',
-            'actif' => $isActif,
+            'actif' => $isActifClient,
             // Pour l'instant on affiche le tarif par défaut de l'opérateur.
             // Un tarif personnalisé par client pourra remplacer cette valeur plus tard.
             'tarif' => $provider['tarif'],
+            'min_tarif' => $provider['min_tarif'],
         ];
     }
 
@@ -192,6 +198,8 @@ if ($table) {
             --red-fg: oklch(0.5 0.17 30);
             --blue-bg: oklch(0.93 0.04 250);
             --blue-fg: oklch(0.45 0.15 250);
+            --warn-bg: oklch(0.94 0.06 80);
+            --warn-fg: oklch(0.48 0.12 70);
         }
 
         * { 
@@ -380,19 +388,10 @@ if ($table) {
             background: oklch(0.89 0.05 30);
         }
 
-        .btn-action-blue {
-            background: var(--blue-bg);
-            color: var(--blue-fg);
-        }
-
-        .btn-action-blue:hover:not(:disabled) {
-            background: oklch(0.88 0.04 250);
-        }
-
-        /* ===== INFO GRID ===== */
+        /* ===== INFO GRID : 4 COLONNES ===== */
         .info-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 16px;
             margin-bottom: 24px;
             width: 100%;
@@ -411,6 +410,14 @@ if ($table) {
             font-size: 13px;
             font-weight: 600;
             color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .info-card .label .label-icon {
+            font-size: 12px;
+            color: var(--muted-2);
         }
 
         .info-card .value {
@@ -444,9 +451,13 @@ if ($table) {
             width: 100%;
         }
 
+        /* ============================================ */
+        /* GRILLE : 5 COLONNES                          */
+        /* Client | Tarif client | Tarif min | Statut | Action */
+        /* ============================================ */
         .grid-row {
             display: grid;
-            grid-template-columns: 2.2fr 1.4fr 1.2fr 0.8fr;
+            grid-template-columns: 2fr 1.1fr 1.1fr 0.9fr 0.7fr;
             gap: 12px;
             align-items: center;
             min-width: 0;
@@ -485,9 +496,18 @@ if ($table) {
             font-family: monospace; 
         }
         
+        /* Colonne Tarif client */
         .client-tarif { 
             font-weight: 700;
             white-space: nowrap;
+            color: var(--accent);
+        }
+
+        /* Colonne Tarif minimum */
+        .client-tarif-min {
+            font-weight: 600;
+            white-space: nowrap;
+            color: var(--warn-fg);
         }
 
         .badge-statut {
@@ -575,7 +595,7 @@ if ($table) {
                 padding: 20px 24px; 
             }
             .grid-row { 
-                grid-template-columns: 2fr 1.2fr 1fr 0.7fr; 
+                grid-template-columns: 1.8fr 1fr 1fr 0.8fr 0.6fr; 
                 gap: 10px;
             }
             .info-card .value { 
@@ -591,7 +611,7 @@ if ($table) {
                 grid-template-columns: 1fr 1fr; 
             }
             .grid-row { 
-                grid-template-columns: 1.8fr 1.1fr 0.9fr 0.6fr; 
+                grid-template-columns: 1.6fr 0.95fr 0.95fr 0.75fr 0.55fr; 
                 gap: 8px;
             }
             .grid-head { 
@@ -629,7 +649,7 @@ if ($table) {
                 font-size: 18px; 
             }
             .grid-row { 
-                grid-template-columns: 1.6fr 1fr 0.8fr 0.5fr; 
+                grid-template-columns: 1.5fr 0.9fr 0.9fr 0.7fr 0.5fr; 
                 gap: 6px;
                 font-size: 12px;
             }
@@ -689,7 +709,7 @@ if ($table) {
                 font-size: 18px; 
             }
             .grid-row { 
-                grid-template-columns: repeat(4, minmax(100px, 1fr)); 
+                grid-template-columns: repeat(5, minmax(100px, 1fr)); 
                 width: max-content; 
                 min-width: 100%;
                 gap: 8px;
@@ -774,23 +794,45 @@ if ($table) {
         </div>
     </div>
 
-    <!-- ===== INFO CARDS ===== -->
+    <!-- ===== INFO CARDS (4 colonnes) ===== -->
     <div class="info-grid">
         <div class="info-card">
-            <div class="label">Tarif par défaut</div>
+            <div class="label">
+                <i class="fas fa-coins label-icon"></i>
+                Tarif par défaut
+            </div>
             <div class="value" style="color: var(--accent);">
                 <?= number_format($provider['tarif'], 3, ',', ' ') ?> €
                 <span style="font-size: 14px; font-weight: 500; color: var(--muted-2);">/envoi</span>
             </div>
         </div>
+
         <div class="info-card">
-            <div class="label">Clients associés</div>
+            <div class="label">
+                <i class="fas fa-arrow-down-short-wide label-icon"></i>
+                Tarif minimum
+            </div>
+            <div class="value" style="color: var(--warn-fg);">
+                <?= number_format($provider['min_tarif'], 3, ',', ' ') ?> €
+                <span style="font-size: 14px; font-weight: 500; color: var(--muted-2);">/envoi</span>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <div class="label">
+                <i class="fas fa-users label-icon"></i>
+                Clients associés
+            </div>
             <div class="value" style="color: var(--success-soft-fg);"><?= count($clients) ?></div>
         </div>
+
         <div class="info-card">
-            <div class="label">Revenus générés</div>
+            <div class="label">
+                <i class="fas fa-chart-line label-icon"></i>
+                Revenus générés
+            </div>
             <div class="value" style="font-size: 18px; color: var(--muted-2);">
-                <i class="fas fa-chart-line" style="font-size: 16px;"></i>
+                <i class="fas fa-hourglass-half" style="font-size: 16px;"></i>
                 En développement
             </div>
         </div>
@@ -816,7 +858,8 @@ if ($table) {
             <div class="table-wrapper">
                 <div class="grid-row grid-head">
                     <div>Client</div>
-                    <div>Tarif client</div>
+                    <div>Tarif par défaut</div>
+                    <div>Tarif min</div>
                     <div>Statut</div>
                     <div style="text-align: right;">Action</div>
                 </div>
@@ -826,6 +869,7 @@ if ($table) {
                             <?= htmlspecialchars($client['nom']) ?>
                         </div>
                         <div class="client-tarif"><?= number_format($client['tarif'], 3, ',', ' ') ?> €</div>
+                        <div class="client-tarif-min"><?= number_format($client['min_tarif'], 3, ',', ' ') ?> €</div>
                         <div>
                             <span class="badge-statut <?= $client['actif'] ? 'actif' : 'inactif' ?>">
                                 <?= $client['actif'] ? 'Actif' : 'Inactif' ?>

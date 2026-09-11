@@ -114,19 +114,7 @@ $isAdmin = isAdminForMenu();
             <span class="menu-text">Blacklist</span>
         </a>
 
-        <!-- Configuration -->
-        <div class="px-5 pt-5 pb-2 text-[11px] font-semibold tracking-wider text-gray-400 uppercase">
-            <span class="menu-title">Configuration</span>
-        </div>
 
-        <a href="index.php?page=parametres/compte"
-           class="mx-3 mb-1 flex items-center px-4 py-3 rounded-xl transition-all duration-200
-           <?= $currentPage == 'parametres/compte'
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>">
-            <i class="fas fa-cog w-5 mr-3 text-gray-400"></i>
-            <span class="menu-text">Paramétrage</span>
-        </a>
     </nav>
 
     <!-- Footer - Collé en bas -->

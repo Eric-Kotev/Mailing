@@ -141,9 +141,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $nom = trim($_POST['nom'] ?? '');
         $canal = trim($_POST['canal'] ?? '');
         $fournisseur = trim($_POST['fournisseur'] ?? '');
-        // ===== CORRECTION : Formatage à 3 décimales =====
+
+        // ===== TARIF =====
         $tarifRaw = $_POST['tarif'] ?? 0;
         $tarif = number_format((float)$tarifRaw, 3, '.', '');
+
+        // ===== TARIF MINIMUM =====
+        $minTarifRaw = $_POST['min_tarif'] ?? 0;
+        $minTarif = number_format((float)$minTarifRaw, 3, '.', '');
+
         $idCompte = $_SESSION['user_id'];
 
         // Validation
@@ -162,6 +168,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($tarif < 0) {
             throw new Exception('Le tarif doit être positif');
         }
+        if ($minTarif < 0) {
+            throw new Exception('Le tarif minimum doit être positif');
+        }
+        if ((float)$minTarif > (float)$tarif) {
+            throw new Exception('Le tarif minimum ne peut pas être supérieur au tarif');
+        }
 
         // Vérifier que le type_message existe
         $typeMessage = $db->select('type_message', ['id_type_message' => $canal]);
@@ -175,7 +187,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             'description' => $fournisseur,
             'id_type_message' => $canal,
             'id_compte' => $idCompte,
-            'tarif' => $tarif, // 3 décimales
+            'tarif' => $tarif,
+            'min_tarif' => $minTarif,
             'statut' => 'actif',
             'created_at' => date('Y-m-d H:i:s')
         ];
@@ -215,9 +228,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $nom = trim($_POST['nom'] ?? '');
         $canal = trim($_POST['canal'] ?? '');
         $fournisseur = trim($_POST['fournisseur'] ?? '');
-        // ===== CORRECTION : Formatage à 3 décimales =====
+
+        // ===== TARIF =====
         $tarifRaw = $_POST['tarif'] ?? 0;
         $tarif = number_format((float)$tarifRaw, 3, '.', '');
+
+        // ===== TARIF MINIMUM =====
+        $minTarifRaw = $_POST['min_tarif'] ?? 0;
+        $minTarif = number_format((float)$minTarifRaw, 3, '.', '');
+
         $idCompte = $_SESSION['user_id'];
 
         // Validation
@@ -235,6 +254,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
         if ($tarif < 0) {
             throw new Exception('Le tarif doit être positif');
+        }
+        if ($minTarif < 0) {
+            throw new Exception('Le tarif minimum doit être positif');
+        }
+        if ((float)$minTarif > (float)$tarif) {
+            throw new Exception('Le tarif minimum ne peut pas être supérieur au tarif');
         }
 
         // Vérifier que le provider appartient au compte
@@ -258,7 +283,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             'nom_providers' => $nom,
             'description' => $fournisseur,
             'id_type_message' => $canal,
-            'tarif' => $tarif // 3 décimales
+            'tarif' => $tarif,
+            'min_tarif' => $minTarif
         ];
 
         $result = $db->update('provider', $providerData, [
@@ -293,6 +319,10 @@ $typeMessages = $db->select('type_message', [], '*', 'libelle_type ASC');
 
 foreach ($providers as &$provider) {
     $provider['nb_clients'] = countClientsForProvider($db, $provider['description']);
+    // Valeur par défaut si min_tarif n'existe pas encore en DB
+    if (!isset($provider['min_tarif']) || $provider['min_tarif'] === null) {
+        $provider['min_tarif'] = '0.000';
+    }
 }
 unset($provider);
 
@@ -513,9 +543,12 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             width: 100%;
         }
 
+        /* ============================================ */
+        /* GRILLE : 9 COLONNES (ajout de "Tarif min")   */
+        /* ============================================ */
         .grid-row {
             display: grid;
-            grid-template-columns: 1.8fr 1fr 1.4fr 1fr 0.8fr 0.8fr 0.6fr 0.6fr;
+            grid-template-columns: 1.6fr 0.9fr 1.3fr 0.9fr 0.9fr 0.7fr 0.7fr 0.5fr 0.5fr;
             gap: 12px;
             align-items: center;
             min-width: 0;
@@ -578,6 +611,13 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             font-weight: 700;
             font-size: 15px;
             white-space: nowrap;
+        }
+
+        .tarif-min-value {
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+            color: var(--muted-2);
         }
 
         .client-count {
@@ -781,6 +821,19 @@ $fournisseursDisponibles = getFournisseursDisponibles();
 
         .form-group .helper { font-size: 13px; color: var(--muted-2); margin-top: 6px; }
 
+        /* Deux colonnes pour tarif et tarif min */
+        .form-row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 640px) {
+            .form-row-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .btn-secondary {
             padding: 12px 26px;
             border: 1.5px solid var(--input-border);
@@ -837,7 +890,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         @media (max-width: 1400px) {
             .container { padding: 20px 24px; }
             .grid-row { 
-                grid-template-columns: 1.6fr 0.9fr 1.2fr 0.9fr 0.7fr 0.7fr 0.5fr 0.5fr; 
+                grid-template-columns: 1.5fr 0.85fr 1.15fr 0.85fr 0.85fr 0.65fr 0.65fr 0.45fr 0.45fr; 
                 gap: 10px;
             }
         }
@@ -845,7 +898,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
         @media (max-width: 1200px) {
             .container { padding: 20px; }
             .grid-row { 
-                grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 0.6fr 0.6fr 0.4fr 0.4fr; 
+                grid-template-columns: 1.3fr 0.75fr 1fr 0.75fr 0.75fr 0.6fr 0.6fr 0.4fr 0.4fr; 
                 gap: 8px;
             }
             .grid-head { padding: 12px 16px; font-size: 10px; }
@@ -858,7 +911,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             .container { padding: 16px; }
             .stats-grid { grid-template-columns: 1fr 1fr; }
             .grid-row { 
-                grid-template-columns: 1.2fr 0.7fr 0.9fr 0.7fr 0.5fr 0.5fr 0.3fr 0.3fr; 
+                grid-template-columns: 1.1fr 0.65fr 0.85fr 0.65fr 0.65fr 0.5fr 0.5fr 0.3fr 0.3fr; 
                 gap: 6px;
                 font-size: 12px;
             }
@@ -882,7 +935,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
             .stats-grid { grid-template-columns: 1fr; }
             .stat-card .stat-number { font-size: 26px; }
             .grid-row { 
-                grid-template-columns: repeat(8, minmax(90px, 1fr)); 
+                grid-template-columns: repeat(9, minmax(90px, 1fr)); 
                 width: max-content; 
                 min-width: 100%;
                 gap: 8px;
@@ -928,6 +981,7 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                     <div>Canal</div>
                     <div>Fournisseur</div>
                     <div>Tarif défaut</div>
+                    <div>Tarif min</div>
                     <div style="text-align:center;">Clients</div>
                     <div>Statut</div>
                     <div></div>
@@ -962,8 +1016,10 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                         <div class="op-fournisseur" title="<?= htmlspecialchars($provider['description']) ?>">
                             <?= htmlspecialchars($provider['description']) ?>
                         </div>
-                        <!-- ===== AFFICHAGE À 3 DÉCIMALES ===== -->
+                        <!-- Tarif par défaut -->
                         <div class="tarif-value"><?= number_format($provider['tarif'], 3, ',', ' ') ?> €</div>
+                        <!-- Tarif minimum -->
+                        <div class="tarif-min-value"><?= number_format($provider['min_tarif'], 3, ',', ' ') ?> €</div>
                         <div class="client-count"><?= $nbClients ?></div>
                         <div>
                             <span class="badge-statut <?= $isActif ? 'actif' : 'inactif' ?>">
@@ -1035,11 +1091,19 @@ $fournisseursDisponibles = getFournisseursDisponibles();
                     <div class="helper">Détermine la table de sessions utilisée pour compter les clients connectés</div>
                 </div>
 
-                <div class="form-group">
-                    <label for="tarif">Tarif <span class="required">*</span></label>
-                    <!-- ===== INPUT AVEC 3 DÉCIMALES ===== -->
-                    <input type="number" id="tarif" name="tarif" placeholder="0.000" step="0.001" min="0" required>
-                    <div class="helper">Coût par message (en euros)</div>
+                <!-- Tarif + Tarif minimum sur 2 colonnes -->
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="tarif">Tarif <span class="required">*</span></label>
+                        <input type="number" id="tarif" name="tarif" placeholder="0.000" step="0.001" min="0" required>
+                        <div class="helper">Coût par message (en euros)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="min_tarif">Tarif minimum <span class="required">*</span></label>
+                        <input type="number" id="min_tarif" name="min_tarif" placeholder="0.000" step="0.001" min="0" required>
+                        <div class="helper">Minimum facturable (€)</div>
+                    </div>
                 </div>
             </div>
 
@@ -1122,6 +1186,8 @@ function openCreateModal() {
     document.getElementById('providerId').value = '';
     document.getElementById('formAction').value = 'create_provider';
     document.getElementById('providerForm').reset();
+    // Valeur par défaut du tarif minimum
+    document.getElementById('min_tarif').value = '0.000';
     document.getElementById('providerModal').classList.add('active');
     document.body.style.overflow = 'hidden';
     setTimeout(() => document.getElementById('nom').focus(), 100);
@@ -1135,8 +1201,13 @@ function editProvider(provider) {
     document.getElementById('nom').value = provider.nom_providers;
     document.getElementById('canal').value = provider.id_type_message;
     document.getElementById('fournisseur').value = provider.description;
-    // ===== AFFICHAGE À 3 DÉCIMALES DANS LE FORMULAIRE =====
+    // Tarif à 3 décimales
     document.getElementById('tarif').value = parseFloat(provider.tarif).toFixed(3);
+    // Tarif minimum à 3 décimales (fallback sur 0.000 si absent)
+    const minTarif = (provider.min_tarif !== undefined && provider.min_tarif !== null)
+        ? parseFloat(provider.min_tarif).toFixed(3)
+        : '0.000';
+    document.getElementById('min_tarif').value = minTarif;
     document.getElementById('providerModal').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
@@ -1207,6 +1278,14 @@ async function submitProvider(event) {
     const form = document.getElementById('providerForm');
     const submitBtn = document.getElementById('submitBtn');
     const originalText = submitBtn.innerHTML;
+
+    // Validation côté client : min_tarif <= tarif
+    const tarifVal = parseFloat(document.getElementById('tarif').value || 0);
+    const minTarifVal = parseFloat(document.getElementById('min_tarif').value || 0);
+    if (minTarifVal > tarifVal) {
+        showToast('Le tarif minimum ne peut pas être supérieur au tarif', 'error');
+        return;
+    }
 
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Traitement...';

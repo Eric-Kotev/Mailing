@@ -187,6 +187,7 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
     $descriptionTransaction = $description ?? "Envoi de {$quantite} message(s) via {$nomProvider}";
 
     $transactionData = [
+        'id_compte_auteur' => $_SESSION['user_id'] ?? null,
         'id_compte' => $idCompte,
         'id_provider' => $idProvider,
         'type_transaction' => 'debit',

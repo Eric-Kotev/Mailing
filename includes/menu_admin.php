@@ -39,7 +39,7 @@ if (!empty($userName) && $userName !== 'Administrateur') {
 
 <aside
     id="sidebar"
-    class="w-64 bg-gray-800 text-white flex flex-col sidebar-transition transition-all duration-300"
+    class="w-64 bg-gray-800 text-white flex flex-col sidebar-transition transition-all duration-300 relative"
 >
     <div class="flex justify-center mt-3">
         <div class="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
@@ -64,7 +64,7 @@ if (!empty($userName) && $userName !== 'Administrateur') {
         <a href="?page=admin/users" 
            class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= strpos($currentPage, 'admin/users') === 0 ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
             <i class="fas fa-id-badge w-5 mr-3 text-gray-400"></i>
-            <span class="menu-text">Comptes</span>
+            <span class="menu-text">Administrateur</span>
         </a>
 
         <!-- Gestion des clients -->
@@ -80,28 +80,20 @@ if (!empty($userName) && $userName !== 'Administrateur') {
             <i class="fas fa-network-wired w-5 mr-3 text-gray-400"></i>
             <span class="menu-text">Opérateurs</span>
         </a>
-
-        <!-- Parametrage du compte-->
-        <a href="index.php?page=parametres/compte"
-           class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition <?= strpos($currentPage, 'parametres/compte') === 0 ? 'bg-gray-700' : 'hover:bg-gray-700' ?>">
-            <i class="fas fa-cog w-5"></i>
-            <span class="menu-text">Paramétrage</span>
-        </a>
-
-        <hr class="border-gray-700 my-3">
-
-        <a href="logout.php" 
-           class="flex items-center gap-3 px-4 py-2.5 rounded-lg transition text-red-400 hover:bg-red-900/20">
-            <i class="fas fa-sign-out-alt w-5"></i>
-            <span class="menu-text">Déconnexion</span>
-        </a>
     </nav>
     
     <!-- ============================================ -->
     <!-- FOOTER AVEC AVATAR DE L'UTILISATEUR CONNECTÉ -->
+    <!-- DEVENU BOUTON OUVRANT UN MENU DÉROULANT      -->
     <!-- ============================================ -->
-    <div id="userFooter" class="p-4 border-t border-gray-700 flex-shrink-0">
-        <div class="flex items-center gap-3">
+    <div id="userFooterWrapper" class="border-t border-gray-700 flex-shrink-0 relative">
+        <button type="button"
+                id="userFooter"
+                class="w-full p-4 flex items-center gap-3 hover:bg-gray-700/50 transition-colors text-left focus:outline-none focus:bg-gray-700/50"
+                title="Mon compte"
+                aria-label="Ouvrir le menu utilisateur"
+                aria-haspopup="true"
+                aria-expanded="false">
             <!-- Avatar avec logo ou initiales -->
             <div class="relative flex-shrink-0">
                 <?php if (!empty($userLogo)): ?>
@@ -137,7 +129,57 @@ if (!empty($userName) && $userName !== 'Administrateur') {
                     </span>
                 </div>
             </div>
-            
+
+            <!-- Chevron indicateur -->
+            <i class="fas fa-chevron-up text-gray-400 text-xs user-footer-chevron"></i>
+        </button>
+
+        <!-- Menu déroulant (s'ouvre vers le haut) -->
+        <div id="userFooterDropdown"
+             class="admin-user-dropdown"
+             role="menu"
+             aria-labelledby="userFooter">
+
+            <!-- En-tête du menu -->
+            <div class="admin-user-dropdown-header">
+                <div class="admin-user-dropdown-avatar">
+                    <?php if (!empty($userLogo)): ?>
+                        <img src="<?= htmlspecialchars($userLogo) . '?t=' . time() ?>"
+                             alt="Avatar <?= htmlspecialchars($userName) ?>"
+                             class="admin-user-dropdown-avatar-img"
+                             onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="admin-user-dropdown-avatar-fallback" style="display: none;">
+                            <?= $initials ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="admin-user-dropdown-avatar-fallback">
+                            <?= $initials ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <div class="admin-user-dropdown-info">
+                    <div class="admin-user-dropdown-name truncate"><?= htmlspecialchars($userName) ?></div>
+                    <div class="admin-user-dropdown-email truncate"><?= htmlspecialchars($userEmail) ?></div>
+                </div>
+            </div>
+
+            <div class="admin-user-dropdown-divider"></div>
+
+            <!-- Profil -->
+            <a href="index.php?page=parametres/compte"
+               class="admin-user-dropdown-item"
+               role="menuitem">
+                <i class="fas fa-user-cog admin-user-dropdown-item-icon"></i>
+                <span>Profil</span>
+            </a>
+
+            <!-- Se déconnecter -->
+            <a href="logout.php"
+               class="admin-user-dropdown-item admin-user-dropdown-item-danger"
+               role="menuitem">
+                <i class="fas fa-sign-out-alt admin-user-dropdown-item-icon"></i>
+                <span>Se déconnecter</span>
+            </a>
         </div>
     </div>
 </aside>
@@ -157,17 +199,14 @@ document.addEventListener('DOMContentLoaded', function () {
             toggleBtn.querySelector('i').className = 'fas fa-chevron-right text-sm';
         }
         
-        // Cacher les textes du menu
         const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
         allTexts.forEach(text => text.classList.add('hidden'));
         
-        // Cacher les informations utilisateur (sauf l'avatar)
         const userInfoContainer = sidebar.querySelector('.user-info-container');
         if (userInfoContainer) {
             userInfoContainer.style.display = 'none';
         }
         
-        // Réduire les paddings
         const header = sidebar.querySelector('.p-4');
         if (header) {
             header.classList.add('p-2');
@@ -179,14 +218,12 @@ document.addEventListener('DOMContentLoaded', function () {
             footer.classList.remove('p-4');
         }
         
-        // Centrer l'avatar dans le footer
         const footerContent = sidebar.querySelector('#userFooter .flex');
         if (footerContent) {
             footerContent.classList.add('justify-center');
             footerContent.classList.remove('gap-3');
         }
         
-        // Réduire la taille de l'avatar
         const avatar = sidebar.querySelector('#userFooter .w-10.h-10');
         if (avatar) {
             avatar.classList.remove('w-10', 'h-10');
@@ -199,22 +236,18 @@ document.addEventListener('DOMContentLoaded', function () {
             const isCurrentlyCollapsed = sidebar.classList.contains('w-20');
             
             if (isCurrentlyCollapsed) {
-                // Agrandir
                 sidebar.classList.remove('w-20');
                 sidebar.classList.add('w-64');
                 this.querySelector('i').className = 'fas fa-chevron-left text-sm';
                 
-                // Afficher les textes du menu
                 const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
                 allTexts.forEach(text => text.classList.remove('hidden'));
                 
-                // Afficher les informations utilisateur
                 const userInfoContainer = sidebar.querySelector('.user-info-container');
                 if (userInfoContainer) {
                     userInfoContainer.style.display = 'block';
                 }
                 
-                // Restaurer les paddings
                 const header = sidebar.querySelector('.p-2');
                 if (header) {
                     header.classList.add('p-4');
@@ -226,14 +259,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     footer.classList.remove('p-2');
                 }
                 
-                // Remettre l'avatar à gauche
                 const footerContent = sidebar.querySelector('#userFooter .flex');
                 if (footerContent) {
                     footerContent.classList.remove('justify-center');
                     footerContent.classList.add('gap-3');
                 }
                 
-                // Restaurer la taille de l'avatar
                 const avatar = sidebar.querySelector('#userFooter .w-8.h-8');
                 if (avatar) {
                     avatar.classList.remove('w-8', 'h-8');
@@ -242,22 +273,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 
                 localStorage.setItem('admin_sidebar_collapsed', 'false');
             } else {
-                // Rétrécir
                 sidebar.classList.add('w-20');
                 sidebar.classList.remove('w-64');
                 this.querySelector('i').className = 'fas fa-chevron-right text-sm';
                 
-                // Cacher les textes du menu
                 const allTexts = sidebar.querySelectorAll('.menu-text, #logoText, #sousTitre');
                 allTexts.forEach(text => text.classList.add('hidden'));
                 
-                // Cacher les informations utilisateur (sauf l'avatar)
                 const userInfoContainer = sidebar.querySelector('.user-info-container');
                 if (userInfoContainer) {
                     userInfoContainer.style.display = 'none';
                 }
                 
-                // Réduire les paddings
                 const header = sidebar.querySelector('.p-4');
                 if (header) {
                     header.classList.add('p-2');
@@ -269,14 +296,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     footer.classList.remove('p-4');
                 }
                 
-                // Centrer l'avatar dans le footer
                 const footerContent = sidebar.querySelector('#userFooter .flex');
                 if (footerContent) {
                     footerContent.classList.add('justify-center');
                     footerContent.classList.remove('gap-3');
                 }
                 
-                // Réduire la taille de l'avatar
                 const avatar = sidebar.querySelector('#userFooter .w-10.h-10');
                 if (avatar) {
                     avatar.classList.remove('w-10', 'h-10');
@@ -287,6 +312,44 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
+
+    // ============================================
+    // MENU DÉROULANT UTILISATEUR (footer admin)
+    // ============================================
+    const userFooter = document.getElementById('userFooter');
+    const userFooterDropdown = document.getElementById('userFooterDropdown');
+    const userFooterWrapper = document.getElementById('userFooterWrapper');
+
+    function openUserDropdown() {
+        if (!userFooterDropdown) return;
+        userFooterDropdown.classList.add('show');
+        if (userFooter) userFooter.setAttribute('aria-expanded', 'true');
+    }
+    function closeUserDropdown() {
+        if (!userFooterDropdown) return;
+        userFooterDropdown.classList.remove('show');
+        if (userFooter) userFooter.setAttribute('aria-expanded', 'false');
+    }
+    function toggleUserDropdown(e) {
+        e.stopPropagation();
+        if (!userFooterDropdown) return;
+        if (userFooterDropdown.classList.contains('show')) {
+            closeUserDropdown();
+        } else {
+            openUserDropdown();
+        }
+    }
+
+    if (userFooter) userFooter.addEventListener('click', toggleUserDropdown);
+
+    document.addEventListener('click', function (e) {
+        if (!userFooterWrapper) return;
+        if (!userFooterWrapper.contains(e.target)) closeUserDropdown();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeUserDropdown();
+    });
 });
 </script>
 
@@ -360,6 +423,11 @@ document.addEventListener('DOMContentLoaded', function () {
     display: none !important;
 }
 
+/* Cacher le chevron en mode réduit */
+#sidebar.w-20 .user-footer-chevron {
+    display: none !important;
+}
+
 /* Bouton de bascule */
 #sidebarToggle {
     transition: all 0.3s ease;
@@ -382,5 +450,176 @@ document.addEventListener('DOMContentLoaded', function () {
 #userFooter .w-10.h-10,
 #userFooter .w-8.h-8 {
     transition: all 0.3s ease;
+}
+
+/* ============================================
+   MENU DÉROULANT UTILISATEUR (footer admin)
+   ============================================ */
+#userFooterWrapper {
+    position: relative;
+}
+
+#userFooter {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+#userFooter:hover .user-footer-chevron {
+    color: #60a5fa;
+}
+
+.user-footer-chevron {
+    transition: transform 0.2s ease, color 0.2s ease;
+}
+
+#userFooter[aria-expanded="true"] .user-footer-chevron {
+    transform: rotate(180deg);
+    color: #60a5fa;
+}
+
+.admin-user-dropdown {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 12px;
+    right: 12px;
+    min-width: 240px;
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 12px;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45), 0 -4px 12px rgba(0, 0, 0, 0.25);
+    padding: 8px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(8px);
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+    z-index: 1100;
+}
+
+.admin-user-dropdown.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.admin-user-dropdown-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px 8px;
+}
+
+.admin-user-dropdown-avatar {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-user-dropdown-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 1px solid #374151;
+}
+
+.admin-user-dropdown-avatar-fallback {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.admin-user-dropdown-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.admin-user-dropdown-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #f3f4f6;
+    line-height: 1.2;
+}
+
+.admin-user-dropdown-email {
+    font-size: 0.72rem;
+    color: #9ca3af;
+    line-height: 1.2;
+}
+
+.admin-user-dropdown-divider {
+    height: 1px;
+    background: #374151;
+    margin: 4px 2px;
+}
+
+.admin-user-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #d1d5db;
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.admin-user-dropdown-item:hover {
+    background: #374151;
+    color: #ffffff;
+}
+
+.admin-user-dropdown-item-icon {
+    width: 16px;
+    text-align: center;
+    font-size: 0.9rem;
+    color: #9ca3af;
+    transition: color 0.15s ease;
+}
+
+.admin-user-dropdown-item:hover .admin-user-dropdown-item-icon {
+    color: #60a5fa;
+}
+
+.admin-user-dropdown-item-danger {
+    color: #f87171;
+}
+
+.admin-user-dropdown-item-danger .admin-user-dropdown-item-icon {
+    color: #f87171;
+}
+
+.admin-user-dropdown-item-danger:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+}
+
+.admin-user-dropdown-item-danger:hover .admin-user-dropdown-item-icon {
+    color: #fca5a5;
+}
+
+/* Mode réduit : élargir le dropdown vers la droite */
+#sidebar.w-20 .admin-user-dropdown {
+    left: 60px;
+    right: auto;
+    width: 240px;
+    bottom: 12px;
 }
 </style>
