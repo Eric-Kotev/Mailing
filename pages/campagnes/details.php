@@ -2232,7 +2232,7 @@ function getReprendreUrl($idMessage, $campagneConfigId) {
     <div class="bg-white rounded-xl shadow-md overflow-hidden">
         <div class="p-4 border-b bg-gray-50 flex justify-between items-center flex-wrap gap-2">
             <div>
-                <h2 class="text-lg font-bold">Historique des envois</h2>
+                <h2 class="text-lg font-bold">Historique des messages liés à cette campagne</h2>
                 <p class="text-sm text-gray-500">Cliquez sur un message pour voir les détails</p>
             </div>
             <?php if ($totalBrouillons > 0): ?>
