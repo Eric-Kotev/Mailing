@@ -9,6 +9,101 @@ if (!$campagneId) {
     exit;
 }
 
+// ============================================
+// TRAITEMENT DE LA REPRISE D'UN BROUILLON
+// ============================================
+// Cette section reproduit exactement l'état dans lequel se trouve
+// l'application quand on vient de composer un message (whatsapp/sms/email)
+// et qu'on arrive sur la page de choix du provider.
+if (isset($_GET['reprendre']) && !empty($_GET['reprendre'])) {
+    $idMessage = $_GET['reprendre'];
+
+    // Récupérer le message (brouillon) dans la table campagne
+    $msgReprendre = $db->select('campagne', [
+        'id_campagne' => $idMessage,
+        'id_compte' => $idCompte
+    ]);
+
+    if (empty($msgReprendre)) {
+        $_SESSION['flash_error'] = "Message introuvable";
+        header('Location: index.php?page=campagnes/details&id=' . $campagneId);
+        exit;
+    }
+
+    $msg = $msgReprendre[0];
+    $typeReprise = $msg['type_campagne'];            // 'whatsapp', 'sms', 'email'
+    $idCampagneConfig = $msg['id_campagne_config'];  // FK vers campagne_config
+
+    // Vérifier que le statut est bien brouillon
+    if ($msg['statut'] !== 'brouillon') {
+        $_SESSION['flash_error'] = "Ce message n'est plus un brouillon (statut actuel : " . $msg['statut'] . ")";
+        header('Location: index.php?page=campagnes/details&id=' . $campagneId);
+        exit;
+    }
+
+    // ============================================
+    // PRÉPARATION DE LA SESSION (comme après choix_type)
+    // ============================================
+    $_SESSION['type_message'] = $typeReprise;
+    $_SESSION['campagne_config_id'] = $idCampagneConfig;
+    $_SESSION['campagne_id'] = $idCampagneConfig;
+
+    // Charger les données du brouillon pour pré-remplir le formulaire suivant
+    $donneesReprise = [
+        'id_campagne' => $msg['id_campagne'],
+        'type_campagne' => $msg['type_campagne'],
+        'titre' => $msg['titre'] ?? '',
+        'message' => $msg['message'] ?? '',
+        'objet' => $msg['objet'] ?? '',
+        'destinataires' => $msg['destinataires'] ?? '[]',
+        'from_email' => $msg['from_email'] ?? '',
+        'from_name' => $msg['from_name'] ?? '',
+        'piece_jointe' => $msg['piece_jointe'] ?? null,
+        'listmonk_media_id' => $msg['listmonk_media_id'] ?? null,
+    ];
+
+    // Stockage en session pour la page suivante
+    $_SESSION['form_data'] = [
+        'objet' => $donneesReprise['objet'],
+        'corps' => $donneesReprise['message'],
+        'from_email' => $donneesReprise['from_email'],
+        'from_name' => $donneesReprise['from_name'],
+    ];
+    $_SESSION['reprendre_message_id'] = $idMessage;
+    $_SESSION['reprendre_data'] = $donneesReprise;
+
+    // Restaurer la pièce jointe si elle existe
+    if (!empty($msg['listmonk_media_id'])) {
+        $_SESSION['uploaded_media_id'] = $msg['listmonk_media_id'];
+
+        if (!empty($msg['piece_jointe'])) {
+            $pj = json_decode($msg['piece_jointe'], true);
+            if (is_array($pj)) {
+                $_SESSION['uploaded_file_name'] = $pj['nom'] ?? 'Fichier joint';
+                $_SESSION['uploaded_media_url'] = $pj['url'] ?? null;
+            }
+        }
+    }
+
+    // ============================================
+    // REDIRECTION SELON LE TYPE
+    // ============================================
+    switch ($typeReprise) {
+        case 'whatsapp':
+            header('Location: index.php?page=campagnes/choix_provider_whatsapp&campagne_id=' . $idCampagneConfig);
+            exit;
+        case 'sms':
+            header('Location: index.php?page=campagnes/choix_provider_sms&campagne_id=' . $idCampagneConfig);
+            exit;
+        case 'email':
+            header('Location: index.php?page=campagnes/choix_provider_email&campagne_id=' . $idCampagneConfig);
+            exit;
+        default:
+            header('Location: index.php?page=campagnes/choix_type&campagne_id=' . $idCampagneConfig);
+            exit;
+    }
+}
+
 // Récupérer la campagne
 $campagne = $db->select('campagne_config', ['id_campagne_config' => $campagneId, 'id_compte' => $idCompte]);
 if (empty($campagne)) {
@@ -17,14 +112,11 @@ if (empty($campagne)) {
 }
 $campagne = $campagne[0];
 
-// Récupérer tous les envois liés à cette campagne
+// Récupérer TOUS les envois liés à cette campagne (y compris les brouillons)
 $allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
 
-// Filtrer pour exclure les brouillons
-$envois = array_filter($allEnvois, function($e) {
-    return $e['statut'] !== 'brouillon';
-});
-$envois = array_values($envois);
+// On garde tous les envois, y compris les brouillons
+$envois = array_values($allEnvois);
 
 $totalEnvois = count($envois);
 $totalSucces = 0;
@@ -34,6 +126,7 @@ $totalSms = 0;
 $totalEmail = 0;
 $totalAPreparer = 0;
 $totalPlanifies = 0;
+$totalBrouillons = 0;
 
 foreach ($envois as $e) {
     $totalSucces += $e['nb_succes'];
@@ -50,6 +143,9 @@ foreach ($envois as $e) {
     }
     if ($e['statut'] == 'planifiee') {
         $totalPlanifies++;
+    }
+    if ($e['statut'] == 'brouillon') {
+        $totalBrouillons++;
     }
 }
 
@@ -68,7 +164,6 @@ function verifierCreditClient($idCompte, $idProvider, $quantite) {
         ];
     }
     
-    // Récupérer l'opérateur
     $provider = $db->select('provider', ['id_provider' => $idProvider]);
     if (empty($provider)) {
         return [
@@ -79,13 +174,11 @@ function verifierCreditClient($idCompte, $idProvider, $quantite) {
         ];
     }
     
-    // Récupérer le tarif personnalisé du client pour cet opérateur
     $tarifPersonnalise = $db->select('tarif', [
         'id_compte' => $idCompte,
         'id_provider' => $idProvider
     ]);
     
-    // Déterminer le tarif à utiliser
     $tarif = !empty($tarifPersonnalise) 
         ? (float)$tarifPersonnalise[0]['prix'] 
         : (float)$provider[0]['tarif'];
@@ -101,7 +194,6 @@ function verifierCreditClient($idCompte, $idProvider, $quantite) {
     
     $montant = $tarif * $quantite;
     
-    // Récupérer le compte
     $compte = $db->select('compte', ['id_compte' => $idCompte]);
     if (empty($compte)) {
         return [
@@ -138,19 +230,16 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
         return false;
     }
 
-    // Vérifier d'abord que le crédit est suffisant
     $verification = verifierCreditClient($idCompte, $idProvider, $quantite);
     if (!$verification['suffisant']) {
         return false;
     }
 
-    // Récupérer l'opérateur
     $provider = $db->select('provider', ['id_provider' => $idProvider]);
     if (empty($provider)) {
         return false;
     }
 
-    // Récupérer le tarif personnalisé du client pour cet opérateur
     $tarifPersonnalise = $db->select('tarif', [
         'id_compte' => $idCompte,
         'id_provider' => $idProvider
@@ -166,7 +255,6 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
 
     $montant = $tarif * $quantite;
 
-    // Récupérer et mettre à jour le compte
     $compte = $db->select('compte', ['id_compte' => $idCompte]);
     if (empty($compte)) {
         return false;
@@ -175,14 +263,10 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
     $creditsActuels = (float)($compte[0]['credits_total'] ?? 0);
     $nouveauSolde = $creditsActuels - $montant;
 
-    // Mettre à jour le crédit
     $db->update('compte', [
         'credits_total' => $nouveauSolde
     ], ['id_compte' => $idCompte]);
 
-    // ============================================
-    // ENREGISTRER LA TRANSACTION DE DÉBIT
-    // ============================================
     $nomProvider = $provider[0]['nom_providers'] ?? 'Inconnu';
     $descriptionTransaction = $description ?? "Envoi de {$quantite} message(s) via {$nomProvider}";
 
@@ -206,11 +290,9 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
 // ============================================
 // FONCTION DE RÉSOLUTION DU PROVIDER PAR FOURNISSEUR
 // ============================================
-
 function getProviderByFournisseur($fournisseurLabel) {
     global $db;
     
-    // Ne pas filtrer par id_compte, récupérer tous les providers
     $providers = $db->select('provider', [], '*', 'description ASC');
     
     if (empty($providers)) {
@@ -429,7 +511,7 @@ function formaterNumerosOctopush($destinataires) {
 }
 
 // ============================================
-// FONCTION POUR ENVOYER AVEC OCTOPUSH (AVEC VÉRIFICATION DE CRÉDIT)
+// FONCTION POUR ENVOYER AVEC OCTOPUSH
 // ============================================
 function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte, $idProvider) {
     global $db;
@@ -447,9 +529,6 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
         return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé.'];
     }
     
-    // ============================================
-    // VÉRIFICATION DU CRÉDIT AVANT ENVOI
-    // ============================================
     $quantite = count($recipients);
     $verification = verifierCreditClient($idCompte, $idProvider, $quantite);
     
@@ -463,7 +542,6 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
         ];
     }
     
-    // Récupérer la configuration Octopush pour obtenir le type et le sender
     $config = $db->select('octopush_config', [
         'id_compte' => $idCompte,
         'est_active' => 1
@@ -511,17 +589,10 @@ function envoyerOctopush($message, $destinataires, $apiLogin, $apiKey, $idCompte
     
     $responseData = json_decode($response, true);
     
-    // Si l'envoi est réussi, déduire le crédit
     if ($httpCode === 200 || $httpCode === 201) {
-        // Déduire le crédit du client (1 SMS par destinataire)
         if (!empty($idProvider)) {
             $description = "Envoi Octopush - {$quantite} SMS";
-            $deductionOk = deduireCreditClient($idCompte, $idProvider, $quantite, $description);
-            if (!$deductionOk) {
-                // La déduction a échoué, mais l'envoi a réussi - log d'erreur
-                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi Octopush");
-                // Ne pas bloquer le retour, mais logguer l'erreur
-            }
+            deduireCreditClient($idCompte, $idProvider, $quantite, $description);
         }
         
         return [
@@ -706,7 +777,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
             } else {
                 if (isset($resultat['credit_insuffisant']) && $resultat['credit_insuffisant'] === true) {
                     $_SESSION['flash_error'] = "❌ " . $resultat['error'];
-                    // Marquer le message comme échoué pour manque de crédit
                     $db->update('campagne', [
                         'statut' => 'echoue',
                         'nb_erreurs' => count($destinataires),
@@ -771,7 +841,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
 }
 
 // ============================================
-// FONCTIONS D'ENVOI (SMS, WhatsApp, Email) AVEC VÉRIFICATION DE CRÉDIT
+// FONCTIONS D'ENVOI (SMS, WhatsApp, Email)
 // ============================================
 
 function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires) {
@@ -833,9 +903,6 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
             return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé'];
         }
         
-        // ============================================
-        // VÉRIFICATION DU CRÉDIT AVANT ENVOI
-        // ============================================
         $quantite = count($recipients);
         $verification = verifierCreditClient($idCompte, $providerId, $quantite);
         
@@ -888,10 +955,7 @@ function envoyerSMS($idCompte, $id_campagne, $campagne, $campagneData, $message,
         
         if ($httpCode === 200) {
             $description = "Envoi SMS via {$device_name} - {$nb_succes} message(s)";
-            $deductionOk = deduireCreditClient($idCompte, $providerId, $nb_succes, $description);
-            if (!$deductionOk) {
-                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi SMS");
-            }
+            deduireCreditClient($idCompte, $providerId, $nb_succes, $description);
             
             return [
                 'success' => true, 
@@ -976,9 +1040,6 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             return ['success' => false, 'error' => 'Aucun numéro de téléphone valide trouvé.'];
         }
         
-        // ============================================
-        // VÉRIFICATION DU CRÉDIT AVANT ENVOI
-        // ============================================
         $quantite = count($contacts);
         $verification = verifierCreditClient($idCompte, $providerId, $quantite);
         
@@ -1101,9 +1162,6 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
         $messageReponse = '';
         
         if ($httpCode === 200 && isset($responseData['ok']) && $responseData['ok'] === true) {
-            $total = $responseData['total'] ?? count($contacts);
-            $validCount = $responseData['valid_count'] ?? 0;
-            $invalidCount = $responseData['invalid_count'] ?? 0;
             $invalidContacts = $responseData['invalid_contacts'] ?? [];
             
             if (isset($responseData['results']) && is_array($responseData['results'])) {
@@ -1182,13 +1240,9 @@ function envoyerWhatsApp($idCompte, $id_campagne, $campagne, $campagneData, $mes
             'updated_at' => date('Y-m-d H:i:s')
         ], ['id_campagne' => $campagneData['id_campagne']]);
         
-        // Déduction du crédit client (seulement pour les succès)
         if ($succes > 0) {
             $description = "Envoi WhatsApp via {$whatsappSession} - {$succes} message(s)";
-            $deductionOk = deduireCreditClient($idCompte, $providerId, $succes, $description);
-            if (!$deductionOk) {
-                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi WhatsApp");
-            }
+            deduireCreditClient($idCompte, $providerId, $succes, $description);
         }
         
         if ($statut === 'envoye') {
@@ -1252,9 +1306,6 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
         
         $nbDestinataires = (int)$campagneData['nb_destinataires'];
         
-        // ============================================
-        // VÉRIFICATION DU CRÉDIT AVANT ENVOI
-        // ============================================
         $verification = verifierCreditClient($idCompte, $providerId, $nbDestinataires);
         
         if (!$verification['suffisant']) {
@@ -1279,10 +1330,7 @@ function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $messag
             ], ['id_campagne' => $campagneData['id_campagne']]);
             
             $description = "Envoi Email via Listmonk - {$nbDestinataires} email(s)";
-            $deductionOk = deduireCreditClient($idCompte, $providerId, $nbDestinataires, $description);
-            if (!$deductionOk) {
-                error_log("ERREUR: Déduction de crédit échouée pour le compte {$idCompte} après envoi Email");
-            }
+            deduireCreditClient($idCompte, $providerId, $nbDestinataires, $description);
             
             return [
                 'success' => true, 
@@ -1336,6 +1384,15 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
     if (!empty($config)) {
         $octopushSessionName = $config[0]['nom_config'];
     }
+}
+
+// ============================================
+// FONCTION HELPER POUR L'URL DE REPRISE
+// ============================================
+// Retourne l'URL vers details.php avec le paramètre "reprendre"
+// qui déclenchera le handler de reprise en haut du fichier.
+function getReprendreUrl($idMessage, $campagneConfigId) {
+    return 'index.php?page=campagnes/details&id=' . urlencode($campagneConfigId) . '&reprendre=' . urlencode($idMessage);
 }
 ?>
 
@@ -1507,6 +1564,23 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         }
         .btn-send-octopush:hover { background: #ea580c; }
         
+        .btn-reprendre {
+            background: #8b5cf6;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+        }
+        .btn-reprendre:hover { background: #7c3aed; }
+        
         /* ============================================
            STATS CARDS
         ============================================ */
@@ -1565,6 +1639,12 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         }
         .envoi-row:hover {
             background-color: #f9fafb;
+        }
+        .envoi-row.row-brouillon {
+            background-color: #faf5ff;
+        }
+        .envoi-row.row-brouillon:hover {
+            background-color: #f3e8ff;
         }
         
         /* ============================================
@@ -1728,13 +1808,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             transition: all 0.2s;
             border: none;
         }
-        .modal-octopush .modal-footer .btn-confirm {
-            background: #f97316;
-            color: white;
-        }
-        .modal-octopush .modal-footer .btn-confirm:hover {
-            background: #ea580c;
-        }
         .modal-octopush .modal-footer .btn-cancel {
             background: #e5e7eb;
             color: #4b5563;
@@ -1767,10 +1840,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         }
         .whatsapp-result .status-failed {
             color: #ef4444;
-            font-weight: 600;
-        }
-        .whatsapp-result .status-invalid {
-            color: #f59e0b;
             font-weight: 600;
         }
         
@@ -1811,12 +1880,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             border: 1px solid #d1d5db;
             padding: 6px 12px;
         }
-        .html-render blockquote {
-            border-left: 4px solid #d1d5db;
-            padding-left: 12px;
-            margin-left: 0;
-            color: #4b5563;
-        }
         
         /* ============================================
            UTILITIES
@@ -1843,12 +1906,10 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .font-semibold { font-weight: 600; }
         .font-bold { font-weight: 700; }
         .uppercase { text-transform: uppercase; }
-        .tracking-wider { letter-spacing: 0.5px; }
         .whitespace-nowrap { white-space: nowrap; }
         .overflow-hidden { overflow: hidden; }
         .overflow-y-auto { overflow-y: auto; }
         .max-h-48 { max-height: 192px; }
-        .max-h-60 { max-height: 240px; }
         
         .bg-white { background: white; }
         .bg-gray-50 { background: #f9fafb; }
@@ -1865,11 +1926,8 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .bg-orange-50 { background: #fff7ed; }
         
         .text-blue-600 { color: #2563eb; }
-        .text-blue-700 { color: #1d4ed8; }
         .text-green-600 { color: #16a34a; }
-        .text-green-700 { color: #15803d; }
         .text-red-600 { color: #dc2626; }
-        .text-red-700 { color: #b91c1c; }
         .text-yellow-600 { color: #ca8a04; }
         .text-yellow-700 { color: #a16207; }
         .text-gray-400 { color: #9ca3af; }
@@ -1878,23 +1936,22 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .text-gray-700 { color: #374151; }
         .text-gray-800 { color: #1f2937; }
         .text-purple-600 { color: #7c3aed; }
+        .text-purple-700 { color: #6d28d9; }
         
         .rounded-xl { border-radius: 12px; }
         .rounded-lg { border-radius: 8px; }
         .rounded-full { border-radius: 9999px; }
         .shadow-md { box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .shadow-lg { box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         
         .p-3 { padding: 12px; }
         .p-4 { padding: 16px; }
         .p-5 { padding: 20px; }
-        .p-6 { padding: 24px; }
         .px-2 { padding-left: 8px; padding-right: 8px; }
+        .px-3 { padding-left: 12px; padding-right: 12px; }
         .px-4 { padding-left: 16px; padding-right: 16px; }
-        .px-6 { padding-left: 24px; padding-right: 24px; }
+        .py-1 { padding-top: 4px; padding-bottom: 4px; }
         .py-2 { padding-top: 8px; padding-bottom: 8px; }
         .py-3 { padding-top: 12px; padding-bottom: 12px; }
-        .py-4 { padding-top: 16px; padding-bottom: 16px; }
         .py-8 { padding-top: 32px; padding-bottom: 32px; }
         .py-12 { padding-top: 48px; padding-bottom: 48px; }
         
@@ -1906,39 +1963,16 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
         .border { border: 1px solid #e5e7eb; }
         .border-b { border-bottom: 1px solid #e5e7eb; }
         .border-t { border-top: 1px solid #e5e7eb; }
-        .border-gray-200 { border-color: #e5e7eb; }
-        .border-orange-200 { border-color: #fed7aa; }
-        .border-l-4 { border-left-width: 4px; }
-        .border-red-500 { border-color: #ef4444; }
-        
-        .divide-y > * + * { border-top: 1px solid #e5e7eb; }
         
         .relative { position: relative; }
         .absolute { position: absolute; }
-        .fixed { position: fixed; }
-        .inset-0 { top: 0; left: 0; right: 0; bottom: 0; }
-        .z-50 { z-index: 50; }
-        .z-9999 { z-index: 9999; }
         .top-1\/2 { top: 50%; }
         .left-3 { left: 12px; }
         .transform { transform: translateY(-50%); }
-        .-translate-y-1\/2 { transform: translateY(-50%); }
-        .scale-95 { transform: scale(0.95); }
-        .opacity-0 { opacity: 0; }
-        .transition-all { transition: all 0.3s ease; }
-        .duration-300 { transition-duration: 300ms; }
         .w-full { width: 100%; }
         .min-w-full { min-width: 100%; }
         .max-w-xs { max-width: 320px; }
-        .max-w-4xl { max-width: 896px; }
-        .max-w-sm { max-width: 384px; }
-        .mx-4 { margin-left: 16px; margin-right: 16px; }
-        .mx-auto { margin-left: auto; margin-right: auto; }
         .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        
-        .sticky { position: sticky; }
-        .top-0 { top: 0; }
-        .bottom-0 { bottom: 0; }
         
         /* ============================================
            MODAL DÉTAILS
@@ -1965,7 +1999,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             max-width: 1024px;
             max-height: 90vh;
             overflow-y: auto;
-            transition: all 0.3s ease;
         }
         #detailsModal .modal-container .modal-header-sticky {
             position: sticky;
@@ -2017,7 +2050,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             .filter-container { flex-direction: column; align-items: stretch; }
             .filter-container select { width: 100%; }
             .stat-card .stat-number { font-size: 22px; }
-            .header-title { font-size: 20px; }
             .table-container table { min-width: 600px; font-size: 13px; }
             .table-container th, .table-container td { padding: 8px 12px; }
             #detailsModal .modal-container { width: 96%; margin: 10px; }
@@ -2034,10 +2066,9 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             .stat-card { padding: 12px 16px; }
             .stat-card .stat-number { font-size: 20px; }
             .stat-card .stat-label { font-size: 11px; }
-            .header-title { font-size: 18px; }
             .table-container table { min-width: 500px; font-size: 12px; }
             .table-container th, .table-container td { padding: 6px 10px; }
-            .btn-send-message, .btn-send-email, .btn-send-octopush { 
+            .btn-send-message, .btn-send-email, .btn-send-octopush, .btn-reprendre { 
                 font-size: 10px; 
                 padding: 3px 8px; 
             }
@@ -2179,6 +2210,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             <label for="filterStatus" class="ml-1"><i class="fas fa-check-circle mr-1"></i> Statut :</label>
             <select id="filterStatus">
                 <option value="all">Tous les statuts</option>
+                <option value="brouillon">Brouillon</option>
                 <option value="envoye">Envoyé</option>
                 <option value="echoue">Échoué</option>
                 <option value="partiel">Partiel</option>
@@ -2198,9 +2230,17 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
 
     <!-- ===== LISTE DES ENVOIS ===== -->
     <div class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="p-4 border-b bg-gray-50">
-            <h2 class="text-lg font-bold">Historique des envois</h2>
-            <p class="text-sm text-gray-500">Cliquez sur un message pour voir les détails</p>
+        <div class="p-4 border-b bg-gray-50 flex justify-between items-center flex-wrap gap-2">
+            <div>
+                <h2 class="text-lg font-bold">Historique des envois</h2>
+                <p class="text-sm text-gray-500">Cliquez sur un message pour voir les détails</p>
+            </div>
+            <?php if ($totalBrouillons > 0): ?>
+                <div class="text-sm bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-semibold">
+                    <i class="fas fa-pen mr-1"></i>
+                    <?= $totalBrouillons ?> brouillon(s) à finaliser
+                </div>
+            <?php endif; ?>
         </div>
         
         <?php if (empty($envois)): ?>
@@ -2257,6 +2297,11 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                     $statutIcon = 'fa-exclamation-circle';
                                     $statutLabel = 'Échoué';
                                     break;
+                                case 'brouillon':
+                                    $statutClass = 'text-purple-600';
+                                    $statutIcon = 'fa-pen';
+                                    $statutLabel = 'Brouillon';
+                                    break;
                                 default:
                                     $statutClass = 'text-gray-600';
                                     $statutIcon = 'fa-circle';
@@ -2283,10 +2328,12 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                             }
                             
                             $showSendButton = false;
+                            $showReprendreButton = false;
                             $buttonClass = 'btn-send-message';
                             $buttonIcon = 'fa-paper-plane';
                             $buttonText = 'Envoyer';
                             $isOctopushMessage = false;
+                            $isBrouillon = ($envoi['statut'] === 'brouillon');
                             
                             if ($envoi['statut'] == 'pret_a_envoyer') {
                                 $showSendButton = true;
@@ -2303,10 +2350,17 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                 $buttonIcon = 'fa-envelope';
                                 $buttonText = 'Envoyer Email';
                             }
+                            if ($isBrouillon) {
+                                $showReprendreButton = true;
+                            }
+                            
+                            // URL de reprise : passe par details.php avec &reprendre=ID_DU_MESSAGE
+                            $reprendreUrl = getReprendreUrl($envoi['id_campagne'], $campagneId);
                             
                             $envoiJson = htmlspecialchars(json_encode($envoi), ENT_QUOTES, 'UTF-8');
+                            $rowClass = $isBrouillon ? 'envoi-row row-brouillon' : 'envoi-row';
                         ?>
-                            <tr class="envoi-row" 
+                            <tr class="<?= $rowClass ?>" 
                                 data-id="<?= $envoi['id_campagne'] ?>"
                                 data-type="<?= $envoi['type_campagne'] ?>"
                                 data-status="<?= $envoi['statut'] ?>"
@@ -2322,11 +2376,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                     <?php if ($isOctopushMessage): ?>
                                         <span class="badge-octopush"><i class="fas fa-bolt mr-1"></i>Octopush</span>
                                     <?php endif; ?>
-                                    <?php if ($isOctopush && $octopushSessionName): ?>
-                                        <span class="badge-octopush-session" style="display:block;margin-top:4px;">
-                                            <i class="fas fa-user"></i> <?= htmlspecialchars($octopushSessionName) ?>
-                                        </span>
-                                    <?php endif; ?>
                                 </td>
                                 <td class="px-4 py-3">
                                     <div class="text-gray-800 max-w-xs truncate" title="<?= htmlspecialchars($messageDisplay) ?>">
@@ -2340,6 +2389,15 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                                 </td>
                                 <td class="px-4 py-3 text-center">
                                     <div class="flex items-center justify-center gap-2">
+                                        <?php if ($showReprendreButton): ?>
+                                            <a href="<?= htmlspecialchars($reprendreUrl) ?>" 
+                                               class="btn-reprendre" 
+                                               title="Reprendre la configuration de ce brouillon"
+                                               onclick="event.stopPropagation();">
+                                                <i class="fas fa-pen-to-square"></i> Reprendre
+                                            </a>
+                                        <?php endif; ?>
+                                        
                                         <?php if ($showSendButton): ?>
                                             <?php if ($isOctopushMessage): ?>
                                                 <form method="POST" style="display:inline;" onclick="event.stopPropagation();">
@@ -2388,11 +2446,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                 <div style="text-align:center;margin-bottom:16px;">
                     <i class="fas fa-check-circle" style="font-size:48px;color:#10b981;"></i>
                     <p style="color:#10b981;font-weight:600;margin-top:8px;">✅ Envoi effectué avec succès</p>
-                    <?php if ($octopushSessionName): ?>
-                        <p style="color:#9a3412;font-size:13px;margin-top:4px;">
-                            <i class="fas fa-user mr-1"></i> Session: <?= htmlspecialchars($octopushSessionName) ?>
-                        </p>
-                    <?php endif; ?>
                 </div>
                 <div class="response-item">
                     <span class="label">Ticket SMS</span>
@@ -2405,14 +2458,6 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
                 <div class="response-item">
                     <span class="label">Coût total</span>
                     <span class="value"><?= isset($octopushResponse['total_cost']) ? number_format($octopushResponse['total_cost'],3) . ' €' : '-' ?></span>
-                </div>
-                <div class="response-item">
-                    <span class="label">Nombre de SMS nécessaires</span>
-                    <span class="value"><?= htmlspecialchars($octopushResponse['number_of_sms_needed'] ?? '-') ?></span>
-                </div>
-                <div class="response-item">
-                    <span class="label">Crédit restant</span>
-                    <span class="value"><?= isset($octopushResponse['residual_credit']) ? number_format($octopushResponse['residual_credit'],3) . ' €' : '-' ?></span>
                 </div>
                 <div class="response-item">
                     <span class="label">Message</span>
@@ -2446,12 +2491,7 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
             </button>
         </div>
         
-        <div class="modal-body-content" id="modalContent">
-            <div class="text-center py-8">
-                <i class="fas fa-spinner fa-spin text-3xl text-blue-500"></i>
-                <p class="text-gray-500 mt-2">Chargement...</p>
-            </div>
-        </div>
+        <div class="modal-body-content" id="modalContent"></div>
         
         <div class="modal-footer-sticky">
             <button onclick="closeModal()" class="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition font-medium">
@@ -2481,10 +2521,8 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// ===== MODAL OCTOPUSH =====
 function closeOctopushModal() {
-    const modal = document.getElementById('octopushModal');
-    modal.classList.remove('active');
+    document.getElementById('octopushModal').classList.remove('active');
 }
 
 // ===== FILTRES =====
@@ -2505,11 +2543,6 @@ function applyFilters() {
         const type = row.dataset.type || '';
         const status = row.dataset.status || '';
         let show = true;
-        
-        if (status === 'brouillon') {
-            row.style.display = 'none';
-            return;
-        }
         
         if (searchTerm !== '' && !text.includes(searchTerm)) show = false;
         if (show && typeFilter !== 'all' && type !== typeFilter) show = false;
@@ -2559,27 +2592,14 @@ document.getElementById('clearFilters').addEventListener('click', resetFilters);
 
 // ===== MODAL DÉTAILS =====
 function showDetailsFromRow(row) {
-    const envoi = {
-        id_campagne: row.dataset.id,
-        type_campagne: row.dataset.type,
-        statut: row.dataset.status,
-    };
-    // Récupérer les données depuis la ligne
-    const cells = row.querySelectorAll('td');
-    // On va chercher les données via une requête AJAX ou depuis les attributs data
-    // Pour simplifier, on utilise les données stockées dans la ligne
-    const envoiData = row._envoiData;
-    if (envoiData) {
-        showDetails(envoiData);
-    } else {
-        // Fallback: afficher un message
-        alert('Détails non disponibles');
+    const eyeButton = row.querySelector('button[title="Voir détails"]');
+    if (eyeButton) {
+        eyeButton.click();
     }
 }
 
 function showDetails(envoi) {
     const modal = document.getElementById('detailsModal');
-    const modalContainer = document.getElementById('modalContainer');
     const modalTitle = document.getElementById('modalTitle');
     const modalContent = document.getElementById('modalContent');
     const modalIcon = document.getElementById('modalIcon');
@@ -2636,6 +2656,9 @@ function showDetails(envoi) {
         case 'echoue':
             statusBadge = '<span class="bg-red-100 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-exclamation-circle mr-1"></i>Échoué</span>';
             break;
+        case 'brouillon':
+            statusBadge = '<span class="bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full text-xs font-semibold"><i class="fas fa-pen mr-1"></i>Brouillon</span>';
+            break;
         default:
             statusBadge = '<span class="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full text-xs font-semibold">' + escapeHtml(envoi.statut) + '</span>';
     }
@@ -2657,9 +2680,6 @@ function showDetails(envoi) {
         envoi.message.includes('<div>') || 
         envoi.message.includes('<br>') ||
         envoi.message.includes('<strong>') ||
-        envoi.message.includes('<em>') ||
-        envoi.message.includes('<ul>') ||
-        envoi.message.includes('<ol>') ||
         envoi.message.includes('<a href') ||
         envoi.message.includes('<img')
     )) {
@@ -2667,100 +2687,9 @@ function showDetails(envoi) {
         messageContent = envoi.message;
     }
     
-    let messageHtml = '';
-    if (isHtml) {
-        messageHtml = `
-            <div class="html-render">
-                ${messageContent}
-            </div>
-        `;
-    } else {
-        messageHtml = `
-            <div class="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-                <p class="text-sm text-gray-700 whitespace-pre-wrap">${messageContent}</p>
-            </div>
-        `;
-    }
-    
-    let apiResponseHtml = '';
-    if (envoi.reponse_api) {
-        try {
-            const apiData = JSON.parse(envoi.reponse_api);
-            if (apiData.sms_ticket !== undefined) {
-                apiResponseHtml = `
-                    <div>
-                        <div class="text-xs text-gray-500 font-semibold mb-1">Réponse API Octopush</div>
-                        <div class="bg-gray-50 rounded-lg p-3">
-                            <div class="grid grid-cols-2 gap-2 text-sm">
-                                <div><span class="text-gray-500">Ticket:</span> ${escapeHtml(apiData.sms_ticket || '-')}</div>
-                                <div><span class="text-gray-500">Contacts:</span> ${apiData.number_of_contacts || 0}</div>
-                                <div><span class="text-gray-500">Coût total:</span> ${apiData.total_cost ? apiData.total_cost + ' €' : '-'}</div>
-                                <div><span class="text-gray-500">SMS nécessaires:</span> ${apiData.number_of_sms_needed || 0}</div>
-                                <div><span class="text-gray-500">Crédit restant:</span> ${apiData.residual_credit ? apiData.residual_credit + ' €' : '-'}</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-        } catch(e) {}
-    }
-    
-    let whatsappDetailsHtml = '';
-    if (envoi.type_campagne === 'whatsapp' && envoi.reponse_api) {
-        try {
-            const apiData = JSON.parse(envoi.reponse_api);
-            if (apiData.ok === true && apiData.results) {
-                const successCount = apiData.results.filter(r => r.success === true).length;
-                const failCount = apiData.results.filter(r => r.success !== true).length;
-                
-                whatsappDetailsHtml = `
-                    <div>
-                        <div class="text-xs text-gray-500 font-semibold mb-1">Détails de l'envoi WhatsApp</div>
-                        <div class="bg-gray-50 rounded-lg p-3">
-                            <div class="grid grid-cols-2 gap-2 text-sm mb-2">
-                                <div><span class="text-gray-500">Session:</span> <span class="font-medium">${escapeHtml(apiData.session || '-')}</span></div>
-                                <div><span class="text-gray-500">Type:</span> <span class="font-medium">${escapeHtml(apiData.type || '-')}</span></div>
-                                <div><span class="text-gray-500">Total contacts:</span> <span class="font-medium">${apiData.total || 0}</span></div>
-                                <div><span class="text-gray-500">Valides:</span> <span class="font-medium text-green-600">${apiData.valid_count || 0}</span></div>
-                                <div><span class="text-gray-500">Invalides:</span> <span class="font-medium text-red-600">${apiData.invalid_count || 0}</span></div>
-                                <div><span class="text-gray-500">Succès:</span> <span class="font-medium text-green-600">${successCount}</span></div>
-                                <div><span class="text-gray-500">Échecs:</span> <span class="font-medium text-red-600">${failCount}</span></div>
-                            </div>
-                            ${apiData.results && apiData.results.length > 0 ? `
-                            <div class="border-t border-gray-200 pt-2 mt-2">
-                                <div class="text-xs text-gray-500 font-semibold mb-1">Résultats par contact (${apiData.results.length})</div>
-                                <div class="max-h-40 overflow-y-auto">
-                                    ${apiData.results.map(r => `
-                                        <div class="whatsapp-result">
-                                            <span class="contact">${escapeHtml(r.chatId || '-')}</span>
-                                            <span class="${r.success ? 'status-sent' : 'status-failed'}">
-                                                ${r.success ? '✅ ' + (r.status || 'envoyé') : '❌ ' + (r.error || 'échec')}
-                                            </span>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                            ` : ''}
-                            ${apiData.invalid_contacts && apiData.invalid_contacts.length > 0 ? `
-                            <div class="border-t border-gray-200 pt-2 mt-2">
-                                <div class="text-xs text-red-500 font-semibold mb-1">Contacts invalides</div>
-                                <div class="text-sm text-red-600">
-                                    ${apiData.invalid_contacts.map(c => escapeHtml(c)).join(', ')}
-                                </div>
-                            </div>
-                            ` : ''}
-                            ${apiData.message ? `
-                            <div class="border-t border-gray-200 pt-2 mt-2">
-                                <div class="text-xs text-gray-500 font-semibold mb-1">Message API</div>
-                                <div class="text-sm text-gray-700">${escapeHtml(apiData.message)}</div>
-                            </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-            }
-        } catch(e) {}
-    }
+    let messageHtml = isHtml 
+        ? `<div class="html-render">${messageContent}</div>`
+        : `<div class="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto"><p class="text-sm text-gray-700 whitespace-pre-wrap">${messageContent}</p></div>`;
     
     let sessionInfo = '';
     if (envoi.appareil_utilise && envoi.appareil_utilise.includes('Octopush')) {
@@ -2775,9 +2704,23 @@ function showDetails(envoi) {
         `;
     }
     
+    let actionHtml = '';
+    if (envoi.statut === 'brouillon') {
+        // Construire l'URL de reprise dynamiquement
+        const reprendreUrl = 'index.php?page=campagnes/details&id=' + encodeURIComponent('<?= $campagneId ?>') + '&reprendre=' + encodeURIComponent(envoi.id_campagne);
+        actionHtml = `
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                <a href="${reprendreUrl}" class="btn-reprendre">
+                    <i class="fas fa-pen-to-square"></i> Reprendre ce brouillon
+                </a>
+            </div>
+        `;
+    }
+    
     modalContent.innerHTML = `
         <div class="space-y-4">
-            ${sessionInfo}            
+            ${sessionInfo}
+            ${actionHtml}
             <div class="grid grid-cols-2 gap-3">
                 <div class="bg-gray-50 rounded-lg p-3">
                     <div class="text-xs text-gray-500 font-semibold mb-1">Date d'envoi</div>
@@ -2820,14 +2763,9 @@ function showDetails(envoi) {
                 </div>
             </div>
             
-            ${apiResponseHtml}
-            ${whatsappDetailsHtml}
-            
             <div>
                 <div class="text-xs text-gray-500 font-semibold mb-1">Destinataires (${envoi.nb_destinataires || 0})</div>
-                <div class="bg-gray-50 rounded-lg p-3">
-                    ${destHtml}
-                </div>
+                <div class="bg-gray-50 rounded-lg p-3">${destHtml}</div>
             </div>
             ${envoi.erreur ? `
             <div>
@@ -2841,18 +2779,10 @@ function showDetails(envoi) {
     `;
     
     modal.classList.add('flex');
-    const container = document.getElementById('modalContainer');
-    container.classList.remove('scale-95', 'opacity-0');
 }
 
 function closeModal() {
-    const modal = document.getElementById('detailsModal');
-    const modalContainer = document.getElementById('modalContainer');
-    
-    modalContainer.classList.add('scale-95', 'opacity-0');
-    setTimeout(() => {
-        modal.classList.remove('flex');
-    }, 300);
+    document.getElementById('detailsModal').classList.remove('flex');
 }
 
 function formatDate(dateString) {
@@ -2883,7 +2813,6 @@ document.getElementById('octopushModal')?.addEventListener('click', function(e) 
     if (e.target === this) closeOctopushModal();
 });
 
-// Initialisation des filtres
 document.addEventListener('DOMContentLoaded', function() {
     applyFilters();
 });

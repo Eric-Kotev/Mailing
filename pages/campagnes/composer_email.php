@@ -117,6 +117,21 @@ if (!empty($typeMessageEmail)) {
     $emailTypeId = $typeMessageEmail[0]['id_type_message'];
 }
 
+// ============================================
+// RÉCUPÉRATION DES ADRESSES EMAIL DE L'UTILISATEUR
+// ============================================
+$emailAccounts = $db->select('email_accounts', ['id_compte' => $idCompte]);
+$fromAddresses = [];
+foreach ($emailAccounts as $account) {
+    if (!empty($account['from_address'])) {
+        $fromAddresses[] = $account['from_address'];
+    }
+}
+// Si aucune adresse, on met une valeur par défaut
+if (empty($fromAddresses)) {
+    $fromAddresses[] = 'noreply@votre-domaine.com';
+}
+
 $blacklistIds = [];
 if ($emailTypeId) {
     $blacklist = $db->select('blacklist', ['id_type_message' => $emailTypeId]);
@@ -178,7 +193,8 @@ $formData = $_SESSION['form_data'] ?? [];
 $formData['objet'] = $formData['objet'] ?? '';
 $formData['corps'] = $formData['corps'] ?? '';
 $formData['liste_id'] = $formData['liste_id'] ?? '';
-$formData['from_email'] = $formData['from_email'] ?? 'noreply@votre-domaine.com';
+// On utilise la première adresse disponible par défaut
+$formData['from_email'] = $formData['from_email'] ?? $fromAddresses[0];
 $formData['from_name'] = $formData['from_name'] ?? 'Votre Entreprise';
 
 $uploadedMediaId = $_SESSION['uploaded_media_id'] ?? null;
@@ -446,7 +462,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
         'objet' => $_POST['objet'] ?? '',
         'corps' => $_POST['corps'] ?? '',
         'liste_id' => $_POST['liste_id'] ?? '',
-        'from_email' => $_POST['from_email'] ?? 'noreply@votre-domaine.com',
+        'from_email' => $_POST['from_email'] ?? $fromAddresses[0],
         'from_name' => $_POST['from_name'] ?? 'Votre Entreprise'
     ];
 
@@ -466,7 +482,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_enregistrer'])
     $mediaUrl = $_SESSION['uploaded_media_url'] ?? null;
 
     if (empty($from_email)) {
-        $from_email = 'noreply@votre-domaine.com';
+        $from_email = $fromAddresses[0];
     }
     if (empty($from_name)) {
         $from_name = 'Votre Entreprise';
@@ -1706,10 +1722,15 @@ unset($_SESSION['flash_error']);
                         <label class="form-label">
                             <i class="fas fa-envelope"></i> Email expéditeur <span class="required">*</span>
                         </label>
-                        <input type="email" name="from_email" id="from_email" required
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition"
-                               placeholder="expediteur@votre-domaine.com"
-                               value="<?= htmlspecialchars($formData['from_email']) ?>">
+                        <select name="from_email" id="from_email" required
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition">
+                            <?php foreach ($fromAddresses as $email): ?>
+                                <option value="<?= htmlspecialchars($email) ?>" 
+                                    <?= ($formData['from_email'] == $email) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($email) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                         <p class="text-xs text-gray-500 mt-1">
                             <i class="fas fa-info-circle"></i>
                             L'email qui apparaîtra dans le champ "De" du message
