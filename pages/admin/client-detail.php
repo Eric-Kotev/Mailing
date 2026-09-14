@@ -1745,7 +1745,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_save_octopush_
         $api_key = trim($_POST['api_key'] ?? '');
         $sender_name = trim($_POST['sender_name'] ?? 'IFB');
         $type = $_POST['type'] ?? 'sms_premium';
-        $purpose = $_POST['purpose'] ?? 'alert';
+        $purpose = $_POST['purpose'] ?? 'marketing';
         $est_active = isset($_POST['est_active']) && $_POST['est_active'] === 'true' ? 1 : 0;
         
         if (empty($clientId)) {
@@ -2833,8 +2833,6 @@ $initials = getInitials($client['prenom'], $client['nom']);
         
         <form id="createOctopushConfigForm">
             <input type="hidden" id="octopush_config_id" value="">
-            <input type="hidden" id="octopush_type" name="octopush_type" value="sms_premium">
-            <input type="hidden" id="octopush_purpose" name="octopush_purpose" value="marketing">
             
             <div class="space-y-4">
                 <div>
@@ -2874,15 +2872,17 @@ $initials = getInitials($client['prenom'], $client['nom']);
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                        <div class="locked-field">
-                            <span class="locked-field-value">SMS Premium</span>
-                        </div>
+                        <select id="octopush_type" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition">
+                            <option value="sms_premium" selected>SMS Premium</option>
+                            <option value="sms_low_cost">SMS Low Cost</option>
+                        </select>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Purpose</label>
-                        <div class="locked-field">
-                            <span class="locked-field-value">Marketing</span>
-                        </div>
+                        <select id="octopush_purpose" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition">
+                            <option value="marketing" selected>Marketing</option>
+                            <option value="alert">Alert</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -5191,12 +5191,16 @@ function openCreateOctopushConfigModal(configData = null) {
         document.getElementById('octopush_api_login').value = configData.api_login || '';
         document.getElementById('octopush_api_key').value = configData.api_key || '';
         document.getElementById('octopush_sender_name').value = configData.sender_name || 'IFB';
+        document.getElementById('octopush_type').value = configData.type || 'sms_premium';
+        document.getElementById('octopush_purpose').value = configData.purpose || 'marketing';
         document.getElementById('octopush_est_active').checked = configData.est_active === true || configData.est_active === 1;
     } else {
         title.textContent = '⚡ Nouvelle configuration';
         document.getElementById('createOctopushConfigForm').reset();
         document.getElementById('octopush_config_id').value = '';
         document.getElementById('octopush_sender_name').value = 'IFB';
+        document.getElementById('octopush_type').value = 'sms_premium';
+        document.getElementById('octopush_purpose').value = 'marketing';
         document.getElementById('octopush_est_active').checked = true;
     }
     
