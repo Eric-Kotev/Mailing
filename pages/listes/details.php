@@ -739,12 +739,6 @@ unset($_SESSION['flash_error']);
             <div class="flex justify-between items-center flex-wrap gap-4">
                 <h2 class="text-lg font-bold">Contacts dans cette liste</h2>
                 <div class="flex items-center gap-4">
-                    <?php if (!empty($contacts) && !empty($liste['listmonk_id'])): ?>
-                        <button id="syncListmonkBtn" 
-                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
-                            <i class="fas fa-sync mr-2"></i>Synchroniser vers Listmonk pour pouvoir envoyer un mail à la liste
-                        </button>
-                    <?php endif; ?>
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
                         <input type="text" 
@@ -834,36 +828,6 @@ unset($_SESSION['flash_error']);
 </div>
 
 <!-- MODALES -->
-<div id="syncListmonkModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content">
-        <div class="text-center">
-            <div class="modal-icon bg-blue-100">
-                <i class="fas fa-sync-alt"></i>
-            </div>
-            <h3 class="text-2xl font-bold text-gray-800 mb-2">Synchronisation vers Listmonk</h3>
-            <p class="text-gray-500 mb-2 text-base">Vous êtes sur le point de synchroniser</p>
-            <p class="text-2xl font-bold text-blue-600 mb-1" id="syncCount"><?= count($contacts) ?></p>
-            <p class="text-gray-500 mb-2 text-base">contact(s) vers la liste Listmonk</p>
-            <p class="text-lg font-semibold text-gray-800 mb-6">
-                <span id="syncListName"><?= htmlspecialchars($liste['nom_liste']) ?></span>
-                <?php if (!empty($liste['listmonk_id'])): ?>
-                    <span class="text-sm text-gray-500 font-normal">(ID: <?= $liste['listmonk_id'] ?>)</span>
-                <?php endif; ?>
-            </p>
-            <p class="text-sm text-gray-500 mb-4">
-                <i class="fas fa-info-circle"></i> Les contacts existants seront ajoutés à la liste, les nouveaux seront créés puis ajoutés.
-            </p>
-            <div class="flex justify-center space-x-3">
-                <button type="button" onclick="closeSyncModal()" class="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition font-medium">
-                    Annuler
-                </button>
-                <button type="button" onclick="confirmSync()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">
-                    <i class="fas fa-sync mr-2"></i>Synchroniser
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <div id="removeSingleModal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
@@ -1164,73 +1128,6 @@ function showSyncStats(result) {
     document.getElementById('syncStatsModal').style.display = 'flex';
 }
 
-function confirmSync() {
-    const syncBtn = document.getElementById('syncListmonkBtn');
-    const originalText = syncBtn.innerHTML;
-    syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Synchronisation...';
-    syncBtn.disabled = true;
-    
-    closeSyncModal();
-    
-    const formData = new FormData();
-    formData.append('synchroniser_listmonk', '1');
-    formData.append('id_liste', '<?= $id_liste ?>');
-    
-    fetch(window.location.href, {
-        method: 'POST',
-        headers: { 
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: formData
-    })
-    .then(async res => {
-        const text = await res.text();
-        try {
-            return JSON.parse(text);
-        } catch (e) {
-            const jsonMatch = text.match(/\{.*\}/s);
-            if (jsonMatch) {
-                try {
-                    return JSON.parse(jsonMatch[0]);
-                } catch (e2) {
-                    throw new Error('La réponse n\'est pas du JSON valide.');
-                }
-            }
-            throw new Error('La réponse n\'est pas du JSON valide.');
-        }
-    })
-    .then(result => {
-        if (result.success) {
-            showToast(result.message, 'success');
-            if (result.stats || result.details || result.errors) {
-                setTimeout(() => {
-                    showSyncStats(result);
-                }, 1000);
-            }
-            setTimeout(() => {
-                window.location.reload();
-            }, 5000);
-        } else {
-            showToast(result.error || 'Erreur lors de la synchronisation', 'error');
-            syncBtn.innerHTML = originalText;
-            syncBtn.disabled = false;
-            if (result.errors && result.errors.length > 0) {
-                setTimeout(() => {
-                    showSyncStats({
-                        stats: { total: 0, created: 0, existing: 0, added_to_list: 0 },
-                        errors: result.errors,
-                        details: result.details || []
-                    });
-                }, 500);
-            }
-        }
-    })
-    .catch(error => {
-        showToast('Erreur: ' + error.message, 'error');
-        syncBtn.innerHTML = originalText;
-        syncBtn.disabled = false;
-    });
-}
 
 // RETRAIT
 function openRemoveSingleModal(contactId, contactName) {

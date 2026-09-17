@@ -528,7 +528,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_client_
             throw new Exception('Le prix ne peut pas être négatif');
         }
 
-        // Vérifier le tarif minimum du provider
         $provider = $db->select('provider', ['id_provider' => $providerId]);
         if (empty($provider)) {
             throw new Exception('Opérateur non trouvé');
@@ -613,6 +612,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_get_whatsapp_s
             $sessionList[] = [
                 'id_session' => $session['id_session'],
                 'nom_session' => $session['nom_session'],
+                'phone_number' => $session['phone_number'] ?? null,
                 'est_active' => $session['est_active'],
                 'created_at' => date('d/m/Y H:i', strtotime($session['created_at']))
             ];
@@ -852,9 +852,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_save_sms_appar
         $device_id = trim($_POST['device_id'] ?? '');
         $device_name = trim($_POST['device_name'] ?? '');
         $device_number = trim($_POST['device_number'] ?? '');
-        // Nettoyer le numéro (garder uniquement les chiffres, +, espaces, tirets)
         $device_number = preg_replace('/[^0-9+\s\-()]/', '', $device_number);
-        // Limiter la longueur
         if (strlen($device_number) > 20) {
             $device_number = substr($device_number, 0, 20);
         }
@@ -959,6 +957,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_whatsap
     try {
         $clientId = extractClientId($_POST['id_compte'] ?? '');
         $nom_session = trim($_POST['nom_session'] ?? '');
+        $phone_number = trim($_POST['phone_number'] ?? '');
         
         if (empty($clientId)) {
             throw new Exception('ID client invalide');
@@ -966,12 +965,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_whatsap
         if (empty($nom_session)) {
             throw new Exception('Nom de session requis');
         }
+        if (empty($phone_number)) {
+            throw new Exception('Numéro de téléphone requis');
+        }
         
+        // Nettoyer le numéro (garder uniquement les chiffres)
+        $phone_number = preg_replace('/[^0-9]/', '', $phone_number);
+        if (empty($phone_number)) {
+            throw new Exception('Numéro de téléphone invalide');
+        }
+        
+        // VÉRIFICATION : un numéro ne peut être associé qu'à une seule session (globalement)
+        $phoneExists = $db->select('whatsapp_sessions', ['phone_number' => $phone_number]);
+        if (!empty($phoneExists)) {
+            throw new Exception('Ce numéro de téléphone est déjà associé à une autre session WhatsApp (' . $phoneExists[0]['nom_session'] . ')');
+        }
+        
+        // Vérifier si une session avec ce nom existe déjà pour ce client
         $existing = $db->select('whatsapp_sessions', [
             'id_compte' => $clientId,
             'nom_session' => $nom_session
         ]);
         
+        if (!empty($existing)) {
+            throw new Exception('Une session avec ce nom existe déjà pour ce client');
+        }
+        
+        // Créer la session sur Waha
         $wahaUrl = 'http://164.68.103.147:8081/api/controller.php/sessions';
         $wahaKey = '29f51fbe00e64ac5a5e3ce6eefbb79b5';
         $postData = json_encode(['name' => $nom_session]);
@@ -1014,31 +1034,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_create_whatsap
             }
         }
         
-        if (!empty($existing)) {
-            $db->update('whatsapp_sessions', ['est_active' => false], ['id_session' => $existing[0]['id_session']]);
-            $result = [
-                'success' => true, 
-                'message' => 'Session existante réinitialisée' . ($wahaSuccess ? ' ✅ et créée sur Waha' : ' ⚠️ (Waha: ' . $wahaMessage . ')'), 
-                'existing' => true,
-                'waha' => $wahaSuccess
-            ];
-        } else {
-            $data = [
-                'id_compte' => $clientId,
-                'nom_session' => $nom_session,
-                'est_active' => false,
-                'created_at' => date('Y-m-d H:i:s')
-            ];
-            $db->insert('whatsapp_sessions', $data);
-            $result = [
-                'success' => true, 
-                'message' => 'Session créée avec succès' . ($wahaSuccess ? ' ✅ et sur Waha' : ' ⚠️ (Waha: ' . $wahaMessage . ')'), 
-                'existing' => false,
-                'waha' => $wahaSuccess
-            ];
-        }
+        // Enregistrer en base
+        $data = [
+            'id_compte' => $clientId,
+            'nom_session' => $nom_session,
+            'phone_number' => $phone_number,
+            'est_active' => false,
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+        $db->insert('whatsapp_sessions', $data);
         
-        echo json_encode($result);
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Session créée avec succès' . ($wahaSuccess ? ' ✅ et sur Waha' : ' ⚠️ (Waha: ' . $wahaMessage . ')'), 
+            'existing' => false,
+            'waha' => $wahaSuccess,
+            'phone_number' => $phone_number
+        ]);
         
     } catch (Exception $e) {
         error_log("CREATE SESSION ERROR: " . $e->getMessage());
@@ -1159,6 +1171,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_request_code']
         
         if ($wahaHttpCode === 200) {
             $wahaData = json_decode($wahaResponse, true);
+            
+            // Mettre à jour le numéro de téléphone de la session en base
+            $db->update('whatsapp_sessions', 
+                ['phone_number' => $phoneNumber],
+                ['nom_session' => $nom_session]
+            );
+            
             echo json_encode([
                 'success' => true,
                 'message' => 'Code d\'appairage demandé avec succès',
@@ -1961,14 +1980,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'
     
     try {
         $clientId = extractClientId($_POST['id_compte'] ?? '');
-        $nouveauCredit = floatval($_POST['credit'] ?? 0);
+        $montantAjoute = floatval($_POST['montant'] ?? 0);
         
         if (empty($clientId)) {
             throw new Exception('ID client invalide');
         }
         
-        if ($nouveauCredit < 0) {
-            throw new Exception('Le crédit ne peut pas être négatif');
+        if ($montantAjoute <= 0) {
+            throw new Exception('Le montant doit être supérieur à 0');
         }
         
         $clientActuel = $db->select('compte', ['id_compte' => $clientId]);
@@ -1977,11 +1996,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'
         }
         
         $ancienSolde = floatval($clientActuel[0]['credits_total'] ?? 0);
-        $montantAjoute = $nouveauCredit - $ancienSolde;
-        
-        if ($montantAjoute <= 0) {
-            throw new Exception('Le nouveau crédit doit être supérieur à l\'ancien');
-        }
+        $nouveauCredit = $ancienSolde + $montantAjoute;
         
         $db->update('compte', ['credits_total' => $nouveauCredit], ['id_compte' => $clientId]);
         
@@ -2001,7 +2016,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_credit'
         
         echo json_encode([
             'success' => true, 
-            'message' => 'Crédit mis à jour avec succès',
+            'message' => 'Crédit rechargé avec succès',
             'credit' => number_format($nouveauCredit, 3),
             'montant_ajoute' => number_format($montantAjoute, 3)
         ]);
@@ -2469,9 +2484,6 @@ $initials = getInitials($client['prenom'], $client['nom']);
 </head>
 <body>
 
-<!-- MODALES (identiques à avant) -->
-<!-- ... je vais te les donner avec la modale tarif corrigée -->
-
 <!-- ============================================ -->
 <!-- MODALE DE RECHARGE DE CRÉDIT -->
 <!-- ============================================ -->
@@ -2880,7 +2892,7 @@ $initials = getInitials($client['prenom'], $client['nom']);
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Purpose</label>
                         <select id="octopush_purpose" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition">
-                            <option value="marketing" selected>Marketing</option>
+                            <option value="wholesale" selected>Marketing</option>
                             <option value="alert">Alert</option>
                         </select>
                     </div>
@@ -3591,14 +3603,11 @@ async function confirmRecharge() {
         return;
     }
     
-    const currentCredit = <?= $client['credits_total'] ?? 0 ?>;
-    const newCredit = currentCredit + amount;
-    
     try {
         const formData = new FormData();
         formData.append('action_update_credit', '1');
         formData.append('id_compte', clientId);
-        formData.append('credit', newCredit);
+        formData.append('montant', amount); 
         
         const response = await fetch(window.location.href, {
             method: 'POST',
@@ -3609,14 +3618,14 @@ async function confirmRecharge() {
         const result = await response.json();
         
         if (result.success) {
-            showToast('Crédit rechargé avec succès', 'success');
+            showToast('Crédit rechargé avec succès (+' + amount.toFixed(3) + ' €)', 'success');
             
             const creditStatDisplay = document.getElementById('creditStatDisplay');
             if (creditStatDisplay) creditStatDisplay.textContent = result.credit + ' €';
             
             const modalCreditDisplay = document.querySelector('#rechargeModal strong');
             if (modalCreditDisplay) modalCreditDisplay.textContent = result.credit + ' €';
-            
+
             closeRechargeModal();
             refreshTransactions();
         } else {
@@ -4181,7 +4190,6 @@ function openTarifModal(providerId, providerName, defaultPrice, minPrice, curren
 
     elMinPrice.textContent = 'Tarif minimum : ' + (isNaN(minNum) ? '0.000' : minNum.toFixed(3)) + ' €';
 
-    // Stocker TOUT dans le dataset
     elPrice.dataset.minTarif     = isNaN(minNum) ? 0 : minNum;
     elPrice.dataset.defaultPrice = isNaN(defNum) ? 0 : defNum;
     elPrice.min = (isNaN(minNum) ? 0 : minNum).toFixed(3);
@@ -4253,7 +4261,6 @@ document.getElementById('tarifForm')?.addEventListener('submit', async function(
         if (result.success) {
             showToast(result.message, 'success');
             
-            // Mise à jour via data-provider-id
             const cell = document.querySelector(`.tarif-cell[data-provider-id="${providerId}"]`);
             
             if (cell) {
@@ -4458,7 +4465,6 @@ function openSmsApiModal() {
     document.getElementById('api_username').value = '';
     document.getElementById('api_password').value = '';
     document.getElementById('api_numero_telephone').value = '';
-    // Réinitialiser aussi les variables globales
     currentApiUsername = '';
     currentApiPassword = '';
     currentApiNumber = '';
@@ -4607,12 +4613,24 @@ async function loadWhatsAppSessions() {
                     const itemClass = isActive ? 'working' : '';
                     const connectBtnStyle = isActive ? 'display: none;' : '';
                     const sessionName = escapeHtml(session.nom_session);
+                    const phoneNumber = session.phone_number || '';
+                    
+                    // Affichage du numéro de téléphone en valeur
+                    const phoneDisplay = phoneNumber 
+                        ? `<p class="text-sm font-bold text-green-700 mt-1 flex items-center gap-1 session-phone" data-phone="${escapeHtml(phoneNumber)}">
+                             <i class="fas fa-phone-alt text-green-500"></i>
+                             ${escapeHtml(phoneNumber)}
+                           </p>` 
+                        : `<p class="text-xs italic text-amber-600 mt-1">
+                             <i class="fas fa-exclamation-triangle"></i> Numéro non renseigné
+                           </p>`;
                     
                     html += `<div class="session-list-item ${itemClass}" data-session="${sessionName}">
                         <div class="flex items-center gap-3 flex-1">
                             <div class="session-icon ${isActive ? '' : 'inactive'}"><i class="fas fa-mobile-alt"></i></div>
                             <div>
                                 <p class="font-medium text-gray-800 session-name">${sessionName}</p>
+                                ${phoneDisplay}
                                 <p class="text-xs text-gray-500">Créée le ${session.created_at}</p>
                             </div>
                         </div>
@@ -4626,7 +4644,21 @@ async function loadWhatsAppSessions() {
                 });
             }
             
-            html += `</div></div><div class="border-t pt-4 mt-2"><label class="block text-sm font-medium text-gray-700 mb-2">Créer une nouvelle session</label><div class="flex gap-2"><input type="text" id="newSessionName" placeholder="Nom..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500"><button onclick="createWhatsAppSession()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"><i class="fas fa-plus"></i> Créer</button></div></div>`;
+            html += `</div></div><div class="border-t pt-4 mt-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Créer une nouvelle session</label>
+                <div class="flex gap-2">
+                    <input type="text" id="newSessionName" placeholder="Nom de la session..." 
+                           class="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500">
+                    <input type="tel" id="newSessionPhone" placeholder="Numéro (ex: 33612345678)" 
+                           class="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500">
+                    <button onclick="createWhatsAppSession()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2">
+                        <i class="fas fa-plus"></i> Créer
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400 mt-2">
+                    <i class="fas fa-info-circle"></i> Un numéro de téléphone ne peut être associé qu'à une seule session WhatsApp.
+                </p>
+            </div>`;
             
             container.innerHTML = html;
             footer.innerHTML = `<button onclick="closeSessionModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">Fermer</button>`;
@@ -4640,13 +4672,23 @@ async function loadWhatsAppSessions() {
 
 async function createWhatsAppSession() {
     const nomSession = document.getElementById('newSessionName').value.trim();
-    if (!nomSession) { showToast('Entrez un nom', 'error'); return; }
+    const phoneNumber = document.getElementById('newSessionPhone').value.trim();
+    
+    if (!nomSession) { 
+        showToast('Entrez un nom de session', 'error'); 
+        return; 
+    }
+    if (!phoneNumber) { 
+        showToast('Entrez un numéro de téléphone', 'error'); 
+        return; 
+    }
     
     try {
         const formData = new FormData();
         formData.append('action_create_whatsapp_session', '1');
         formData.append('id_compte', clientId);
         formData.append('nom_session', nomSession);
+        formData.append('phone_number', phoneNumber);
         
         const response = await fetch(window.location.href, {
             method: 'POST',
@@ -4743,6 +4785,26 @@ async function connectSession(sessionName) {
     showToast('🔄 Connexion...', 'info');
     
     try {
+        // Récupérer le numéro depuis la session affichée
+        let phoneNumber = '';
+        const sessionItems = document.querySelectorAll('.session-list-item');
+        sessionItems.forEach(item => {
+            const nameEl = item.querySelector('.session-name');
+            if (nameEl && nameEl.textContent.trim() === sessionName) {
+                const phoneEl = item.querySelector('.session-phone');
+                if (phoneEl) {
+                    phoneNumber = phoneEl.dataset.phone || phoneEl.textContent.replace(/[^0-9]/g, '');
+                }
+            }
+        });
+        
+        // Si pas de numéro enregistré, demander
+        if (!phoneNumber) {
+            const num = prompt('📱 Numéro de téléphone (sans +) :');
+            if (!num) return;
+            phoneNumber = num;
+        }
+        
         const restartFormData = new FormData();
         restartFormData.append('action_restart_whatsapp_session', '1');
         restartFormData.append('nom_session', sessionName);
@@ -4757,13 +4819,6 @@ async function connectSession(sessionName) {
         if (!restartResult.success) {
             showToast('Erreur: ' + (restartResult.error || 'Redémarrage échoué'), 'error');
             return;
-        }
-        
-        let phoneNumber = document.getElementById('edit_telephone')?.value || '';
-        if (!phoneNumber) {
-            const num = prompt('📱 Numéro de téléphone (sans +) :');
-            if (!num) return;
-            phoneNumber = num;
         }
         
         await requestCode(sessionName, phoneNumber);

@@ -1108,14 +1108,6 @@ if ($destinatairesPreview) {
             </div>
         <?php endif; ?>
         
-        <!-- Info Octopush -->
-        <div class="octopush-info">
-            <i class="fas fa-info-circle"></i>
-            <span>
-                <strong>Info :</strong> 
-                Si vous sélectionnez <strong>Octopush</strong>, vous serez redirigé vers le choix de la session Octopush à utiliser.
-            </span>
-        </div>
         
         <!-- Erreur -->
         <?php if ($error): ?>
@@ -1150,10 +1142,6 @@ if ($destinatairesPreview) {
                              tabindex="0"
                              aria-label="Sélectionner <?= htmlspecialchars($provider['nom_providers']) ?>">
                             
-                            <?php if ($isOctopush): ?>
-                                <span class="badge-octopush"><i class="fas fa-bolt"></i> API</span>
-                            <?php endif; ?>
-                            
                             <div class="icon-wrapper">
                                 <?php if ($isOctopush): ?>
                                     <i class="fas fa-bolt" style="color: #ea580c;"></i>
@@ -1164,11 +1152,6 @@ if ($destinatairesPreview) {
                             <div>
                                 <div class="provider-name">
                                     <?= htmlspecialchars($provider['nom_providers']) ?>
-                                    <?php if ($isOctopush): ?>
-                                        <span class="octopush-hint">
-                                            <i class="fas fa-arrow-right"></i> Choix de session
-                                        </span>
-                                    <?php endif; ?>
                                 </div>
                                 <?php if (!empty($provider['description'])): ?>
                                     <div class="provider-desc"><?= htmlspecialchars($provider['description']) ?></div>

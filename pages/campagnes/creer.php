@@ -844,12 +844,6 @@ foreach ($filteredCampagnes as $c) {
                     </p>
                 </div>
                 
-                <div class="bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700">
-                    <i class="fas fa-info-circle mr-2"></i>
-                    <strong>Info :</strong> 
-                    <span id="infoMessage">Sans date, la campagne sera envoyée immédiatement.</span>
-                </div>
-                
                 <div class="mt-6 flex justify-end space-x-2">
                     <button type="button" onclick="closeAddCampagneModal()" 
                             class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
