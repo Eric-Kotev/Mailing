@@ -837,11 +837,14 @@ foreach ($filteredCampagnes as $c) {
                     </label>
                     <input type="datetime-local" name="date_planification" id="date_planification" 
                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500 datetime-input">
-                    <p class="text-xs text-gray-500 mt-1">
+                    
+                    <!-- CORRECTION : bloc d'info avec id dédié -->
+                    <div id="infoMessageContainer" class="bg-blue-50 p-3 rounded-lg mt-3 text-sm text-blue-700">
                         <i class="fas fa-info-circle mr-1"></i>
-                        <strong>Laissez vide</strong> pour un envoi <strong>immédiat</strong>.<br>
-                        <strong>Remplissez</strong> pour planifier un envoi automatique.
-                    </p>
+                        <span id="infoMessage">
+                            Envoi <strong>immédiat</strong> après la création de la campagne.
+                        </span>
+                    </div>
                 </div>
                 
                 <div class="mt-6 flex justify-end space-x-2">
@@ -895,19 +898,27 @@ function showToast(message, type = 'success') {
 <?php endif; ?>
 
 // ============================================
-// MISE À JOUR DU MESSAGE D'INFO
+// MISE À JOUR DU MESSAGE D'INFO (CORRIGÉ)
 // ============================================
-document.getElementById('date_planification').addEventListener('change', function() {
-    const infoMessage = document.getElementById('infoMessage');
-    if (this.value) {
-        const dateFormatted = new Date(this.value).toLocaleString('fr-FR');
-        infoMessage.innerHTML = ` Envoi planifié pour le <strong>${dateFormatted}</strong>.`;
-        infoMessage.parentElement.className = 'bg-yellow-50 p-3 rounded-lg mb-4 text-sm text-yellow-700';
-    } else {
-        infoMessage.innerHTML = 'Envoi <strong>immédiat</strong> après la création de la campagne.';
-        infoMessage.parentElement.className = 'bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700';
-    }
-});
+const datePlanificationInput = document.getElementById('date_planification');
+if (datePlanificationInput) {
+    datePlanificationInput.addEventListener('change', function() {
+        const container = document.getElementById('infoMessageContainer');
+        const infoMessage = document.getElementById('infoMessage');
+        
+        // Protection défensive : si les éléments n'existent pas, on ne fait rien
+        if (!container || !infoMessage) return;
+        
+        if (this.value) {
+            const dateFormatted = new Date(this.value).toLocaleString('fr-FR');
+            infoMessage.innerHTML = `Envoi planifié pour le <strong>${dateFormatted}</strong>.`;
+            container.className = 'bg-yellow-50 p-3 rounded-lg mt-3 text-sm text-yellow-700';
+        } else {
+            infoMessage.innerHTML = 'Envoi <strong>immédiat</strong> après la création de la campagne.';
+            container.className = 'bg-blue-50 p-3 rounded-lg mt-3 text-sm text-blue-700';
+        }
+    });
+}
 
 // ============================================
 // MODAL DE CONFIRMATION SUPPRESSION
@@ -962,22 +973,35 @@ document.getElementById('confirmDeleteModal').addEventListener('click', function
 });
 
 // ============================================
-// MODAL D'AJOUT DE CAMPAGNE
+// MODAL D'AJOUT DE CAMPAGNE (CORRIGÉ)
 // ============================================
 function openAddCampagneModal() {
     const modal = document.getElementById('addCampagneModal');
+    if (!modal) return;
+    
     const modalContent = modal.querySelector('.modal-campagne');
-    document.getElementById('addCampagneForm').reset();
-    document.getElementById('date_planification').value = '';
+    const form = document.getElementById('addCampagneForm');
+    const dateInput = document.getElementById('date_planification');
+    const container = document.getElementById('infoMessageContainer');
     const infoMessage = document.getElementById('infoMessage');
-    infoMessage.innerHTML = ' Envoi <strong>immédiat</strong> après la création de la campagne.';
-    infoMessage.parentElement.className = 'bg-blue-50 p-3 rounded-lg mb-4 text-sm text-blue-700';
+    
+    if (form) form.reset();
+    if (dateInput) dateInput.value = '';
+    
+    // Réinitialiser le bloc d'info (avec protection)
+    if (container && infoMessage) {
+        infoMessage.innerHTML = 'Envoi <strong>immédiat</strong> après la création de la campagne.';
+        container.className = 'bg-blue-50 p-3 rounded-lg mt-3 text-sm text-blue-700';
+    }
+    
     modal.style.display = 'flex';
     setTimeout(() => modalContent.classList.add('modal-show'), 10);
 }
 
 function closeAddCampagneModal() {
     const modal = document.getElementById('addCampagneModal');
+    if (!modal) return;
+    
     const modalContent = modal.querySelector('.modal-campagne');
     modalContent.classList.remove('modal-show');
     setTimeout(() => modal.style.display = 'none', 200);
