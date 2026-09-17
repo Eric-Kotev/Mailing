@@ -5255,7 +5255,7 @@ function openCreateOctopushConfigModal(configData = null) {
         document.getElementById('octopush_config_id').value = '';
         document.getElementById('octopush_sender_name').value = 'IFB';
         document.getElementById('octopush_type').value = 'sms_premium';
-        document.getElementById('octopush_purpose').value = 'marketing';
+        document.getElementById('octopush_purpose').value = 'wholesale';
         document.getElementById('octopush_est_active').checked = true;
     }
     
