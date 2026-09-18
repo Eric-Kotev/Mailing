@@ -334,42 +334,72 @@ function escapeHtml(text) {
 // ============================================
 // POLLING DES NOTIFICATIONS D'ENVOI AUTOMATIQUE
 // ============================================
+// ============================================
+// POLLING DES NOTIFICATIONS D'ENVOI AUTOMATIQUE
+// ============================================
 (function() {
+    let derniereVerif = 0;
+
     async function verifierNotifications() {
+        // Anti-doublon : ne pas relancer si un appel est déjà en cours
+        const maintenant = Date.now();
+        if (maintenant - derniereVerif < 5000) return;
+        derniereVerif = maintenant;
+
         try {
-            const res = await fetch('pages/campagnes/check_notifications.php');
+            const res = await fetch('pages/campagnes/check_notifications.php', {
+                credentials: 'same-origin'
+            });
             const data = await res.json();
 
-            if (data.success && data.nouveaux.length > 0) {
-                data.nouveaux.forEach(envoi => {
-                    let msg, type;
-                    if (envoi.statut === 'envoye') {
-                        msg = `Campagne envoyée (${envoi.nb_succes} destinataires)`;
-                        type = 'success';
-                    } else if (envoi.statut === 'echoue') {
-                        msg = `Échec d'un envoi de campagne`;
-                        type = 'error';
-                    } else {
-                        msg = `Envoi partiel : ${envoi.nb_succes} succès, ${envoi.nb_erreurs} échecs`;
-                        type = 'warning';
-                    }
+            if (!data.success || !data.nouveaux || data.nouveaux.length === 0) return;
 
-                    showToast(msg, type);
+            // Regrouper toutes les notifications en UN SEUL toast
+            let nbEnvoyes = 0, nbEchoues = 0, nbPartiels = 0;
+            let totalDestinataires = 0;
 
-                    fetch('pages/campagnes/marquer_notification_vue.php', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id_campagne: envoi.id_campagne })
-                    });
-                });
+            data.nouveaux.forEach(envoi => {
+                if (envoi.statut === 'envoye') {
+                    nbEnvoyes++;
+                    totalDestinataires += parseInt(envoi.nb_succes || 0);
+                } else if (envoi.statut === 'echoue') {
+                    nbEchoues++;
+                } else if (envoi.statut === 'partiel') {
+                    nbPartiels++;
+                    totalDestinataires += parseInt(envoi.nb_succes || 0);
+                }
+            });
+
+            const nbTotal = nbEnvoyes + nbEchoues + nbPartiels;
+
+            let msg, type;
+            if (nbEchoues === nbTotal) {
+                msg = nbTotal === 1 ? 'Échec d\'un envoi de campagne' : nbTotal + ' envois ont échoué';
+                type = 'error';
+            } else if (nbEnvoyes === nbTotal) {
+                msg = nbTotal === 1
+                    ? 'Campagne envoyée (' + totalDestinataires + ' destinataires)'
+                    : nbTotal + ' campagnes envoyées (' + totalDestinataires + ' destinataires)';
+                type = 'success';
+            } else {
+                msg = nbTotal + ' envoi(s) terminé(s) : ' + nbEnvoyes + ' succès, ' + nbEchoues + ' échec(s), ' + nbPartiels + ' partiel(s)';
+                type = 'warning';
             }
+
+            showToast(msg, type);
+            // Note : plus besoin d'appeler marquer_notification_vue.php,
+            // c'est check_notifications.php qui marque déjà côté serveur.
+
         } catch (err) {
             console.error('Erreur vérification notifications:', err);
         }
     }
 
+    // Premier appel différé de 2s pour ne pas concurrencer les toasts flash PHP
+    setTimeout(verifierNotifications, 2000);
+
+    // Poll toutes les 15s
     setInterval(verifierNotifications, 15000);
-    verifierNotifications();
 })();
 </script>
 

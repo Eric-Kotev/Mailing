@@ -392,7 +392,15 @@ $envois = array_values($allEnvois);
 $envoisRecents = [];
 $ilYA5Min = date('Y-m-d H:i:s', strtotime('-5 minutes'));
 
+// Envois que l'utilisateur a lui-même déclenchés → le flash PHP les couvre déjà
+$envoisManuels = $_SESSION['envois_manuels_recents'] ?? [];
+
 foreach ($envois as $e) {
+    // Ne pas re-notifier un envoi manuel
+    if (in_array($e['id_campagne'], $envoisManuels)) {
+        continue;
+    }
+    
     if (in_array($e['statut'], ['envoye', 'partiel', 'echoue'])
         && !empty($e['updated_at'])
         && $e['updated_at'] >= $ilYA5Min) {
@@ -409,6 +417,9 @@ $envoisRecentsJson = json_encode(array_map(function($e) {
         'nb_erreurs' => (int)$e['nb_erreurs'],
     ];
 }, $envoisRecents));
+
+// Liste des IDs d'envois manuels encore dans la campagne (pour le JS)
+$envoisManuelsJson = json_encode(array_values($envoisManuels));
 
 $totalEnvois = count($envois);
 $totalSucces = 0;
@@ -547,17 +558,21 @@ function deduireCreditClient($idCompte, $idProvider, $quantite, $description = n
 
     $montant = $tarif * $quantite;
 
-    $compte = $db->select('compte', ['id_compte' => $idCompte]);
-    if (empty($compte)) {
+    // Déduction atomique côté PostgreSQL : aucune race condition possible
+    try {
+        $rpcResult = $db->rpc('deduire_credit', [
+            'p_id_compte' => (string)$idCompte,
+            'p_montant'   => $montant
+        ]);
+    } catch (Exception $e) {
+        // Solde insuffisant détecté au moment exact de l'UPDATE
+        error_log("deduire_credit RPC error: " . $e->getMessage());
         return false;
     }
 
-    $creditsActuels = (float)($compte[0]['credits_total'] ?? 0);
-    $nouveauSolde = $creditsActuels - $montant;
-
-    $db->update('compte', [
-        'credits_total' => $nouveauSolde
-    ], ['id_compte' => $idCompte]);
+    // La fonction RPC retourne directement la valeur NUMERIC (nouveau solde)
+    $nouveauSolde = is_array($rpcResult) ? (float)($rpcResult[0] ?? $rpcResult) : (float)$rpcResult;
+    $creditsActuels = $nouveauSolde + $montant;
 
     $nomProvider = $provider[0]['nom_providers'] ?? 'Inconnu';
     $descriptionTransaction = $description ?? "Envoi de {$quantite} message(s) via {$nomProvider}";
@@ -1298,6 +1313,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
                 
                 $_SESSION['octopush_response'] = $resultat['data'];
                 $_SESSION['flash_message'] = "✅ SMS envoyés avec succès via Octopush (Session: " . $sessionName . ")! Coût: " . number_format($resultat['credits_utilises'], 3) . "€";
+                
+                // Marque cet envoi comme manuel → pas de toast "envoi récent"
+                $_SESSION['envois_manuels_recents'][] = $id_campagne_historique;
             } else {
                 if (isset($resultat['credit_insuffisant']) && $resultat['credit_insuffisant'] === true) {
                     $_SESSION['flash_error'] = "❌ " . $resultat['error'];
@@ -1350,6 +1368,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_envoyer_messag
         
         if ($resultat['success']) {
             $_SESSION['flash_message'] = "✅ " . $resultat['message'];
+            
+            // Marque cet envoi comme manuel → pas de toast "envoi récent"
+            $_SESSION['envois_manuels_recents'][] = $id_campagne_historique;
         } else {
             $_SESSION['flash_error'] = "❌ Erreur lors de l'envoi : " . $resultat['error'];
         }
@@ -2046,6 +2067,15 @@ if (!$octopushSessionName && isset($campagne['octopush_config_id'])) {
 function getReprendreUrl($idMessage, $campagneConfigId) {
     return 'index.php?page=campagnes/details&id=' . urlencode($campagneConfigId) . '&reprendre=' . urlencode($idMessage);
 }
+
+// Nettoyer les IDs d'envois manuels qui ne sont plus dans la campagne courante
+if (!empty($_SESSION['envois_manuels_recents'])) {
+    $idsCampagne = array_column($envois, 'id_campagne');
+    $_SESSION['envois_manuels_recents'] = array_values(array_filter(
+        $_SESSION['envois_manuels_recents'],
+        function($id) use ($idsCampagne) { return in_array($id, $idsCampagne); }
+    ));
+}
 ?>
 
 <!DOCTYPE html>
@@ -2345,6 +2375,7 @@ function getReprendreUrl($idMessage, $campagneConfigId) {
 
     <?php if ($flashMessage): ?>
         <script>
+            window.__flashMessageDejaAffiche = true;
             document.addEventListener('DOMContentLoaded', function() {
                 showToast('<?= addslashes($flashMessage) ?>', 'success');
             });
@@ -2352,6 +2383,7 @@ function getReprendreUrl($idMessage, $campagneConfigId) {
     <?php endif; ?>
     <?php if ($flashError): ?>
         <script>
+            window.__flashMessageDejaAffiche = true;
             document.addEventListener('DOMContentLoaded', function() {
                 showToast('<?= addslashes($flashError) ?>', 'error');
             });
@@ -3746,6 +3778,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // AFFICHER UN TOAST POUR LES ENVOIS RÉCENTS (faits par le cron)
 // ============================================
 (function() {
+    // Si un flash message PHP s'affiche, le toast des envois récents est redondant
+    if (window.__flashMessageDejaAffiche) return;
+    
     const envoisRecents = <?= $envoisRecentsJson ?>;
     
     if (!envoisRecents || envoisRecents.length === 0) return;
@@ -3756,7 +3791,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let nbAffiches = 0;
     
     envoisRecents.forEach(envoi => {
-        const key = envoi.id + '_' + envoi.statut;
+        // Clé basée uniquement sur l'ID → un envoi toasté une fois ne le sera plus jamais
+        const key = envoi.id;
         if (dejaAffiches.includes(key)) return;
         
         let message = '';
@@ -3785,14 +3821,41 @@ document.addEventListener('DOMContentLoaded', function() {
 // Affiche un toast + recharge quand un statut change.
 // ============================================
 (function() {
-    // Récupérer les IDs des lignes non finalisées
-    const rowsAPoll = document.querySelectorAll(
+    // ============================================
+    // Anti-doublon : ne jamais re-notifier un envoi déjà notifié
+    // (persiste à travers les rechargements via sessionStorage)
+    // ============================================
+    const CLE_STORAGE = 'envois_notifies_surveillance';
+    let dejaNotifies = [];
+    try {
+        dejaNotifies = JSON.parse(sessionStorage.getItem(CLE_STORAGE) || '[]');
+        if (!Array.isArray(dejaNotifies)) dejaNotifies = [];
+    } catch (e) {
+        dejaNotifies = [];
+    }
+    
+    // Nettoyage : on ne garde que les IDs encore présents sur la page
+    // (évite que le sessionStorage grossisse indéfiniment)
+    const idsPresents = Array.from(document.querySelectorAll('tr.envoi-row')).map(r => r.dataset.id);
+    dejaNotifies = dejaNotifies.filter(id => idsPresents.includes(id));
+    sessionStorage.setItem(CLE_STORAGE, JSON.stringify(dejaNotifies));
+    
+    // IDs des envois manuels récents → déjà gérés par le flash, ne pas re-surveiller
+    const envoisManuels = <?= $envoisManuelsJson ?>;
+    
+    // Récupérer les IDs des lignes non finalisées, en excluant :
+    // - les envois manuels (flash PHP déjà affiché)
+    // - les envois déjà notifiés par la surveillance (dans un reload précédent)
+    const rowsAPoll = Array.from(document.querySelectorAll(
         'tr.envoi-row[data-status="pret_a_envoyer"], tr.envoi-row[data-status="planifiee"]'
+    )).filter(r => 
+        !envoisManuels.includes(r.dataset.id) 
+        && !dejaNotifies.includes(r.dataset.id)
     );
     
     if (rowsAPoll.length === 0) return; // Rien à surveiller
     
-    const ids = Array.from(rowsAPoll).map(r => r.dataset.id);
+    const ids = rowsAPoll.map(r => r.dataset.id);
     const statutsInitiaux = {};
     rowsAPoll.forEach(r => { statutsInitiaux[r.dataset.id] = r.dataset.status; });
     
@@ -3815,12 +3878,14 @@ document.addEventListener('DOMContentLoaded', function() {
             let aChange = false;
             let messagesEnvoyes = 0;
             let messagesEchoues = 0;
+            const idsChanges = [];
             
             data.messages.forEach(msg => {
                 const ancien = statutsInitiaux[msg.id_campagne];
                 if (ancien && ancien !== msg.statut) {
                     console.log('[Surveillance] #' + msg.id_campagne + ' : ' + ancien + ' → ' + msg.statut);
                     aChange = true;
+                    idsChanges.push(msg.id_campagne);
                     
                     if (msg.statut === 'envoye' || msg.statut === 'partiel') {
                         messagesEnvoyes++;
@@ -3832,9 +3897,14 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (aChange) {
                 clearInterval(interval);
+                
+                // ✅ Marquer ces IDs comme déjà notifiés AVANT le reload
+                // pour que la page rechargée ne les re-surveille pas.
+                dejaNotifies = dejaNotifies.concat(idsChanges);
+                sessionStorage.setItem(CLE_STORAGE, JSON.stringify(dejaNotifies));
+                
                 console.log('[Surveillance] Changement détecté → toast + rechargement');
                 
-                // Afficher un toast AVANT de recharger
                 let message = '';
                 let type = 'success';
                 
@@ -3851,14 +3921,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 showToast(message, type);
                 
-                // Laisser 2 secondes pour que l'utilisateur voie le toast, puis recharger
                 setTimeout(() => {
                     window.location.reload();
                 }, 2000);
             }
         })
         .catch(err => console.error('[Surveillance] Erreur:', err));
-    }, 5000); // Vérifie toutes les 5 secondes
+    }, 5000);
 })();
 </script>
 

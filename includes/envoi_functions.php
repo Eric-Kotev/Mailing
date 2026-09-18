@@ -117,17 +117,21 @@ if (!function_exists('deduireCreditClient')) {
 
         $montant = $tarif * $quantite;
 
-        $compte = $db->select('compte', ['id_compte' => $idCompte]);
-        if (empty($compte)) {
+        // Déduction atomique côté PostgreSQL : aucune race condition possible
+        try {
+            $rpcResult = $db->rpc('deduire_credit', [
+                'p_id_compte' => (string)$idCompte,
+                'p_montant'   => $montant
+            ]);
+        } catch (Exception $e) {
+            // Solde insuffisant détecté au moment exact de l'UPDATE
+            error_log("deduire_credit RPC error: " . $e->getMessage());
             return false;
         }
 
-        $creditsActuels = (float)($compte[0]['credits_total'] ?? 0);
-        $nouveauSolde = $creditsActuels - $montant;
-
-        $db->update('compte', [
-            'credits_total' => $nouveauSolde
-        ], ['id_compte' => $idCompte]);
+        // La fonction RPC retourne directement la valeur NUMERIC (nouveau solde)
+        $nouveauSolde = is_array($rpcResult) ? (float)($rpcResult[0] ?? $rpcResult) : (float)$rpcResult;
+        $creditsActuels = $nouveauSolde + $montant;
 
         $nomProvider = $provider[0]['nom_providers'] ?? 'Inconnu';
         $descriptionTransaction = $description ?? "Envoi de {$quantite} message(s) via {$nomProvider}";

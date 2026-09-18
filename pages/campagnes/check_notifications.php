@@ -29,6 +29,19 @@ foreach ($messages as $msg) {
     }
 }
 
+// ✅ Marquer immédiatement comme vues pour ne jamais les renvoyer 2 fois
+foreach ($nouveaux as $msg) {
+    try {
+        $db->insert('notifications_vues', [
+            'id_compte'   => $idCompte,
+            'id_campagne' => $msg['id_campagne']
+        ]);
+    } catch (Exception $e) {
+        // Ignorer les doublons éventuels
+        error_log("check_notifications mark error: " . $e->getMessage());
+    }
+}
+
 echo json_encode([
     'success' => true,
     'nouveaux' => $nouveaux
