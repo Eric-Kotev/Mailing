@@ -1084,7 +1084,10 @@ if (!function_exists('envoyerWhatsApp')) {
             if (isset($responseData['results'])) {
                 $resultsRaw = $responseData['results'];
                 
-                if (is_array($resultsRaw) && isset($resultsRaw['results']) && is_array($resultsRaw['results'])) {
+                if (is_array($resultsRaw) 
+                    && isset($resultsRaw['results']) 
+                    && is_array($resultsRaw['results'])) {
+                    
                     $resultsArray = $resultsRaw['results'];
                     
                     if (empty($invalidContacts) && isset($resultsRaw['invalid_contacts'])) {
@@ -1093,7 +1096,8 @@ if (!function_exists('envoyerWhatsApp')) {
                     if ($restriction === null && isset($resultsRaw['account_restriction'])) {
                         $restriction = $resultsRaw['account_restriction'];
                     }
-                } elseif (is_array($resultsRaw) && !empty($resultsRaw)) {
+                }
+                elseif (is_array($resultsRaw) && !empty($resultsRaw)) {
                     $firstKey = array_key_first($resultsRaw);
                     if (is_int($firstKey)) {
                         $resultsArray = $resultsRaw;
@@ -1252,6 +1256,7 @@ if (!function_exists('envoyerWhatsApp')) {
 
 // ============================================
 // ENVOI EMAIL VIA LISTMONK
+// ✅ CORRIGÉ : stocke maintenant reponse_api complet + updated_at
 // ============================================
 if (!function_exists('envoyerEmail')) {
     function envoyerEmail($idCompte, $id_campagne, $campagne, $campagneData, $message, $destinataires) {
@@ -1265,6 +1270,9 @@ if (!function_exists('envoyerEmail')) {
                 return ['success' => false, 'error' => 'Provider Listmonk non configuré'];
             }
             
+            $from_email = $campagneData['from_email'] ?? 'noreply@votre-domaine.com';
+            $from_name = $campagneData['from_name'] ?? 'Votre Entreprise';
+            $objet = $campagneData['objet'] ?? 'Email';
             $listmonkCampaignId = $campagneData['listmonk_campaign_id'] ?? null;
             
             if (!$listmonkCampaignId) {
@@ -1285,15 +1293,41 @@ if (!function_exists('envoyerEmail')) {
                 ];
             }
             
+            // ============================================
+            // DÉMARRER LA CAMPAGNE LISTMONK
+            // ============================================
             $result = updateListmonkCampaignStatus($listmonkCampaignId, 'running');
             
             if ($result['success']) {
+                // ============================================
+                // RÉCUPÉRER LES STATS IMMÉDIATEMENT APRÈS L'ENVOI
+                // (comme pour WhatsApp : on capture l'état initial)
+                // ============================================
+                $statsInitiales = recupererStatutListmonk($listmonkCampaignId);
+                
+                // ============================================
+                // CONSTRUIRE UN reponse_api COMPLET
+                // (comme pour WhatsApp et SMS)
+                // ============================================
+                $reponseComplete = [
+                    'listmonk_campaign_id' => $listmonkCampaignId,
+                    'listmonk_stats' => $statsInitiales['success'] ? $statsInitiales['data'] : null,
+                    'listmonk_stats_at' => date('Y-m-d H:i:s'),
+                    'nb_destinataires' => $nbDestinataires,
+                    'from_email' => $from_email,
+                    'from_name' => $from_name,
+                    'objet' => $objet,
+                    'sent_at' => date('Y-m-d H:i:s')
+                ];
+                
                 $db->update('campagne', [
                     'statut' => 'envoye',
                     'nb_envoyes' => $nbDestinataires,
                     'nb_succes' => $nbDestinataires,
                     'nb_erreurs' => 0,
                     'appareil_utilise' => 'Listmonk (ID: ' . $listmonkCampaignId . ')',
+                    'reponse_api' => json_encode($reponseComplete),
+                    'erreur' => null,
                     'updated_at' => date('Y-m-d H:i:s')
                 ], ['id_campagne' => $campagneData['id_campagne']]);
                 
@@ -1311,7 +1345,7 @@ if (!function_exists('envoyerEmail')) {
                 } elseif (!empty($result['http_code'])) {
                     $errorMsg .= ' (HTTP ' . $result['http_code'] . '): ' . substr($result['response'], 0, 300);
                 } else {
-                    $errorMsg .= ' : aucune réponse du serveur.';
+                    $errorMsg .= ' : aucune réponse du serveur. Vérifiez que Listmonk est accessible sur http://164.68.103.147:9005';
                 }
                 
                 $db->update('campagne', [
