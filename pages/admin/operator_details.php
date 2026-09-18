@@ -826,7 +826,7 @@ if ($table) {
             <div class="value" style="color: var(--success-soft-fg);"><?= count($clients) ?></div>
         </div>
 
-        <div class="info-card">
+       <!-- <div class="info-card">
             <div class="label">
                 <i class="fas fa-chart-line label-icon"></i>
                 Revenus générés
@@ -835,7 +835,7 @@ if ($table) {
                 <i class="fas fa-hourglass-half" style="font-size: 16px;"></i>
                 En développement
             </div>
-        </div>
+        </div> -->
     </div>
 
     <!-- ===== TABLE ===== -->
