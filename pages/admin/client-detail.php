@@ -2545,9 +2545,6 @@ $initials = getInitials($client['prenom'], $client['nom']);
             </select>
             
             <?php if (empty($availableProviders)): ?>
-                <p class="text-sm text-amber-600 mt-2">
-                    <i class="fas fa-info-circle"></i> Aucun opérateur disponible à associer.
-                </p>
             <?php endif; ?>
         </div>
         
