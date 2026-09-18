@@ -161,7 +161,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_ajax_statut_sm
         exit;
     }
     
-    // Vérifier que ce ticket appartient bien à une campagne du client
     $campagneCheck = $db->select('campagne', [
         'sms_ticket' => $smsTicket,
         'id_compte' => $idCompte
@@ -172,7 +171,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_ajax_statut_sm
         exit;
     }
     
-    // Récupérer tous les statuts liés à ce ticket
     $statuts = $db->select('sms_status_webhook', [
         'sms_ticket' => $smsTicket
     ], '*', 'numero ASC');
@@ -223,6 +221,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_ajax_statut_sm
         'results' => $resultats,
         'stats' => $stats
     ]);
+    exit;
+}
+
+// ============================================
+// TRAITEMENT AJAX : VÉRIFICATION DES STATUTS (polling léger)
+// ============================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_ajax_check_statuts'])) {
+    
+    // Nettoyer tout buffer en cours (efface les éventuels warnings PHP)
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
+    header('Content-Type: application/json; charset=utf-8');
+    
+    try {
+        $ids = $_POST['ids'] ?? [];
+        
+        if (empty($ids) || !is_array($ids)) {
+            echo json_encode(['success' => false, 'error' => 'Aucun ID fourni']);
+            exit;
+        }
+        
+        // ⚠️ IMPORTANT : les IDs sont des UUID, PAS des entiers.
+        // On les nettoie (au cas où) mais on ne les convertit JAMAIS en int.
+        $ids = array_filter(array_map(function($id) {
+            $id = trim((string)$id);
+            // Garder uniquement les caractères valides d'un UUID
+            return preg_replace('/[^a-f0-9\-]/i', '', $id);
+        }, $ids));
+        
+        $statuts = [];
+        
+        foreach ($ids as $id) {
+            if (empty($id)) continue;
+            
+            try {
+                $rows = $db->select('campagne', [
+                    'id_campagne' => $id,
+                    'id_compte' => $idCompte
+                ]);
+                
+                if (!empty($rows) && isset($rows[0])) {
+                    $statuts[] = [
+                        'id_campagne' => $id,
+                        'statut'      => $rows[0]['statut'] ?? 'inconnu',
+                        'nb_succes'   => (int)($rows[0]['nb_succes'] ?? 0),
+                        'nb_erreurs'  => (int)($rows[0]['nb_erreurs'] ?? 0),
+                    ];
+                }
+            } catch (Throwable $e) {
+                // ID invalide ou erreur ponctuelle → on ignore et on continue
+                continue;
+            }
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'messages' => $statuts
+        ]);
+        
+    } catch (Throwable $e) {
+        echo json_encode([
+            'success' => false,
+            'error' => 'Exception : ' . $e->getMessage()
+        ]);
+    }
+    
     exit;
 }
 
@@ -318,6 +384,31 @@ $campagne = $campagne[0];
 // Récupérer TOUS les envois liés à cette campagne
 $allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*', 'created_at DESC');
 $envois = array_values($allEnvois);
+
+// ============================================
+// DÉTECTION DES ENVOIS RÉCENTS (par le cron)
+// Pour afficher un toast informatif au chargement de la page
+// ============================================
+$envoisRecents = [];
+$ilYA5Min = date('Y-m-d H:i:s', strtotime('-5 minutes'));
+
+foreach ($envois as $e) {
+    if (in_array($e['statut'], ['envoye', 'partiel', 'echoue'])
+        && !empty($e['updated_at'])
+        && $e['updated_at'] >= $ilYA5Min) {
+        $envoisRecents[] = $e;
+    }
+}
+
+$envoisRecentsJson = json_encode(array_map(function($e) {
+    return [
+        'id' => $e['id_campagne'],
+        'statut' => $e['statut'],
+        'type' => $e['type_campagne'],
+        'nb_succes' => (int)$e['nb_succes'],
+        'nb_erreurs' => (int)$e['nb_erreurs'],
+    ];
+}, $envoisRecents));
 
 $totalEnvois = count($envois);
 $totalSucces = 0;
@@ -2812,7 +2903,6 @@ function chargerStatutsSMS(idCampagne, containerId) {
                 ? `<div class="recipient-error" title="${escapeHtml(r.error)}">${escapeHtml(r.error.length > 80 ? r.error.substring(0, 80) + '...' : r.error)}</div>` 
                 : '';
             
-            // Utiliser le vrai numéro (résolu côté serveur via le mapping), sinon fallback sur phone
             const phoneDisplay = r.phone || 'Inconnu';
             
             recipientsHtml += `
@@ -3307,9 +3397,6 @@ function showDetails(envoi) {
         `;
     }
     
-    // ============================================
-    // SECTION RÉSULTATS PAR DESTINATAIRE (WhatsApp)
-    // ============================================
     let resultatsParDestinataireHtml = '';
     let resultatsDetails = [];
     let restriction = null;
@@ -3439,34 +3526,27 @@ function showDetails(envoi) {
         `;
     }
     
-// ============================================
-// SECTION STATUT SMS OCTOPUSH (via sms_ticket)
-// ============================================
-let octopushSmsStatutContainerId = '';
-let octopushSmsStatutHtml = '';
+    let octopushSmsStatutContainerId = '';
+    let octopushSmsStatutHtml = '';
 
-const isSmsOctopush = (envoi.type_campagne === 'sms' 
-    && envoi.statut === 'envoye' 
-    && envoi.appareil_utilise 
-    && envoi.appareil_utilise.includes('Octopush')
-    && envoi.sms_ticket);
+    const isSmsOctopush = (envoi.type_campagne === 'sms' 
+        && envoi.statut === 'envoye' 
+        && envoi.appareil_utilise 
+        && envoi.appareil_utilise.includes('Octopush')
+        && envoi.sms_ticket);
 
-if (isSmsOctopush) {
-    octopushSmsStatutContainerId = 'octopushSmsStatut_' + envoi.id_campagne;
-    octopushSmsStatutHtml = `
-        <div id="${octopushSmsStatutContainerId}">
-            <div class="text-center py-6">
-                <div class="loading-spinner"></div>
-                <p class="text-sm text-gray-500 mt-3">Récupération des statuts Octopush...</p>
+    if (isSmsOctopush) {
+        octopushSmsStatutContainerId = 'octopushSmsStatut_' + envoi.id_campagne;
+        octopushSmsStatutHtml = `
+            <div id="${octopushSmsStatutContainerId}">
+                <div class="text-center py-6">
+                    <div class="loading-spinner"></div>
+                    <p class="text-sm text-gray-500 mt-3">Récupération des statuts Octopush...</p>
+                </div>
             </div>
-        </div>
-    `;
-}
+        `;
+    }
 
-
-    // ============================================
-    // SECTION STATUT SMS RÉEL (SMS non-Octopush)
-    // ============================================
     let smsStatutContainerId = '';
     let smsStatutHtml = '';
     
@@ -3508,9 +3588,6 @@ if (isSmsOctopush) {
         }
     }
     
-    // ============================================
-    // SECTION STATUT EMAIL RÉEL (Listmonk)
-    // ============================================
     let emailStatutContainerId = '';
     let emailStatutHtml = '';
     
@@ -3664,6 +3741,125 @@ document.getElementById('octopushModal')?.addEventListener('click', function(e) 
 document.addEventListener('DOMContentLoaded', function() {
     applyFilters();
 });
+
+// ============================================
+// AFFICHER UN TOAST POUR LES ENVOIS RÉCENTS (faits par le cron)
+// ============================================
+(function() {
+    const envoisRecents = <?= $envoisRecentsJson ?>;
+    
+    if (!envoisRecents || envoisRecents.length === 0) return;
+    
+    // Marquer en sessionStorage pour ne pas répéter le toast à chaque reload
+    const dejaAffiches = JSON.parse(sessionStorage.getItem('toastsAffiches') || '[]');
+    
+    let nbAffiches = 0;
+    
+    envoisRecents.forEach(envoi => {
+        const key = envoi.id + '_' + envoi.statut;
+        if (dejaAffiches.includes(key)) return;
+        
+        let message = '';
+        let type = 'success';
+        
+        if (envoi.statut === 'envoye' || envoi.statut === 'partiel') {
+            message = '✅ Message envoyé (' + envoi.nb_succes + ' destinataire(s))';
+        } else if (envoi.statut === 'echoue') {
+            message = '❌ Échec d\'envoi (' + envoi.nb_erreurs + ' erreur(s))';
+            type = 'error';
+        } else {
+            return;
+        }
+        
+        setTimeout(() => showToast(message, type), 500 + (nbAffiches * 300));
+        nbAffiches++;
+        dejaAffiches.push(key);
+    });
+    
+    sessionStorage.setItem('toastsAffiches', JSON.stringify(dejaAffiches));
+})();
+
+// ============================================
+// SURVEILLANCE DES STATUTS
+// Vérifie en arrière-plan si le cron a terminé.
+// Affiche un toast + recharge quand un statut change.
+// ============================================
+(function() {
+    // Récupérer les IDs des lignes non finalisées
+    const rowsAPoll = document.querySelectorAll(
+        'tr.envoi-row[data-status="pret_a_envoyer"], tr.envoi-row[data-status="planifiee"]'
+    );
+    
+    if (rowsAPoll.length === 0) return; // Rien à surveiller
+    
+    const ids = Array.from(rowsAPoll).map(r => r.dataset.id);
+    const statutsInitiaux = {};
+    rowsAPoll.forEach(r => { statutsInitiaux[r.dataset.id] = r.dataset.status; });
+    
+    console.log('[Surveillance] ' + ids.length + ' message(s) à surveiller');
+    
+    const interval = setInterval(() => {
+        const formData = new URLSearchParams();
+        formData.append('action_ajax_check_statuts', '1');
+        ids.forEach(id => formData.append('ids[]', id));
+        
+        fetch('index.php?page=campagnes/details&id=<?= urlencode($campagneId) ?>', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData.toString()
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            
+            let aChange = false;
+            let messagesEnvoyes = 0;
+            let messagesEchoues = 0;
+            
+            data.messages.forEach(msg => {
+                const ancien = statutsInitiaux[msg.id_campagne];
+                if (ancien && ancien !== msg.statut) {
+                    console.log('[Surveillance] #' + msg.id_campagne + ' : ' + ancien + ' → ' + msg.statut);
+                    aChange = true;
+                    
+                    if (msg.statut === 'envoye' || msg.statut === 'partiel') {
+                        messagesEnvoyes++;
+                    } else if (msg.statut === 'echoue') {
+                        messagesEchoues++;
+                    }
+                }
+            });
+            
+            if (aChange) {
+                clearInterval(interval);
+                console.log('[Surveillance] Changement détecté → toast + rechargement');
+                
+                // Afficher un toast AVANT de recharger
+                let message = '';
+                let type = 'success';
+                
+                if (messagesEnvoyes > 0 && messagesEchoues === 0) {
+                    message = '✅ Envoi terminé : ' + messagesEnvoyes + ' message(s) envoyé(s)';
+                } else if (messagesEchoues > 0 && messagesEnvoyes === 0) {
+                    message = '❌ Envoi terminé : ' + messagesEchoues + ' échec(s)';
+                    type = 'error';
+                } else if (messagesEnvoyes > 0 && messagesEchoues > 0) {
+                    message = '⚠️ Envoi terminé : ' + messagesEnvoyes + ' succès, ' + messagesEchoues + ' échec(s)';
+                } else {
+                    message = '✅ Envoi terminé';
+                }
+                
+                showToast(message, type);
+                
+                // Laisser 2 secondes pour que l'utilisateur voie le toast, puis recharger
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            }
+        })
+        .catch(err => console.error('[Surveillance] Erreur:', err));
+    }, 5000); // Vérifie toutes les 5 secondes
+})();
 </script>
 
 </body>
