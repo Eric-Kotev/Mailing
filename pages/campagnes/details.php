@@ -386,6 +386,95 @@ $allEnvois = $db->select('campagne', ['id_campagne_config' => $campagneId], '*',
 $envois = array_values($allEnvois);
 
 // ============================================
+// ENRICHISSEMENT DES ENVOIS : AJOUT DU NUMÉRO DE TÉLÉPHONE
+// DE LA SESSION WHATSAPP OU DE L'APPAREIL SMS
+// ============================================
+foreach ($envois as &$envoiItem) {
+    $envoiItem['session_phone'] = null;   // Numéro de la session WhatsApp
+    $envoiItem['device_phone'] = null;    // Numéro de l'appareil SMS
+    
+    if ($envoiItem['type_campagne'] === 'whatsapp') {
+        // Le nom de session WhatsApp est stocké dans appareil_utilise
+        $nomSession = trim($envoiItem['appareil_utilise'] ?? '');
+        
+        if (!empty($nomSession)) {
+            // Chercher la session correspondante pour ce compte
+            $sessionRows = $db->select('whatsapp_sessions', [
+                'id_compte' => $idCompte,
+                'nom_session' => $nomSession
+            ]);
+            
+            if (!empty($sessionRows) && !empty($sessionRows[0]['phone_number'])) {
+                $envoiItem['session_phone'] = $sessionRows[0]['phone_number'];
+            } else {
+                // Fallback : chercher par LIKE si le nom a été suffixé
+                $sessionRows = $db->select('whatsapp_sessions', [
+                    'id_compte' => $idCompte
+                ]);
+                foreach ($sessionRows as $sr) {
+                    if (!empty($sr['nom_session']) 
+                        && stripos($nomSession, $sr['nom_session']) !== false
+                        && !empty($sr['phone_number'])) {
+                        $envoiItem['session_phone'] = $sr['phone_number'];
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    if ($envoiItem['type_campagne'] === 'sms') {
+        // On ne veut PAS afficher device_number pour Octopush
+        $isOctopushEnvoi = !empty($envoiItem['appareil_utilise']) 
+            && stripos($envoiItem['appareil_utilise'], 'octopush') !== false;
+        
+        if (!$isOctopushEnvoi) {
+            // Récupérer appareil_id : soit directement, soit depuis reponse_api
+            $appareilId = $envoiItem['appareil_id'] ?? null;
+            
+            if (empty($appareilId) && !empty($envoiItem['reponse_api'])) {
+                $rapi = json_decode($envoiItem['reponse_api'], true);
+                if (is_array($rapi)) {
+                    $appareilId = $rapi['appareil_id'] ?? null;
+                }
+            }
+            
+            $appareilRow = null;
+            
+            if (!empty($appareilId)) {
+                $appareilRows = $db->select('sms_appareils', [
+                    'id_appareil' => $appareilId,
+                    'id_compte' => $idCompte
+                ]);
+                if (!empty($appareilRows)) {
+                    $appareilRow = $appareilRows[0];
+                }
+            }
+            
+            // Fallback : chercher par device_name contenu dans appareil_utilise
+            if (empty($appareilRow) && !empty($envoiItem['appareil_utilise'])) {
+                $deviceName = trim($envoiItem['appareil_utilise']);
+                $appareilsRows = $db->select('sms_appareils', [
+                    'id_compte' => $idCompte
+                ]);
+                foreach ($appareilsRows as $ar) {
+                    if (!empty($ar['device_name']) 
+                        && stripos($deviceName, $ar['device_name']) !== false) {
+                        $appareilRow = $ar;
+                        break;
+                    }
+                }
+            }
+            
+            if (!empty($appareilRow) && !empty($appareilRow['device_number'])) {
+                $envoiItem['device_phone'] = $appareilRow['device_number'];
+            }
+        }
+    }
+}
+unset($envoiItem);
+
+// ============================================
 // DÉTECTION DES ENVOIS RÉCENTS (par le cron)
 // Pour afficher un toast informatif au chargement de la page
 // ============================================
@@ -3657,9 +3746,38 @@ function showDetails(envoi) {
         }
     }
     
+    // ============================================
+    // NOUVEAU : Construire l'affichage du téléphone de session/appareil
+    // ============================================
+    let phoneSessionHtml = '';
+    if (envoi.type_campagne === 'whatsapp' && envoi.session_phone) {
+        phoneSessionHtml = `
+            <div class="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fab fa-whatsapp text-green-600 text-lg"></i>
+                    <span class="font-semibold text-green-800">Numéro de la session WhatsApp :</span>
+                    <span class="text-green-700 font-mono font-semibold">${escapeHtml(envoi.session_phone)}</span>
+                </div>
+            </div>
+        `;
+    } else if (envoi.type_campagne === 'sms' 
+        && (!envoi.appareil_utilise || !envoi.appareil_utilise.includes('Octopush')) 
+        && envoi.device_phone) {
+        phoneSessionHtml = `
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-sim-card text-blue-600 text-lg"></i>
+                    <span class="font-semibold text-blue-800">Numéro de l'appareil SMS :</span>
+                    <span class="text-blue-700 font-mono font-semibold">${escapeHtml(envoi.device_phone)}</span>
+                </div>
+            </div>
+        `;
+    }
+    
     modalContent.innerHTML = `
         <div class="space-y-4">
             ${sessionInfo}
+            ${phoneSessionHtml}
             ${actionHtml}
             
             <div class="grid grid-cols-2 gap-3">
